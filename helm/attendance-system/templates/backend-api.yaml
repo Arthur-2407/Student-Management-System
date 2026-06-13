@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: backend-api
+spec:
+  replicas: {{ .Values.backendApi.replicaCount }}
+  selector:
+    matchLabels:
+      app: backend-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: backend-api
+    spec:
+      containers:
+        - name: backend-api
+          image: "{{ .Values.backendApi.image.repository }}:{{ .Values.backendApi.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.backendApi.port }}
+          envFrom:
+            - secretRef:
+                name: backend-secrets
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.backendApi.env.NODE_ENV }}
+            - name: PORT
+              value: {{ .Values.backendApi.env.PORT | quote }}
+            - name: RUN_MIGRATIONS
+              value: {{ .Values.backendApi.env.RUN_MIGRATIONS | quote }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.backendApi.probes.readiness.path }}
+              port: {{ .Values.backendApi.port }}
+            initialDelaySeconds: {{ .Values.backendApi.probes.readiness.initialDelay }}
+            periodSeconds: {{ .Values.backendApi.probes.readiness.period }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.backendApi.probes.liveness.path }}
+              port: {{ .Values.backendApi.port }}
+            initialDelaySeconds: {{ .Values.backendApi.probes.liveness.initialDelay }}
+            periodSeconds: {{ .Values.backendApi.probes.liveness.period }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.backendApi.probes.startup.path }}
+              port: {{ .Values.backendApi.port }}
+            initialDelaySeconds: {{ .Values.backendApi.probes.startup.initialDelay }}
+            periodSeconds: {{ .Values.backendApi.probes.startup.period }}
+            failureThreshold: {{ .Values.backendApi.probes.startup.failureThreshold }}
+          resources:
+            requests:
+              cpu: {{ .Values.backendApi.resources.requests.cpu }}
+              memory: {{ .Values.backendApi.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.backendApi.resources.limits.cpu }}
+              memory: {{ .Values.backendApi.resources.limits.memory }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-api
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: backend-api
+  ports:
+    - port: {{ .Values.backendApi.port }}
+      targetPort: {{ .Values.backendApi.port }}
+  type: ClusterIP
+{{- if .Values.backendApi.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-api-hpa
+  namespace: {{ .Values.global.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend-api
+  minReplicas: {{ .Values.backendApi.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.backendApi.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backendApi.autoscaling.targetCPU }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backendApi.autoscaling.targetMemory }}
+{{- end }}

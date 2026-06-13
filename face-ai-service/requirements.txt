@@ -1,0 +1,44 @@
+# Face AI Service Requirements
+# Note: App uses Flask (src/app.py), not FastAPI
+
+# Core AI/ML Libraries
+opencv-python-headless==4.9.0.80
+keras==3.0.5
+numpy==1.26.4
+pandas==2.2.1
+scikit-learn==1.4.1.post1
+scikit-image==0.22.0
+
+# Face Recognition Libraries
+deepface==0.0.92
+facenet-pytorch==2.6.0
+mediapipe==0.10.14
+retina-face==0.0.17
+tf-keras==2.16.0
+PyWavelets==1.6.0
+tensorflow-cpu==2.16.1
+
+# Web Framework
+flask==3.0.2
+flask-cors==4.0.0
+flask-socketio==5.3.6
+eventlet==0.35.2
+
+# Utilities
+pillow==10.2.0
+pyyaml==6.0.1
+python-dotenv==1.0.1
+redis==5.0.3
+requests==2.31.0
+
+# Data Processing
+scipy==1.12.0
+matplotlib==3.8.3
+
+# Development
+pytest==8.0.2
+black==24.3.0
+flake8==7.0.0
+greenlet==3.0.3
+dnspython==2.6.1
+six==1.17.0

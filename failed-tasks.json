@@ -1,0 +1,20 @@
+{
+  "updatedAt": "2026-05-09T19:58:00+05:30",
+  "failedOrBlocked": [
+    {
+      "task": "Live database migration execution",
+      "status": "blocked",
+      "reason": "No running PostgreSQL service was available during this turn."
+    },
+    {
+      "task": "Full container startup validation",
+      "status": "not_run",
+      "reason": "Compose configuration was validated, but full image build/start was not run due to time and heavy AI dependency build cost."
+    },
+    {
+      "task": "Penetration/load/chaos validation",
+      "status": "not_run",
+      "reason": "Tooling and scenarios are not yet present in the repository."
+    }
+  ]
+}

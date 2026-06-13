@@ -1,0 +1,28 @@
+{
+  "updatedAt": "2026-05-09T19:58:00+05:30",
+  "auditStatus": {
+    "backendApi": "0 vulnerabilities from npm audit",
+    "frontend": "0 vulnerabilities from npm audit",
+    "root": "0 vulnerabilities from npm audit"
+  },
+  "implementedControls": [
+    "JWT issuer and audience verification",
+    "JWT token type enforcement",
+    "Access and refresh token jti claims",
+    "Refresh-token rotation persistence",
+    "Refresh-token family revocation on reuse/expiry anomalies",
+    "Account failed-login lockout fields and logic",
+    "Security event constraint expansion",
+    "Audit log table and auth/leave audit events",
+    "Supervisor/admin authorization on security endpoints",
+    "WebSocket JWT authentication",
+    "Redis-authenticated healthchecks"
+  ],
+  "remainingRisks": [
+    "MFA enrollment and challenge enforcement are not implemented yet.",
+    "SSO/OAuth provider integration is not implemented yet.",
+    "Secrets are still provided through environment variables, not an external vault.",
+    "No automated DAST, fuzzing, or penetration suite exists yet.",
+    "AI model results are compatible but not yet backed by persistent embeddings and calibrated model telemetry."
+  ]
+}

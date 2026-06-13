@@ -1,0 +1,46 @@
+{
+  "updatedAt": "2026-05-09T19:58:00+05:30",
+  "packageManagers": [
+    "npm",
+    "pip"
+  ],
+  "nodeWorkspaces": {
+    "root": "npm audit high passed",
+    "backend-api": "npm audit high passed",
+    "frontend": "npm audit high passed"
+  },
+  "majorRuntimeDependencies": {
+    "backend": [
+      "express",
+      "helmet",
+      "jsonwebtoken",
+      "pg",
+      "redis",
+      "socket.io",
+      "axios"
+    ],
+    "frontend": [
+      "react",
+      "react-router-dom",
+      "axios",
+      "socket.io-client",
+      "zustand",
+      "recharts",
+      "vite"
+    ],
+    "faceAi": [
+      "flask",
+      "flask-socketio",
+      "opencv-python-headless",
+      "mediapipe",
+      "tensorflow-cpu",
+      "deepface",
+      "redis"
+    ]
+  },
+  "changes": [
+    "Backend npm lockfile updated by audit remediation.",
+    "Frontend npm lockfile updated by audit remediation and Vite major upgrade.",
+    "Root npm lockfile updated by audit remediation."
+  ]
+}

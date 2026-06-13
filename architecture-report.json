@@ -1,0 +1,171 @@
+{
+  "updatedAt": "2026-05-09T20:27:00+05:30",
+  "architectureGraph": {
+    "frontend": {
+      "type": "React/Vite SPA",
+      "entry": "frontend/src/main.tsx",
+      "router": "frontend/src/router.tsx",
+      "apiClient": "frontend/src/services/api.ts",
+      "websocketClient": "frontend/src/services/websocketService.ts"
+    },
+    "backendApi": {
+      "type": "Express API + Socket.IO",
+      "entry": "backend-api/src/server.js",
+      "modules": [
+        "auth",
+        "attendance",
+        "leave",
+        "work-report",
+        "excel-processing",
+        "geofence",
+        "notification",
+        "security-monitoring",
+        "telemetry"
+      ]
+    },
+    "faceAiService": {
+      "type": "Python Flask/SocketIO service",
+      "entries": [
+        "face-ai-service/src/main.py",
+        "face-ai-service/src/app.py"
+      ],
+      "capabilities": [
+        "face detection",
+        "liveness",
+        "anti-spoof compatibility endpoints"
+      ]
+    },
+    "dataStores": [
+      "PostgreSQL",
+      "Redis"
+    ],
+    "edge": [
+      "nginx",
+      "Docker Compose"
+    ]
+  },
+  "apiMap": {
+    "auth": [
+      "POST /api/auth/login",
+      "POST /api/auth/face-login",
+      "POST /api/auth/refresh",
+      "POST /api/auth/logout",
+      "POST /api/auth/register-face"
+    ],
+    "attendance": [
+      "POST /api/attendance/check-in",
+      "POST /api/attendance/check-out",
+      "GET /api/attendance/today",
+      "GET /api/attendance/history",
+      "GET /api/attendance/stats"
+    ],
+    "leave": [
+      "POST /api/leave/request",
+      "GET /api/leave/my-requests",
+      "GET /api/leave/team-requests",
+      "GET /api/leave/request/:id",
+      "PUT /api/leave/request/:id/cancel",
+      "PUT /api/leave/request/:id/approve",
+      "PUT /api/leave/request/:id/reject",
+      "GET /api/leave/stats"
+    ],
+    "notifications": [
+      "GET /api/notifications",
+      "PATCH /api/notifications/read-all",
+      "PATCH /api/notifications/:id/read"
+    ],
+    "security": [
+      "GET /api/security/events",
+      "GET /api/security/stats",
+      "POST /api/security/log",
+      "GET /api/security/login-logs",
+      "GET /api/security/system-logs",
+      "GET /api/security/spoof-attempts",
+      "GET /api/security/geofence-violations",
+      "GET /api/security/health"
+    ],
+    "telemetry": [
+      "GET /api/telemetry/dashboard",
+      "GET /api/telemetry/health",
+      "GET /api/telemetry/metrics"
+    ],
+    "system": [
+      "GET /api/system/status",
+      "GET /api/system/features"
+    ]
+  },
+  "dbRelationMap": {
+    "employees": [
+      "attendance_records.employee_id",
+      "leave_requests.employee_id",
+      "leave_requests.supervisor_id",
+      "work_reports.employee_id",
+      "login_logs.employee_id",
+      "security_events.employee_id",
+      "refresh_tokens.employee_id",
+      "notifications.employee_id",
+      "audit_logs.actor_employee_id"
+    ],
+    "office_locations": [
+      "check_geo_fence function"
+    ]
+  },
+  "websocketTopology": {
+    "namespace": "/",
+    "authentication": "JWT access token via Socket.IO auth or Authorization header",
+    "rooms": [
+      "employee:{employeeId}",
+      "supervisors"
+    ],
+    "events": [
+      "joined",
+      "pong",
+      "security_alert",
+      "attendance_update",
+      "spoof_detection",
+      "system_notification"
+    ]
+  },
+  "securityMap": [
+    "Helmet security headers",
+    "CORS allowlist by FRONTEND_URL",
+    "JWT issuer/audience/type verification",
+    "Refresh-token rotation table",
+    "Access-token Redis blacklist",
+    "Login rate limiting with Redis and memory fallback",
+    "Account lockout columns",
+    "Supervisor/admin RBAC on security routes",
+    "Audit log table",
+    "API versioning with backward compatibility",
+    "Feature flag infrastructure for staged rollouts",
+    "Degraded-mode write-blocking middleware",
+    "Deprecation headers on versioned API responses"
+  ],
+  "deploymentMap": [
+    "docker-compose.yml",
+    "docker-compose.prod.yml",
+    "backend-api/Dockerfile",
+    "backend-api/Dockerfile.prod",
+    "frontend/Dockerfile",
+    "frontend/Dockerfile.prod",
+    "face-ai-service/Dockerfile",
+    "face-ai-service/Dockerfile.prod",
+    "nginx/nginx.conf",
+    ".github/workflows/deploy-pages.yml"
+  ],
+  "performanceBottleneckMap": [
+    "AI Python image has heavy ML dependencies and long cold-start risk.",
+    "No queue system yet for AI or notification workloads.",
+    "No DB integration tests or query plans captured yet.",
+    "Frontend route splitting now exists; chart vendor chunks are still sizable but isolated.",
+    "V3: manualChunks vendor splitting added for react, charts, UI, and network libraries."
+  ],
+  "v3EnterpriseAdditions": {
+    "A1_buildVerification": ["verify-build.js", "bundle-analysis.js", "Vite manualChunks"],
+    "A2_executionStatePersistence": ["execution-state-manager.js", "validation-report.json", "deployment-report.json"],
+    "A3_degradedModeArchitecture": ["degradedMode.js", "degradedModeMiddleware.js", "Enhanced DegradedModeBanner"],
+    "A4_productionOrchestration": ["orchestration-manager.js"],
+    "A5_enterpriseTelemetry": ["telemetry/collector.js", "telemetry/routes.js", "SystemStatusDashboard.tsx"],
+    "A6_workflowPreservation": ["apiVersioning.js", "Feature flags"]
+  }
+}

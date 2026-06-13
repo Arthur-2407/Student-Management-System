@@ -1,0 +1,126 @@
+# Default values for attendance-system Helm chart
+# Override per environment with -f values-staging.yaml etc.
+
+global:
+  namespace: attendance-system
+  imagePullPolicy: IfNotPresent
+
+# ── Backend API ─────────────────────────────────────────────────────────────
+backendApi:
+  replicaCount: 2
+  image:
+    repository: attendance-system/backend-api
+    tag: latest
+  port: 3001
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPU: 70
+    targetMemory: 80
+  env:
+    NODE_ENV: production
+    PORT: "3001"
+    RUN_MIGRATIONS: "true"
+  probes:
+    readiness:
+      path: /health
+      initialDelay: 10
+      period: 10
+    liveness:
+      path: /health
+      initialDelay: 30
+      period: 30
+    startup:
+      path: /health
+      initialDelay: 5
+      period: 5
+      failureThreshold: 12
+
+# ── Frontend ────────────────────────────────────────────────────────────────
+frontend:
+  replicaCount: 2
+  image:
+    repository: attendance-system/frontend
+    tag: latest
+  port: 80
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 128Mi
+
+# ── Face AI Service ─────────────────────────────────────────────────────────
+aiService:
+  replicaCount: 1
+  image:
+    repository: attendance-system/face-ai-service
+    tag: latest
+  port: 8000
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  probes:
+    startup:
+      initialDelay: 10
+      period: 10
+      failureThreshold: 18
+
+# ── PostgreSQL ──────────────────────────────────────────────────────────────
+postgres:
+  enabled: true
+  image: postgres:15-alpine
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ── Redis ───────────────────────────────────────────────────────────────────
+redis:
+  enabled: true
+  image: redis:7-alpine
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Ingress ─────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  host: attendance.example.com
+  tls:
+    enabled: true
+    secretName: attendance-tls
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/websocket-services: backend-api
+
+# ── Secrets (use external secret manager in production) ─────────────────────
+secrets:
+  dbUsername: attendance_user
+  dbPassword: changeme
+  dbName: attendance_system
+  redisPassword: changeme
+  jwtSecret: changeme-jwt-secret-256bit
+  jwtRefreshSecret: changeme-refresh-secret-256bit

@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment files
+.env
+.env.local
+.env.production
+*.env
+config.env
+
+# Build outputs
+dist/
+build/
+.next/
+
+# SSL certificates (keep .gitkeep, not actual certs)
+nginx/ssl/server.crt
+nginx/ssl/server.key
+nginx/ssl/server.pfx
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# Temp files
+generate-ssl.js
+
+# V3 Enterprise — generated reports and snapshots
+build-verification-report.json
+bundle-analysis-report.json
+orchestration-report.json
+.bundle-baseline.json
+.state-integrity.json
+.state-snapshots/

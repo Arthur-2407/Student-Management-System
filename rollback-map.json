@@ -1,0 +1,22 @@
+{
+  "updatedAt": "2026-05-09T19:58:00+05:30",
+  "rollbackAssets": [
+    {
+      "change": "Enterprise schema alignment migration",
+      "up": "backend-api/src/migrations/001_enterprise_schema_alignment.up.sql",
+      "down": "backend-api/src/migrations/001_enterprise_schema_alignment.down.sql"
+    },
+    {
+      "change": "Dependency audit remediation",
+      "rollback": "Restore package-lock.json/package.json from VCS for each affected package if validation fails."
+    },
+    {
+      "change": "Docker Compose Redis healthcheck",
+      "rollback": "Revert redis healthcheck test lines in docker-compose.yml and docker-compose.prod.yml."
+    }
+  ],
+  "notes": [
+    "No destructive rollback was executed.",
+    "Database rollback SQL is present but was not applied."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "updatedAt": "2026-05-09T19:58:00+05:30",
+  "migrations": [
+    {
+      "id": "001_enterprise_schema_alignment",
+      "status": "created_not_executed_live",
+      "up": "backend-api/src/migrations/001_enterprise_schema_alignment.up.sql",
+      "down": "backend-api/src/migrations/001_enterprise_schema_alignment.down.sql",
+      "runner": "backend-api/src/migrations/runMigrations.js",
+      "startupIntegration": "backend-api/src/server.js"
+    }
+  ]
+}

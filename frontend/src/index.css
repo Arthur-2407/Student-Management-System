@@ -1,0 +1,116 @@
+/* stylelint-disable at-rule-no-unknown */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+  
+  .dark {
+    @apply bg-gray-900 text-white;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-md p-6;
+  }
+  .dark .card {
+    @apply bg-gray-800;
+  }
+  
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  /* FIX: move focus-visible separately */
+  .btn:focus-visible {
+    @apply outline-none ring-2;
+  }
+
+  /* PRIMARY */
+  .btn-primary {
+    @apply bg-blue-600 text-white;
+  }
+  .btn-primary:hover {
+    @apply bg-blue-700;
+  }
+
+  /* SECONDARY */
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-900;
+  }
+  .btn-secondary:hover {
+    @apply bg-gray-300;
+  }
+  .dark .btn-secondary {
+    @apply bg-gray-700 text-white;
+  }
+  .dark .btn-secondary:hover {
+    @apply bg-gray-600;
+  }
+
+  /* DANGER */
+  .btn-danger {
+    @apply bg-red-600 text-white;
+  }
+  .btn-danger:hover {
+    @apply bg-red-700;
+  }
+
+  /* INPUT */
+  .input {
+    @apply flex h-10 w-full rounded-md border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .input:focus-visible {
+    @apply outline-none ring-2;
+  }
+
+  /* LABEL */
+  .form-label {
+    @apply block text-sm font-medium mb-2 text-gray-700;
+  }
+  .dark .form-label {
+    @apply text-gray-300;
+  }
+
+  /* ALERTS */
+  .alert {
+    @apply p-4 rounded-md mb-4;
+  }
+
+  .alert-success {
+    @apply bg-green-100 text-green-800;
+  }
+  .dark .alert-success {
+    @apply bg-green-900 text-green-200;
+  }
+
+  .alert-error {
+    @apply bg-red-100 text-red-800;
+  }
+  .dark .alert-error {
+    @apply bg-red-900 text-red-200;
+  }
+
+  .alert-warning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+  .dark .alert-warning {
+    @apply bg-yellow-900 text-yellow-200;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+/* stylelint-enable at-rule-no-unknown */

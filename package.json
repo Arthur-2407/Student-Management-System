@@ -1,0 +1,33 @@
+{
+  "scripts": {
+    "verify-build": "node scripts/verify-build.js",
+    "verify-build:strict": "node scripts/verify-build.js --strict",
+    "bundle-analysis": "node scripts/bundle-analysis.js",
+    "bundle-baseline": "node scripts/bundle-analysis.js --save-baseline",
+    "state:sync": "node scripts/execution-state-manager.js sync",
+    "state:verify": "node scripts/execution-state-manager.js verify",
+    "state:snapshot": "node scripts/execution-state-manager.js snapshot",
+    "state:status": "node scripts/execution-state-manager.js status",
+    "orchestration:check": "node scripts/orchestration-manager.js check",
+    "orchestration:probe": "node scripts/orchestration-manager.js probe",
+    "orchestration:report": "node scripts/orchestration-manager.js report"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "framer-motion": "^12.38.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-icons": "^4.12.0",
+    "recharts": "^3.8.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "stylelint": "^17.5.0",
+    "stylelint-config-standard": "^40.0.0",
+    "stylelint-config-tailwindcss": "^1.0.1",
+    "typescript": "^5.9.3"
+  }
+}
