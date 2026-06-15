@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -119,7 +119,7 @@ const BootstrapSetupPage = () => {
   const hasNumber = /\d/.test(password);
   const passwordsMatch = password === confirmPassword && password.length > 0;
   const isPasswordValid = hasMinLength && hasUppercase && hasLowercase && hasNumber;
-  const isFaceCaptured = frames.length >= 5;
+  const isFaceCaptured = uploadMode === 'camera' ? frames.length >= 3 : frames.length >= 1;
 
   // Validation per step
   const isStep1Valid = profile.name.trim().length >= 2 &&
@@ -148,12 +148,15 @@ const BootstrapSetupPage = () => {
     checkStatus();
   }, [navigate]);
 
-  const handleFrameCapture = (frame: string) => {
-    if (frames.length < 5) {
-      const base64Data = frame.replace('data:image/jpeg;base64,', '');
-      setFrames(prev => [...prev, base64Data]);
-    }
-  };
+  const handleFrameCapture = useCallback((frame: string) => {
+    const base64Data = frame.includes(',') ? frame.split(',')[1] : frame;
+    setFrames(prev => {
+      if (prev.length < 3) {
+        return [...prev, base64Data];
+      }
+      return prev;
+    });
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -164,7 +167,7 @@ const BootstrapSetupPage = () => {
       // The prefix contains ':' ';' ',' which are invalid base64 characters and crash
       // Python's base64.b64decode() in the Face-AI service. Strip to pure base64 only.
       const base64String = (reader.result as string).split(',')[1] ?? '';
-      setFrames(Array.from({ length: 5 }, () => base64String));
+      setFrames([base64String]); // 1 frame is enough for upload mode to save bandwidth/processing
     };
     reader.readAsDataURL(file);
   };
@@ -606,14 +609,14 @@ const BootstrapSetupPage = () => {
                       <FaceCamera
                         onCapture={handleFrameCapture}
                         showControls={false}
-                        autoCapture={frames.length < 5}
+                        autoCapture={frames.length < 3}
                         captureInterval={300}
                         className="w-full h-full"
                       />
-                      {frames.length > 0 && frames.length < 5 && (
+                      {frames.length > 0 && frames.length < 3 && (
                         <div className="absolute inset-0 bg-slate-950/60 flex flex-col items-center justify-center">
                           <div className="text-indigo-400 text-xl font-bold mb-1 animate-pulse">
-                            Scanning: {frames.length} / 5
+                            Scanning: {frames.length} / 3
                           </div>
                           <p className="text-xs text-slate-400">Keep looking at the camera</p>
                         </div>
@@ -628,7 +631,7 @@ const BootstrapSetupPage = () => {
                       )}
                     </div>
                     <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>Captured: {frames.length} / 5</span>
+                      <span>Captured: {frames.length} / 3</span>
                       {frames.length > 0 && (
                         <button type="button" onClick={() => setFrames([])} className="text-red-400 hover:text-red-300">
                           Reset

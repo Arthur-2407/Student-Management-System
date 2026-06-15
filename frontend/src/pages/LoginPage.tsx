@@ -230,7 +230,15 @@ const LoginPage: React.FC = () => {
                           id="employeeId"
                           type="text"
                           value={employeeId}
-                          onChange={(e) => { setEmployeeId(e.target.value); setIdError(''); }}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val.trim().toLowerCase() === 'admin') {
+                              setEmployeeId('admin');
+                            } else {
+                              setEmployeeId(val);
+                            }
+                            setIdError('');
+                          }}
                           className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${idError ? 'border-red-400' : 'border-gray-300'}`}
                           placeholder="e.g. EMP001 or ADMIN"
                           autoFocus

@@ -1,3 +1,4 @@
+import { logger } from '@utils/logger';
 import { useState, useEffect, useRef } from 'react';
 
 interface CameraHook {
@@ -6,54 +7,102 @@ interface CameraHook {
   isStreaming: boolean;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
-  captureFrame: () => Promise<string | null>;
+  captureFrame: (videoElement?: HTMLVideoElement | null) => Promise<string | null>;
   getVideoDevices: () => Promise<MediaDeviceInfo[]>;
   switchCamera: (deviceId: string) => Promise<void>;
 }
 
-// STABILIZATION: Global hardware lock and active stream references
+// STABILIZATION: Global active stream and pending promise references
 // Resolves double-mount getUserMedia collisions and camera leaks
-let globalCameraAcquisitionLock = false;
 let globalActiveMediaStream: MediaStream | null = null;
+let globalPendingStreamPromise: Promise<MediaStream> | null = null;
 
 export const useCamera = (): CameraHook => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  
   // Guard: prevents concurrent getUserMedia calls in the same instance
   const isStarting = useRef(false);
+  const isMounted = useRef(true);
+
+  // Sync mounted status
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // Start camera — guarded against concurrent calls globally and locally
   const startCamera = async () => {
-    if (globalCameraAcquisitionLock || isStarting.current) {
-      console.warn('[Camera] startCamera already in progress (globally or locally), ignoring duplicate call.');
+    if (isStarting.current) {
+      logger.warn('[Camera] startCamera already in progress locally, ignoring duplicate call.');
       return;
     }
-    globalCameraAcquisitionLock = true;
     isStarting.current = true;
     setError(null);
-
-    // Stop any globally active stream to prevent double-mount hardware locks
-    if (globalActiveMediaStream) {
-      console.warn('[Camera] Stopping globally active stream to prevent leak on double-mount.');
-      globalActiveMediaStream.getTracks().forEach(track => track.stop());
-      globalActiveMediaStream = null;
-    }
 
     // Stop any local existing stream before acquiring a new one
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+      setIsStreaming(false);
     }
 
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      globalActiveMediaStream = mediaStream;
+      let mediaStream: MediaStream;
+
+      if (globalPendingStreamPromise) {
+        logger.info('[Camera] Awaiting active getUserMedia call from another instance.');
+        mediaStream = await globalPendingStreamPromise;
+      } else {
+        // Stop any globally active stream to prevent double-mount hardware locks
+        if (globalActiveMediaStream) {
+          logger.warn('[Camera] Stopping globally active stream to prevent leak on double-mount.');
+          globalActiveMediaStream.getTracks().forEach(track => track.stop());
+          globalActiveMediaStream = null;
+        }
+
+        logger.info('[Camera] Requesting user media stream...');
+        const promise = navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+        globalPendingStreamPromise = promise;
+        try {
+          mediaStream = await promise;
+          globalActiveMediaStream = mediaStream;
+        } finally {
+          globalPendingStreamPromise = null;
+        }
+      }
+
+      if (!isMounted.current) {
+        logger.warn('[Camera] Component unmounted before stream resolved. Stopping tracks to prevent leak.');
+        mediaStream.getTracks().forEach(track => track.stop());
+        if (globalActiveMediaStream === mediaStream) {
+          globalActiveMediaStream = null;
+        }
+        return;
+      }
+
+      // Check if tracks are still live (not stopped by another unmounted instance)
+      const hasActiveTracks = mediaStream.getVideoTracks().some(track => track.readyState === 'live');
+      if (!hasActiveTracks) {
+        logger.warn('[Camera] Acquired stream has no active tracks (possibly stopped). Re-initiating...');
+        if (globalActiveMediaStream === mediaStream) {
+          globalActiveMediaStream = null;
+        }
+        isStarting.current = false;
+        await startCamera();
+        return;
+      }
+
       setStream(mediaStream);
       setIsStreaming(true);
     } catch (err) {
+      if (!isMounted.current) return;
       const domErr = err as DOMException;
       if (domErr.name === 'NotAllowedError' || domErr.name === 'PermissionDeniedError') {
         setError('Camera permission denied. Please allow camera access in your browser settings.');
@@ -62,12 +111,11 @@ export const useCamera = (): CameraHook => {
       } else if (domErr.name === 'NotReadableError' || domErr.name === 'TrackStartError') {
         setError('Camera is already in use by another application. Please close it and try again.');
       } else {
-        console.error('[Camera] getUserMedia error:', err);
+        logger.error('[Camera] getUserMedia error', { error: String(err) });
         setError('Failed to access camera. Please check permissions and try again.');
       }
     } finally {
       isStarting.current = false;
-      globalCameraAcquisitionLock = false;
     }
   };
 
@@ -84,20 +132,24 @@ export const useCamera = (): CameraHook => {
   };
 
   // Capture frame as base64
-  const captureFrame = async (): Promise<string | null> => {
+  const captureFrame = async (videoElement?: HTMLVideoElement | null): Promise<string | null> => {
     if (!stream) return null;
 
-    // Find the existing video element that is already playing this stream
-    const videos = document.querySelectorAll('video');
-    let video: HTMLVideoElement | null = null;
-    for (const v of Array.from(videos)) {
-      if (v.srcObject === stream && v.readyState >= 2) {
-        video = v;
-        break;
+    let video = videoElement;
+    if (!video) {
+      // Find the existing video element that is already playing this stream
+      const videos = document.querySelectorAll('video');
+      for (const v of Array.from(videos)) {
+        if (v.srcObject === stream && v.readyState >= 2) {
+          video = v;
+          break;
+        }
       }
     }
 
-    if (!video) return null;
+    if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+      return null;
+    }
 
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth || 640;
@@ -117,7 +169,7 @@ export const useCamera = (): CameraHook => {
       const devices = await navigator.mediaDevices.enumerateDevices();
       return devices.filter(device => device.kind === 'videoinput');
     } catch (err) {
-      console.error('Error enumerating devices:', err);
+      logger.error('Error enumerating devices', { error: String(err) });
       return [];
     }
   };
@@ -129,6 +181,9 @@ export const useCamera = (): CameraHook => {
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
       setIsStreaming(false);
+      if (globalActiveMediaStream === stream) {
+        globalActiveMediaStream = null;
+      }
     }
 
     if (isStarting.current) return;
@@ -138,10 +193,16 @@ export const useCamera = (): CameraHook => {
         video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
+      if (!isMounted.current) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      globalActiveMediaStream = mediaStream;
       setStream(mediaStream);
       setIsStreaming(true);
     } catch (err) {
-      console.error('[Camera] switchCamera error:', err);
+      if (!isMounted.current) return;
+      logger.error('[Camera] switchCamera error', { error: String(err) });
       setError('Failed to switch camera. Please try again.');
     } finally {
       isStarting.current = false;

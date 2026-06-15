@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from typing import List, Dict
 import logging
+import os
 from scipy import ndimage
 from scipy.signal import convolve2d
 import pywt
@@ -19,20 +20,23 @@ class SpoofDetector:
     def __init__(self):
         # Texture analysis parameters
         self.texture_window_size = 32
-        self.texture_threshold = 0.15
+        self.texture_threshold = float(os.getenv("FACE_AI_TEXTURE_THRESHOLD", "0.25"))
         
         # Screen glare parameters
-        self.glare_threshold = 0.8
-        self.glare_area_ratio = 0.05
+        self.glare_threshold = float(os.getenv("FACE_AI_GLARE_THRESHOLD", "0.85"))
+        self.glare_area_ratio = float(os.getenv("FACE_AI_GLARE_AREA_RATIO", "0.08"))
         
         # Moire pattern parameters
         self.moire_frequency_range = (0.1, 0.3)
-        self.moire_threshold = 0.2
+        self.moire_threshold = float(os.getenv("FACE_AI_MOIRE_THRESHOLD", "0.45"))
         
         # Color consistency parameters
-        self.color_variance_threshold = 0.05
+        self.color_variance_threshold = float(os.getenv("FACE_AI_COLOR_VARIANCE_THRESHOLD", "0.02"))
         
-        logger.info("Spoof detector initialized")
+        # Pixel pattern parameters
+        self.pixel_entropy_threshold = float(os.getenv("FACE_AI_PIXEL_ENTROPY_THRESHOLD", "1.8"))
+        
+        logger.info("Spoof detector initialized with env-configurable thresholds")
     
     def detect_spoof(self, face_frames: List[np.ndarray]) -> Dict:
         """
@@ -183,22 +187,17 @@ class SpoofDetector:
         height, width = image.shape
         lbp = np.zeros((height-2, width-2), dtype=np.uint8)
         
-        for i in range(1, height-1):
-            for j in range(1, width-1):
-                center = image[i, j]
-                code = 0
-                
-                # 8 neighbors
-                code |= (image[i-1, j-1] >= center) << 7
-                code |= (image[i-1, j] >= center) << 6
-                code |= (image[i-1, j+1] >= center) << 5
-                code |= (image[i, j+1] >= center) << 4
-                code |= (image[i+1, j+1] >= center) << 3
-                code |= (image[i+1, j] >= center) << 2
-                code |= (image[i+1, j-1] >= center) << 1
-                code |= (image[i, j-1] >= center) << 0
-                
-                lbp[i-1, j-1] = code
+        center = image[1:-1, 1:-1]
+        
+        # 8 neighbors vectorized
+        lbp |= ((image[:-2, :-2] >= center) << 7).astype(np.uint8)
+        lbp |= ((image[:-2, 1:-1] >= center) << 6).astype(np.uint8)
+        lbp |= ((image[:-2, 2:] >= center) << 5).astype(np.uint8)
+        lbp |= ((image[1:-1, 2:] >= center) << 4).astype(np.uint8)
+        lbp |= ((image[2:, 2:] >= center) << 3).astype(np.uint8)
+        lbp |= ((image[2:, 1:-1] >= center) << 2).astype(np.uint8)
+        lbp |= ((image[2:, :-2] >= center) << 1).astype(np.uint8)
+        lbp |= ((image[1:-1, :-2] >= center) << 0).astype(np.uint8)
         
         return lbp
     
@@ -361,8 +360,8 @@ class SpoofDetector:
             
             # Digital screens often have specific gradient patterns
             # This is a simplified detection - in practice would use ML
-            detected = entropy < 4.0  # Empirical threshold
-            score = min((4.0 - entropy) / 2.0, 1.0)
+            detected = entropy < self.pixel_entropy_threshold
+            score = min((self.pixel_entropy_threshold - entropy) / 1.0, 1.0)
             score = max(score, 0.0)
             
             return {

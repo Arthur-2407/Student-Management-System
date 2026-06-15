@@ -7,12 +7,20 @@ import numpy as np
 from typing import List, Tuple
 import logging
 
-# Try to import RetinaFace, fallback to OpenCV if not available
-try:
-    from retinaface import RetinaFace
-except ImportError:
-    RetinaFace = None
-    logging.warning("RetinaFace not available, falling back to OpenCV face detection")
+import os
+
+# Check face detector backend from environment variable
+FACE_DETECTOR_BACKEND = os.getenv('FACE_DETECTOR_BACKEND', 'opencv').lower()
+
+# Try to import RetinaFace, fallback to OpenCV if not available or disabled
+RetinaFace = None
+if FACE_DETECTOR_BACKEND == 'retinaface':
+    try:
+        from retinaface import RetinaFace
+    except ImportError:
+        logging.warning("RetinaFace not available, falling back to OpenCV face detection")
+else:
+    logging.info(f"Using OpenCV face detection backend (configured: {FACE_DETECTOR_BACKEND})")
 
 logger = logging.getLogger(__name__)
 
@@ -43,36 +51,69 @@ class FaceDetector:
         boxes = []
         
         try:
+            h, w = image.shape[:2]
+            max_dim = 320
+            scale = 1.0
+            if max(h, w) > max_dim:
+                scale = max_dim / max(h, w)
+                new_w = int(w * scale)
+                new_h = int(h * scale)
+                detect_img = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            else:
+                detect_img = image
+
             if RetinaFace is not None:
                 # Use RetinaFace for high-accuracy detection
-                detections = RetinaFace.detect_faces(image, threshold=self.confidence_threshold)
+                detections = RetinaFace.detect_faces(detect_img, threshold=self.confidence_threshold)
                 
-                for face_id, detection in detections.items():
-                    facial_area = detection['facial_area']
-                    x1, y1, x2, y2 = facial_area
-                    
-                    # Extract face region
-                    face_img = image[y1:y2, x1:x2]
-                    
-                    # Resize to standard size if needed
-                    if face_img.size > 0:
-                        faces.append(face_img)
-                        boxes.append((x1, y1, x2 - x1, y2 - y1))
+                if isinstance(detections, dict):
+                    for face_id, detection in detections.items():
+                        facial_area = detection['facial_area']
+                        
+                        # Scale coordinates back to original size
+                        x1 = int(facial_area[0] / scale)
+                        y1 = int(facial_area[1] / scale)
+                        x2 = int(facial_area[2] / scale)
+                        y2 = int(facial_area[3] / scale)
+                        
+                        # Clip to image boundaries
+                        x1 = max(0, min(x1, w - 1))
+                        y1 = max(0, min(y1, h - 1))
+                        x2 = max(0, min(x2, w - 1))
+                        y2 = max(0, min(y2, h - 1))
+                        
+                        # Extract face region from original high-res image
+                        face_img = image[y1:y2, x1:x2]
+                        if face_img.size > 0:
+                            faces.append(face_img)
+                            boxes.append((x1, y1, x2 - x1, y2 - y1))
             else:
                 # Fallback to OpenCV Haar cascades
-                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                gray = cv2.cvtColor(detect_img, cv2.COLOR_BGR2GRAY)
                 detected_faces = self.face_cascade.detectMultiScale(
                     gray, 
                     scaleFactor=1.1, 
                     minNeighbors=5, 
-                    minSize=(30, 30)
+                    minSize=(int(30 * scale), int(30 * scale))
                 )
                 
-                for (x, y, w, h) in detected_faces:
-                    face_img = image[y:y+h, x:x+w]
+                for (x, y, w_box, h_box) in detected_faces:
+                    # Scale coordinates back to original size
+                    x1 = int(x / scale)
+                    y1 = int(y / scale)
+                    x2 = int((x + w_box) / scale)
+                    y2 = int((y + h_box) / scale)
+                    
+                    # Clip to image boundaries
+                    x1 = max(0, min(x1, w - 1))
+                    y1 = max(0, min(y1, h - 1))
+                    x2 = max(0, min(x2, w - 1))
+                    y2 = max(0, min(y2, h - 1))
+                    
+                    face_img = image[y1:y2, x1:x2]
                     if face_img.size > 0:
                         faces.append(face_img)
-                        boxes.append((x, y, w, h))
+                        boxes.append((x1, y1, x2 - x1, y2 - y1))
             
             logger.debug(f"Detected {len(faces)} faces in image")
             

@@ -190,10 +190,12 @@ async function runAllTests() {
   try {
     console.log('Restarting backend-api container...');
     execSync('docker restart backend-api', { stdio: 'inherit' });
-    console.log('Waiting 8 seconds for backend container to recover...');
-    await waitMs(8000);
+    console.log('Restarting attendance-nginx container to refresh upstream DNS...');
+    execSync('docker restart attendance-nginx', { stdio: 'inherit' });
+    console.log('Waiting 20 seconds for containers to recover...');
+    await waitMs(20000);
   } catch (err) {
-    console.error('Failed to restart backend container:', err.message);
+    console.error('Failed to restart containers:', err.message);
   }
 
   const bootStatusAfterRestart = await verifyEndpoint('Bootstrap Status Post-Restart', `${BACKEND_URL}/api/auth/bootstrap/status`, 'GET');

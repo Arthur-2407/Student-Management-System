@@ -225,7 +225,8 @@ const FaceLogin = () => {
       employeeId &&
       livenessStatus !== 'success' &&
       !isCameraStopped &&
-      !(requirePassword && !password)
+      !isCheckingId &&           // Wait for pre-login check to complete (prevents race for admin)
+      !(requirePassword && !locationState.state?.passwordVerified)
     ) {
       setAutoAuthTriggered(true);
       // Small delay for natural UX
@@ -233,7 +234,7 @@ const FaceLogin = () => {
         handleFaceLogin(frames);
       }, AUTO_AUTH_DELAY_MS);
     }
-  }, [frames, isProcessing, autoAuthTriggered, employeeId, livenessStatus, isCameraStopped, requirePassword, password, handleFaceLogin]);
+  }, [frames, isProcessing, autoAuthTriggered, employeeId, livenessStatus, isCameraStopped, isCheckingId, requirePassword, locationState.state?.passwordVerified, handleFaceLogin]);
 
   // Reset auto-auth trigger when employee ID or password changes
   useEffect(() => {
@@ -393,7 +394,14 @@ const FaceLogin = () => {
                   id="face-login-employee-id"
                   type="text"
                   value={employeeId}
-                  onChange={e => setEmployeeId(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val.trim().toLowerCase() === 'admin') {
+                      setEmployeeId('admin');
+                    } else {
+                      setEmployeeId(val);
+                    }
+                  }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm"
                   placeholder="e.g. EMP001 or ADMIN"
                   autoComplete="username"
@@ -452,6 +460,25 @@ const FaceLogin = () => {
                 <span className={`inline-block w-2 h-2 rounded-full ${location ? 'bg-green-400' : 'bg-gray-300'}`} />
                 {location ? 'Location verified' : locationError || 'Detecting location...'}
               </div>
+
+              {/* Manual Sign In button when password needs to be typed */}
+              {requirePassword && !locationState.state?.passwordVerified && livenessStatus !== 'failed' && (
+                <button
+                  type="button"
+                  onClick={() => handleFaceLogin(frames)}
+                  disabled={isProcessing || livenessStatus === 'success' || !employeeId || !password || frames.length < MIN_FRAMES_FOR_AUTH}
+                  className="mb-5 w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 text-white font-semibold rounded-xl shadow-lg transition-all text-sm"
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Signing In...
+                    </>
+                  ) : (
+                    frames.length < MIN_FRAMES_FOR_AUTH ? `Positioning face (${frames.length}/${MIN_FRAMES_FOR_AUTH})...` : 'Sign In'
+                  )}
+                </button>
+              )}
 
               {/* Spoof Alert */}
               <AnimatePresence>

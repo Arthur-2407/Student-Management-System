@@ -5,10 +5,10 @@
  * Returns 504 Gateway Timeout if the response is not sent within the limit.
  *
  * Usage:
- *   app.use(requestTimeout(30000)); // 30s default
+ *   app.use(requestTimeout(15000)); // 15s default
  */
 
-function requestTimeout(timeoutMs = 30000) {
+function requestTimeout(timeoutMs = 15000) {
   return (req, res, next) => {
     const timer = setTimeout(() => {
       if (!res.headersSent) {

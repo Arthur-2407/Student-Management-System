@@ -144,7 +144,7 @@ async function inferenceWithFallback(frames, employeeId, options = {}) {
         const result = await axios.post(
           `${ONNX_CONFIG.aiServiceUrl}/api/face-login-onnx`,
           { frames, employee_id: employeeId },
-          { timeout: 30000 }
+          { timeout: 15000 }
         );
         
         const latency = Date.now() - startTime;
@@ -180,7 +180,7 @@ async function inferenceWithFallback(frames, employeeId, options = {}) {
     const result = await axios.post(
       `${ONNX_CONFIG.aiServiceUrl}/api/face-login`,
       { frames, employee_id: employeeId },
-      { timeout: 30000 }
+      { timeout: 15000 }
     );
     
     const latency = Date.now() - startTime;

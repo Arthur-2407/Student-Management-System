@@ -483,7 +483,7 @@ router.post('/face-login', async (req, res) => {
                 // Pass stored embedding from PostgreSQL so Face-AI can do real comparison
                 stored_embedding: storedEmbeddingVector,
               },
-              { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 10000) }
+              { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
             );
             return aiResponse.data;
           } catch (err) {
@@ -937,7 +937,7 @@ router.post('/register-face', authenticateToken, async (req, res) => {
         employeeId,
         employee_id: employeeId,
       },
-      { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 30000) }
+      { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
     );
 
     if (response.data.success || response.data.registered) {
@@ -1247,7 +1247,7 @@ router.post('/bootstrap/setup', async (req, res) => {
       const aiResponse = await axios.post(
         `${faceAIServiceUrl}/api/register-face`,
         { frames, employeeId: 'admin', employee_id: 'admin' },
-        { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 30000) }
+        { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
       );
       if (aiResponse.data.success || aiResponse.data.registered) {
         const rawVector = aiResponse.data.embedding || aiResponse.data.face_embedding;
@@ -1681,6 +1681,145 @@ router.post('/recovery/:recoveryId/reject', authenticateToken, async (req, res) 
   } catch (error) {
     logger.error('Recovery rejection error', { error: error.message });
     return res.status(500).json({ success: false, message: 'Internal server error', code: 'INTERNAL_ERROR' });
+  }
+});
+
+/**
+ * POST /api/auth/recovery/reset
+ * Complete the account credential/face reset after admin approval.
+ * Public endpoint.
+ */
+router.post('/recovery/reset', async (req, res) => {
+  try {
+    const { employeeId, recoveryId, password, faceEmbedding } = req.body;
+
+    if (!isValidEmployeeId(employeeId) || !recoveryId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid employeeId and recoveryId are required',
+        code: 'INVALID_REQUEST',
+      });
+    }
+
+    // Find the approved recovery request
+    const recoveryResult = await query(
+      `SELECT arr.id, arr.employee_id, arr.request_type, arr.status, arr.expires_at,
+              e.employee_id as emp_code
+       FROM account_recovery_requests arr
+       JOIN employees e ON arr.employee_id = e.id
+       WHERE arr.id = $1 AND e.employee_id = $2 AND arr.status = 'approved' AND arr.expires_at > NOW()`,
+      [recoveryId, employeeId]
+    );
+
+    if (recoveryResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Approved and active recovery request not found or expired',
+        code: 'RECOVERY_REQUEST_NOT_FOUND',
+      });
+    }
+
+    const recovery = recoveryResult.rows[0];
+    const empId = recovery.employee_id;
+    const requestType = recovery.request_type;
+
+    // Begin updates transaction
+    await query('BEGIN');
+
+    if (requestType === 'password_reset' || requestType === 'full_credential_reset') {
+      if (!password || typeof password !== 'string' || password.length < 6) {
+        await query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'Password must be at least 6 characters long',
+          code: 'INVALID_PASSWORD',
+        });
+      }
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(password, salt);
+      await query(
+        `UPDATE employees
+         SET password_hash = $1, password_changed_at = NOW(), password_must_change = FALSE,
+             failed_login_count = 0, locked_until = NULL
+         WHERE id = $2`,
+        [hash, empId]
+      );
+    }
+
+    if (requestType === 'face_reset' || requestType === 'full_credential_reset') {
+      if (!faceEmbedding || !Array.isArray(faceEmbedding) || faceEmbedding.length !== 512) {
+        await query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'Valid 512-dimensional face embedding is required',
+          code: 'INVALID_FACE_EMBEDDING',
+        });
+      }
+      
+      // Deactivate existing face embeddings
+      await query(
+        `UPDATE face_embeddings
+         SET is_active = FALSE, updated_at = NOW()
+         WHERE employee_id = $1`,
+        [empId]
+      );
+
+      // Insert new face embedding
+      const vectorStr = JSON.stringify(faceEmbedding);
+      await query(
+        `INSERT INTO face_embeddings
+           (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by, is_active)
+         VALUES ($1, $2, '1.0', 1.0, $1, TRUE)`,
+        [empId, vectorStr]
+      );
+
+      // Update employee status
+      await query(
+        `UPDATE employees
+         SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = id
+         WHERE id = $1`,
+        [empId]
+      );
+    }
+
+    // Mark recovery request as completed
+    await query(
+      `UPDATE account_recovery_requests
+       SET status = 'completed', updated_at = NOW()
+       WHERE id = $1`,
+      [recoveryId]
+    );
+
+    // Audit log
+    await query(
+      `INSERT INTO account_recovery_audit_log (recovery_id, actor_id, action, details, ip_address)
+       VALUES ($1, $2, 'RESET_COMPLETED', $3, $4::inet)`,
+      [recoveryId, empId, JSON.stringify({ requestType }), req.ip]
+    );
+
+    await logSecurityEvent({
+      employeeId,
+      eventType: 'ACCOUNT_RECOVERY_COMPLETED',
+      ipAddress: req.ip,
+      deviceInfo: req.headers['user-agent'],
+      details: { recoveryId, requestType },
+      severity: 'high',
+    });
+
+    await query('COMMIT');
+
+    return res.json({
+      success: true,
+      message: 'Account credentials reset successfully. You can now login with your new credentials.',
+    });
+  } catch (error) {
+    await query('ROLLBACK');
+    logger.error('Recovery reset error', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+    });
   }
 });
 

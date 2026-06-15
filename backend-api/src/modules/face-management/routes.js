@@ -54,7 +54,7 @@ async function generateEmbeddingFromFrames(frames, employeeId) {
     const response = await axios.post(
       `${faceAIServiceUrl}/api/register-face`,
       { frames, employeeId, employee_id: employeeId },
-      { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 30000) }
+      { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
     );
 
     if (response.data.success || response.data.registered) {

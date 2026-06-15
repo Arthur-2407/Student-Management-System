@@ -1679,7 +1679,7 @@ router.post('/reset/initiate', requireRole('admin'), async (req, res) => {
             employee_id: admin.employee_id,
             stored_embedding: storedEmbeddingVector,
           },
-          { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 30000) }
+          { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
         );
 
         if (!aiResponse.data.success || !aiResponse.data.authenticated) {
@@ -1818,7 +1818,7 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
       const aiResponse = await axios.post(
         `${faceAIServiceUrl}/api/register-face`,
         { frames, employeeId: adminEmployeeId, employee_id: adminEmployeeId },
-        { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 30000) }
+        { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
       );
       if (aiResponse.data.success || aiResponse.data.registered) {
         const rawVector = aiResponse.data.embedding || aiResponse.data.face_embedding;

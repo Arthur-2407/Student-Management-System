@@ -1,3 +1,4 @@
+import { logger } from '@utils/logger';
 import { useRef, useEffect, useState } from 'react';
 import { useCamera } from '@hooks/useCamera';
 import { motion } from 'framer-motion';
@@ -22,7 +23,7 @@ const FaceCamera = ({
 }: FaceCameraProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   // STABILIZATION: Ref to hold latest captureFrame so the interval closure is never stale
-  const captureFrameRef = useRef<() => Promise<string | null>>(async () => null);
+  const captureFrameRef = useRef<(videoElement?: HTMLVideoElement | null) => Promise<string | null>>(async () => null);
   const onCaptureRef = useRef(onCapture);
   const {
     stream,
@@ -36,9 +37,6 @@ const FaceCamera = ({
   const [isAutoCapturing, setIsAutoCapturing] = useState(autoCapture);
 
   // STABILIZATION: Sync isAutoCapturing state when the autoCapture prop changes.
-  // useState only initialises from the prop once; parent components that flip
-  // autoCapture (e.g. BootstrapSetupPage setting it to false after 5 frames)
-  // must be reflected so capturing stops in the camera loop.
   useEffect(() => {
     setIsAutoCapturing(autoCapture);
   }, [autoCapture]);
@@ -54,8 +52,6 @@ const FaceCamera = ({
   stopCameraRef.current = stopCamera;
 
   // STABILIZATION: Auto-start camera on mount when autoCapture is true.
-  // Uses refs to ensure cleanup always calls the latest stopCamera,
-  // preventing stream leaks during StrictMode double-mounts.
   useEffect(() => {
     if (autoCapture) {
       startCameraRef.current();
@@ -83,19 +79,32 @@ const FaceCamera = ({
     let lastCaptureTime = 0;
 
     const processFrame = async () => {
-      if (!isAutoCapturing || !isStreaming) return;
+      if (!isAutoCapturing || !isStreaming) {
+        logger.info('[FaceCamera] Loop active but skipped.', { isAutoCapturing, isStreaming });
+        return;
+      }
 
       const now = Date.now();
       if (now - lastCaptureTime >= captureInterval) {
         lastCaptureTime = now;
         try {
-          const frame = await captureFrameRef.current();
+          const videoEl = videoRef.current;
+          logger.info('[FaceCamera] Attempting capture...', {
+            videoElement: videoEl ? `present (readyState=${videoEl.readyState}, size=${videoEl.videoWidth}x${videoEl.videoHeight})` : 'null'
+          });
+          
+          const frame = await captureFrameRef.current(videoEl);
           if (frame && onCaptureRef.current) {
+            logger.info('[FaceCamera] Frame captured successfully!', { length: frame.length });
             onCaptureRef.current(frame);
+          } else {
+            logger.warn('[FaceCamera] Frame capture returned empty/null or onCapture is missing.', {
+              frameExists: !!frame,
+              hasOnCapture: !!onCaptureRef.current
+            });
           }
-        } catch (err) {
-          // STABILIZATION: Swallow errors in capture loop to prevent loop death
-          console.warn('[FaceCamera] Frame capture error (non-fatal):', err);
+        } catch (err: any) {
+          logger.error('[FaceCamera] Frame capture error (fatal in attempt)', { error: err.message });
         }
       }
 
@@ -103,11 +112,15 @@ const FaceCamera = ({
     };
 
     if (isAutoCapturing && isStreaming) {
+      logger.info('[FaceCamera] Starting loop.', { isAutoCapturing, isStreaming });
       animationFrameId = requestAnimationFrame(processFrame);
+    } else {
+      logger.info('[FaceCamera] Loop not started.', { isAutoCapturing, isStreaming });
     }
 
     return () => {
       if (animationFrameId !== null) {
+        logger.info('[FaceCamera] Cancelling animation frame loop.');
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
       }
@@ -121,7 +134,7 @@ const FaceCamera = ({
 
   // Manual capture
   const handleManualCapture = async () => {
-    const frame = await captureFrame();
+    const frame = await captureFrame(videoRef.current);
     if (frame && onCapture) {
       onCapture(frame);
     }
@@ -139,7 +152,7 @@ const FaceCamera = ({
   return (
     <div className={`relative ${className}`}>
       {/* Video Preview */}
-      <div className="relative bg-gray-900 rounded-lg overflow-hidden">
+      <div className="relative bg-gray-900 rounded-lg overflow-hidden w-full h-full" style={{ minHeight: '120px' }}>
         <video
           ref={videoRef}
           autoPlay

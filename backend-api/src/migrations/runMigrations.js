@@ -25,7 +25,8 @@ function getMigrationFiles() {
 
 function checksum(content) {
   const crypto = require('crypto');
-  return crypto.createHash('sha256').update(content).digest('hex');
+  const normalized = content.replace(/\r\n/g, '\n');
+  return crypto.createHash('sha256').update(normalized).digest('hex');
 }
 
 async function runMigrations() {

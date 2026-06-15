@@ -125,8 +125,8 @@ app.use(logRequest);
 // V6: Global API rate limit
 app.use('/api', apiLimiter);
 
-// V7: Request timeout (30s default, 120s for uploads)
-app.use(requestTimeout(30000));
+// V7: Request timeout (15s default, 120s for uploads)
+app.use(requestTimeout(Number(process.env.REQUEST_TIMEOUT_MS || 15000)));
 app.use('/api/excel', requestTimeout(120000));
 app.use('/api/auth/mfa/enroll', requestTimeout(10000));
 
