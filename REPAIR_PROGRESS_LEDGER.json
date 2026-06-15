@@ -1,0 +1,41 @@
+{
+  "ledger_metadata": {
+    "protocol": "ENTERPRISE FORENSIC REPAIR & BOOTSTRAP RECOVERY PROTOCOL V12",
+    "initialized_at": "2026-06-15T15:30:00Z",
+    "total_repairs": 4
+  },
+  "changes": [
+    {
+      "timestamp": "2026-06-15T15:57:00Z",
+      "file": "face-ai-service/src/main.py",
+      "reason": "DEF-001: Dummy frame (1x1 pixel) bypass gate configuration",
+      "dependency_impact": "None. Only gates mock authentication tests in production/real mode.",
+      "validation_result": "Pending container build/restart and test execution",
+      "checkpoint_reference": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755"
+    },
+    {
+      "timestamp": "2026-06-15T15:57:30Z",
+      "file": "docker-compose.yml",
+      "reason": "DEF-006: Missing healthcheck configuration for the frontend service",
+      "dependency_impact": "Observability improvement. Aligns development stack with production stack.",
+      "validation_result": "Pending container build/restart and test execution",
+      "checkpoint_reference": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755"
+    },
+    {
+      "timestamp": "2026-06-15T15:57:45Z",
+      "file": "nginx/nginx.conf",
+      "reason": "DEF-007: Missing SPA fallback proxy routing configuration",
+      "dependency_impact": "Observability and routing resilience improvement.",
+      "validation_result": "Pending container build/restart and test execution",
+      "checkpoint_reference": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755"
+    },
+    {
+      "timestamp": "2026-06-15T21:35:00Z",
+      "file": "backend-api/src/modules/auth/routes.js",
+      "reason": "DEF-011: Public recovery reset endpoint for employee credentials and face enrollment after admin approval",
+      "dependency_impact": "Resolves incomplete account recovery flow. Public API route addition.",
+      "validation_result": "Pending container build/restart and test execution",
+      "checkpoint_reference": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755"
+    }
+  ]
+}

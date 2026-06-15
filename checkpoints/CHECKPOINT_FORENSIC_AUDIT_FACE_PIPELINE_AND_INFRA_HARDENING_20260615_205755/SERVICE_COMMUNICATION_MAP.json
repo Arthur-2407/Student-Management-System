@@ -1,0 +1,63 @@
+{
+  "checkpointName": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755",
+  "timestamp": "2026-06-15T15:26:00Z",
+  "service_communications": {
+    "attendance-nginx-prod": {
+      "port_bindings": [
+        "80",
+        "443"
+      ],
+      "communicates_with": {
+        "attendance-frontend-prod": {
+          "protocol": "HTTP",
+          "port": 80,
+          "purpose": "Serve static assets and SPA"
+        },
+        "backend-api-prod": {
+          "protocol": "HTTP/WS",
+          "port": 3001,
+          "purpose": "Proxy API queries (/api/*) and WebSocket channels"
+        },
+        "face-ai-service-prod": {
+          "protocol": "HTTP",
+          "port": 8000,
+          "purpose": "Proxy Face AI recognition endpoints (/face-ai/*)"
+        }
+      }
+    },
+    "backend-api-prod": {
+      "port_bindings": [
+        "3001"
+      ],
+      "communicates_with": {
+        "attendance-db-prod": {
+          "protocol": "PostgreSQL protocol",
+          "port": 5432,
+          "purpose": "Persist transaction configurations & log events"
+        },
+        "attendance-redis-prod": {
+          "protocol": "Redis protocol",
+          "port": 6379,
+          "purpose": "Cache recovery OTPs, sessions, rate limits"
+        },
+        "face-ai-service-prod": {
+          "protocol": "HTTP",
+          "port": 8000,
+          "purpose": "Submit base64 camera frames for matching/verification"
+        }
+      }
+    },
+    "face-ai-service-prod": {
+      "port_bindings": [
+        "8000"
+      ],
+      "communicates_with": {
+        "attendance-redis-prod": {
+          "protocol": "Redis protocol",
+          "port": 6379,
+          "purpose": "Shared cache parameters"
+        }
+      }
+    }
+  }
+}

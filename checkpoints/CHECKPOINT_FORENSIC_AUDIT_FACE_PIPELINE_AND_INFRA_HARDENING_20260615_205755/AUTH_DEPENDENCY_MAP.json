@@ -1,0 +1,65 @@
+{
+  "checkpointName": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755",
+  "timestamp": "2026-06-15T15:26:00Z",
+  "auth_dependencies": {
+    "roles": {
+      "admin": {
+        "permissions": [
+          "all_permissions",
+          "write:employees",
+          "read:audit_logs",
+          "manage:system_status"
+        ],
+        "routes": [
+          "/admin",
+          "/security",
+          "/system-status"
+        ]
+      },
+      "supervisor": {
+        "permissions": [
+          "approve:leave",
+          "read:team_reports",
+          "read:telemetry"
+        ],
+        "routes": [
+          "/supervisor"
+        ]
+      },
+      "employee": {
+        "permissions": [
+          "read:own_attendance",
+          "write:leave_request"
+        ],
+        "routes": [
+          "/dashboard",
+          "/attendance",
+          "/leave"
+        ]
+      }
+    },
+    "token_flow": {
+      "access_token": {
+        "secret_env": "JWT_ACCESS_SECRET",
+        "expiration": "15m",
+        "type": "Bearer JWT"
+      },
+      "refresh_token": {
+        "secret_env": "JWT_REFRESH_SECRET",
+        "expiration": "7d",
+        "db_store_table": "refresh_tokens"
+      }
+    },
+    "mfa_flow": {
+      "types": [
+        "OTP_email_log",
+        "Face_biometric",
+        "TOTP_app"
+      ],
+      "keys_used": [
+        "mfa_secret",
+        "mfa_backup_codes"
+      ]
+    }
+  }
+}

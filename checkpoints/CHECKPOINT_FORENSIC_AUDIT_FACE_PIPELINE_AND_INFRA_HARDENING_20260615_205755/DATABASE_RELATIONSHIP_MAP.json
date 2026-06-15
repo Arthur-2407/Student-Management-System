@@ -1,0 +1,64 @@
+{
+  "checkpointName": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755",
+  "timestamp": "2026-06-15T15:26:00Z",
+  "database_relationships": {
+    "tables": {
+      "employees": {
+        "primary_key": "id",
+        "foreign_keys": {
+          "supervisor_id": {
+            "references_table": "employees",
+            "references_column": "id",
+            "on_delete": "NO ACTION"
+          },
+          "face_enrolled_by": {
+            "references_table": "employees",
+            "references_column": "id",
+            "on_delete": "SET NULL"
+          }
+        }
+      },
+      "face_embeddings": {
+        "primary_key": "id",
+        "foreign_keys": {
+          "employee_id": {
+            "references_table": "employees",
+            "references_column": "id",
+            "on_delete": "RESTRICT"
+          },
+          "enrolled_by": {
+            "references_table": "employees",
+            "references_column": "id",
+            "on_delete": "SET NULL"
+          }
+        }
+      },
+      "admin_configuration": {
+        "primary_key": "id",
+        "foreign_keys": {
+          "admin_employee_id": {
+            "references_table": "employees",
+            "references_column": "id",
+            "on_delete": "RESTRICT"
+          }
+        }
+      },
+      "administrators": {
+        "primary_key": "id",
+        "notes": "Syncd to employees and admin_configuration via triggers"
+      }
+    },
+    "integrity_triggers": {
+      "employees": [
+        "trg_sync_employees_to_relationship",
+        "update_employees_updated_at"
+      ],
+      "admin_configuration": [
+        "trg_sync_admin_config_to_administrators"
+      ],
+      "administrators": [
+        "trg_sync_administrators_to_legacy"
+      ]
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "checkpointName": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755",
+  "timestamp": "2026-06-15T15:26:00Z",
+  "route_dependencies": {
+    "/login": {
+      "calls": [
+        "POST /api/auth/login"
+      ]
+    },
+    "/face-login": {
+      "calls": [
+        "POST /api/auth/face-login"
+      ]
+    },
+    "/setup/admin-face": {
+      "calls": [
+        "GET /api/auth/bootstrap/status",
+        "POST /api/auth/bootstrap/setup",
+        "POST /api/auth/recovery/verify"
+      ]
+    },
+    "/recovery-request": {
+      "calls": [
+        "POST /api/auth/recovery/request"
+      ]
+    },
+    "/dashboard": {
+      "calls": [
+        "GET /api/system/permissions"
+      ]
+    },
+    "/attendance": {
+      "calls": [
+        "POST /api/attendance/check-in",
+        "POST /api/attendance/check-out",
+        "GET /api/attendance/today"
+      ]
+    },
+    "/leave": {
+      "calls": [
+        "POST /api/leave/request",
+        "GET /api/leave/pending",
+        "POST /api/leave/approve"
+      ]
+    },
+    "/reports": {
+      "calls": [
+        "GET /api/reports/summary",
+        "GET /api/reports/detail"
+      ]
+    },
+    "/admin": {
+      "calls": [
+        "GET /api/admin/employees",
+        "POST /api/admin/employees",
+        "PUT /api/admin/employees/:id"
+      ]
+    }
+  }
+}

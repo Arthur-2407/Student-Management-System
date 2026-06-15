@@ -1,0 +1,34 @@
+{
+  "checkpointName": "CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755",
+  "timestamp": "2026-06-15T15:26:00Z",
+  "filesModified": [
+    "face-ai-service/src/main.py",
+    "docker-compose.yml",
+    "nginx/nginx.conf",
+    "backend-api/src/modules/auth/routes.js"
+  ],
+  "filesVerified": [
+    "face-ai-service/src/main.py",
+    "docker-compose.yml",
+    "nginx/nginx.conf",
+    "backend-api/src/modules/auth/routes.js"
+  ],
+  "servicesVerified": [
+    "face-ai-service-prod",
+    "attendance-frontend-prod",
+    "attendance-nginx-prod",
+    "backend-api-prod"
+  ],
+  "endpointsVerified": [
+    "POST /api/face-login",
+    "POST /api/register-face",
+    "GET /health",
+    "GET /face-ai/health"
+  ],
+  "rollbackMapping": {
+    "face-ai-service/src/main.py": "checkpoints/CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755/backup_main.py",
+    "docker-compose.yml": "checkpoints/CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755/backup_docker-compose.yml",
+    "nginx/nginx.conf": "checkpoints/CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755/backup_nginx.conf",
+    "backend-api/src/modules/auth/routes.js": "checkpoints/CHECKPOINT_FORENSIC_AUDIT_FACE_PIPELINE_AND_INFRA_HARDENING_20260615_205755/backup_routes.js"
+  }
+}

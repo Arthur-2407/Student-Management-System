@@ -1,0 +1,496 @@
+{
+  "tracker_metadata": {
+    "protocol": "ENTERPRISE FORENSIC REPAIR & BOOTSTRAP RECOVERY PROTOCOL V12",
+    "generated_at": "2026-06-15T15:09:00Z",
+    "last_updated": "2026-06-15T16:58:51Z",
+    "total_objectives": 21,
+    "completed": 21,
+    "in_progress": 0,
+    "not_started": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "objectives": [
+    {
+      "id": "OBJ-001",
+      "name": "Protocol Ingestion & Coverage Verification",
+      "description": "Read entire protocol, index all sections, extract all requirements, verify 100% coverage",
+      "source_sections": [
+        "SEC-028"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:09:00Z",
+      "evidence": [
+        "PROTOCOL_SECTION_INDEX.json",
+        "MASTER_REQUIREMENT_REGISTRY.json",
+        "PROTOCOL_COVERAGE_MATRIX.md"
+      ],
+      "requirements_covered": [
+        "REQ-109",
+        "REQ-110",
+        "REQ-111",
+        "REQ-112"
+      ]
+    },
+    {
+      "id": "OBJ-002",
+      "name": "Frontend Audit",
+      "description": "Scan frontend/src/**/* verifying Router, routes, pages, guards, API clients, stores",
+      "source_sections": [
+        "SEC-005"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "PROJECT_FORENSIC_AUDIT_V2.md"
+      ],
+      "requirements_covered": [
+        "REQ-035",
+        "REQ-036",
+        "REQ-037",
+        "REQ-038",
+        "REQ-039"
+      ]
+    },
+    {
+      "id": "OBJ-003",
+      "name": "Backend Audit",
+      "description": "Scan backend-api/src/**/* verifying routes, controllers, services, middleware, RBAC, auth",
+      "source_sections": [
+        "SEC-006"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "PROJECT_FORENSIC_AUDIT_V2.md"
+      ],
+      "requirements_covered": [
+        "REQ-040",
+        "REQ-041",
+        "REQ-042",
+        "REQ-043"
+      ]
+    },
+    {
+      "id": "OBJ-004",
+      "name": "Face AI Audit",
+      "description": "Scan face-ai-service/**/* verifying MTCNN, FaceNet, liveness, anti-spoof, threading",
+      "source_sections": [
+        "SEC-007"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "PROJECT_FORENSIC_AUDIT_V2.md"
+      ],
+      "requirements_covered": [
+        "REQ-044",
+        "REQ-045",
+        "REQ-046",
+        "REQ-047"
+      ]
+    },
+    {
+      "id": "OBJ-005",
+      "name": "Database Audit",
+      "description": "Verify tables, indexes, FKs, triggers, views, migrations 001-018",
+      "source_sections": [
+        "SEC-008"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "PROJECT_FORENSIC_AUDIT_V2.md"
+      ],
+      "requirements_covered": [
+        "REQ-048",
+        "REQ-049",
+        "REQ-050"
+      ]
+    },
+    {
+      "id": "OBJ-006",
+      "name": "Docker Audit",
+      "description": "Verify docker-compose files, Dockerfiles, health checks, container startup order",
+      "source_sections": [
+        "SEC-009"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "PROJECT_FORENSIC_AUDIT_V2.md"
+      ],
+      "requirements_covered": [
+        "REQ-051",
+        "REQ-052"
+      ]
+    },
+    {
+      "id": "OBJ-007",
+      "name": "Bootstrap Recovery Investigation",
+      "description": "Determine why /setup/admin-face unavailable, investigate all bootstrap/recovery paths",
+      "source_sections": [
+        "SEC-011"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "BOOTSTRAP_ROOT_CAUSE_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-054",
+        "REQ-055",
+        "REQ-056",
+        "REQ-057",
+        "REQ-058",
+        "REQ-059"
+      ]
+    },
+    {
+      "id": "OBJ-008",
+      "name": "Authentication Investigation",
+      "description": "Validate all 11 auth flows: Admin, Employee, Face, Password, Recovery, OTP, JWT, Refresh, Device Trust, Enrollment, Re-enrollment",
+      "source_sections": [
+        "SEC-012"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "AUTH_FLOW_VALIDATION_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-060",
+        "REQ-061",
+        "REQ-062"
+      ]
+    },
+    {
+      "id": "OBJ-009",
+      "name": "Face Pipeline Investigation",
+      "description": "Validate 12 face pipeline stages from camera capture to similarity matching",
+      "source_sections": [
+        "SEC-013"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "FACE_PIPELINE_VALIDATION_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-063",
+        "REQ-064",
+        "REQ-065"
+      ]
+    },
+    {
+      "id": "OBJ-010",
+      "name": "Face Recognition Hardening",
+      "description": "Verify enrollment storage, image persistence, embedding persistence, mapping, restart survival",
+      "source_sections": [
+        "SEC-014",
+        "SEC-015"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "PROJECT_FORENSIC_AUDIT_V2.md"
+      ],
+      "requirements_covered": [
+        "REQ-066",
+        "REQ-067",
+        "REQ-068",
+        "REQ-069",
+        "REQ-070",
+        "REQ-071",
+        "REQ-072",
+        "REQ-073",
+        "REQ-074",
+        "REQ-075"
+      ]
+    },
+    {
+      "id": "OBJ-011",
+      "name": "Git Conflict Investigation",
+      "description": "Audit 4 priority files for unresolved merge markers",
+      "source_sections": [
+        "SEC-016"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "GIT_CONFLICT_FORENSIC_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-076",
+        "REQ-077",
+        "REQ-078",
+        "REQ-079",
+        "REQ-080",
+        "REQ-081"
+      ]
+    },
+    {
+      "id": "OBJ-012",
+      "name": "Priority File Investigation",
+      "description": "Deep forensic inspection of 6 priority files: BootstrapSetupPage.tsx, FaceLogin.tsx, auth/routes.js, main.py, migrations 017 & 018",
+      "source_sections": [
+        "SEC-017",
+        "SEC-018"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:23:00Z",
+      "evidence": [
+        "PRIORITY_FILE_FORENSIC_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-082",
+        "REQ-083",
+        "REQ-084",
+        "REQ-085",
+        "REQ-086",
+        "REQ-087",
+        "REQ-088",
+        "REQ-089"
+      ]
+    },
+    {
+      "id": "OBJ-013",
+      "name": "Evidence Capture",
+      "description": "Capture system state, routes, APIs, DB schema, Docker runtime, Redis state before any repair",
+      "source_sections": [
+        "SEC-019"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:26:00Z",
+      "evidence": [
+        "SYSTEM_STATE_SNAPSHOT.md",
+        "ROUTE_DISCOVERY_MAP.md",
+        "API_ENDPOINT_DISCOVERY_MAP.md",
+        "DATABASE_SCHEMA_SNAPSHOT.md",
+        "DOCKER_RUNTIME_STATE.md",
+        "REDIS_RUNTIME_STATE.md",
+        "PRE_REPAIR_EVIDENCE_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-090",
+        "REQ-091",
+        "REQ-092",
+        "REQ-093",
+        "REQ-094",
+        "REQ-095",
+        "REQ-096"
+      ]
+    },
+    {
+      "id": "OBJ-014",
+      "name": "Checkpoint Creation",
+      "description": "Create named checkpoint with file hashes, dependency graphs, rollback instructions before any modification",
+      "source_sections": [
+        "SEC-020"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T15:30:00Z",
+      "evidence": [
+        "CHECKPOINT_INDEX.md",
+        "repair_summary.md",
+        "rollback_instructions.md",
+        "dependency_snapshot.json",
+        "repair_manifest.json",
+        "FILE_HASH_MANIFEST.json",
+        "ROUTE_DEPENDENCY_MAP.json",
+        "AUTH_DEPENDENCY_MAP.json",
+        "DATABASE_RELATIONSHIP_MAP.json",
+        "SERVICE_COMMUNICATION_MAP.json"
+      ],
+      "requirements_covered": [
+        "REQ-097",
+        "REQ-098",
+        "REQ-099"
+      ]
+    },
+    {
+      "id": "OBJ-015",
+      "name": "Repair Execution",
+      "description": "Execute only confirmed repairs following SAFE_REPAIR_RULES",
+      "source_sections": [
+        "SEC-029"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T21:40:00Z",
+      "evidence": [
+        "REPAIR_PROGRESS_LEDGER.json",
+        "COMPLIANCE_CHECK_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-021",
+        "REQ-114",
+        "REQ-115"
+      ]
+    },
+    {
+      "id": "OBJ-016",
+      "name": "Validation",
+      "description": "After every repair: route validation, API validation, face validation, DB validation, Docker validation",
+      "source_sections": [
+        "SEC-030"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T21:45:00Z",
+      "evidence": [
+        "runtime_validation.md",
+        ".ai-progress/runtime_validation.json"
+      ],
+      "requirements_covered": [
+        "REQ-116"
+      ]
+    },
+    {
+      "id": "OBJ-017",
+      "name": "Acceptance Testing",
+      "description": "Verify all 30 acceptance criteria from FINAL_ACCEPTANCE_TEST section",
+      "source_sections": [
+        "SEC-031"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T22:20:00Z",
+      "evidence": [
+        "POST_RESTART_VALIDATION_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-117",
+        "REQ-118",
+        "REQ-119",
+        "REQ-120",
+        "REQ-121",
+        "REQ-122",
+        "REQ-123",
+        "REQ-124",
+        "REQ-125",
+        "REQ-126",
+        "REQ-127",
+        "REQ-128"
+      ]
+    },
+    {
+      "id": "OBJ-018",
+      "name": "Restart Validation",
+      "description": "Create final backups, restart all 6 services, re-run all validations, confirm HTTP 200",
+      "source_sections": [
+        "SEC-032"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T22:20:00Z",
+      "evidence": [
+        "database_final_backup.sql",
+        "final_dependency_snapshot.json",
+        "final_route_map.json",
+        "POST_RESTART_VALIDATION_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-129",
+        "REQ-130",
+        "REQ-131"
+      ]
+    },
+    {
+      "id": "OBJ-019",
+      "name": "System Certification",
+      "description": "12-step final certification, E2E face auth validation, one-time reset, generate all deliverables, issue certificate",
+      "source_sections": [
+        "SEC-036",
+        "SEC-037",
+        "SEC-038",
+        "SEC-039"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T16:58:51Z",
+      "evidence": [
+        "SYSTEM_CERTIFICATION_REPORT.md",
+        "END_TO_END_FACE_AUTH_REPORT.md",
+        "DATABASE_RESET_REPORT.md",
+        "POST_RESET_VALIDATION_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-132",
+        "REQ-133",
+        "REQ-134",
+        "REQ-135",
+        "REQ-136",
+        "REQ-137",
+        "REQ-138",
+        "REQ-139",
+        "REQ-140",
+        "REQ-141",
+        "REQ-142",
+        "REQ-143",
+        "REQ-144",
+        "REQ-145",
+        "REQ-146",
+        "REQ-147"
+      ]
+    },
+    {
+      "id": "OBJ-020",
+      "name": "End-to-End Face Validation",
+      "description": "Validate complete admin and employee face auth lifecycle from enrollment to dashboard",
+      "source_sections": [
+        "SEC-037"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T22:20:00Z",
+      "evidence": [
+        "END_TO_END_FACE_AUTH_REPORT.md"
+      ],
+      "requirements_covered": [
+        "REQ-140",
+        "REQ-141",
+        "REQ-142"
+      ]
+    },
+    {
+      "id": "OBJ-021",
+      "name": "Deliverables Generation",
+      "description": "Generate all 30 required final deliverable documents",
+      "source_sections": [
+        "SEC-039"
+      ],
+      "status": "COMPLETED",
+      "completed_at": "2026-06-15T16:58:51Z",
+      "evidence": [
+        "SYSTEM_CERTIFICATION_REPORT.md",
+        "DATABASE_RESET_REPORT.md",
+        "POST_RESET_VALIDATION_REPORT.md",
+        "PRE_RESET_VALIDATION_REPORT.md",
+        "RESET_ABORT_REPORT.md",
+        "POST_RESUME_INTEGRITY_REPORT.md",
+        "FORENSIC_EVIDENCE_INDEX.md",
+        "MASTER_FORENSIC_REPAIR_REPORT.md",
+        "ROOT_CAUSE_ANALYSIS.md",
+        "BOOTSTRAP_RECOVERY_REPORT.md",
+        "AUTH_FLOW_VALIDATION_REPORT.md",
+        "DATABASE_PRESERVATION_REPORT.md",
+        "DATABASE_RESTORE_VALIDATION_REPORT.md",
+        "FACE_STORAGE_AUDIT_REPORT.md",
+        "FACE_EMBEDDING_INTEGRITY_REPORT.md",
+        "FACE_PIPELINE_END_TO_END_REPORT.md",
+        "FACE_CAPTURE_OPTIMIZATION_REPORT.md",
+        "END_TO_END_FACE_AUTH_REPORT.md",
+        "FACE_PIPELINE_VALIDATION_REPORT.md",
+        "DATABASE_INTEGRITY_REPORT.md",
+        "ROUTE_VALIDATION_REPORT.md",
+        "DOCKER_HEALTH_REPORT.md",
+        "GIT_CONFLICT_REPORT.md",
+        "PRIORITY_FILE_FORENSIC_REPORT.md",
+        "PROJECT_FORENSIC_AUDIT_V2.md",
+        "FINAL_RUNTIME_VALIDATION.md",
+        "SYSTEM_STATE_SNAPSHOT.md",
+        "PRE_REPAIR_EVIDENCE_REPORT.md",
+        "RESUME_VALIDATION_REPORT.md",
+        "CHECKPOINT_INDEX.md"
+      ],
+      "requirements_covered": [
+        "REQ-146"
+      ]
+    }
+  ]
+}

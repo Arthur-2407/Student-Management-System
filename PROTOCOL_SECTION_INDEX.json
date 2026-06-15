@@ -1,0 +1,443 @@
+{
+  "protocol": "ENTERPRISE FORENSIC REPAIR & BOOTSTRAP RECOVERY PROTOCOL V12",
+  "generated_at": "2026-06-15T15:03:00Z",
+  "total_sections": 32,
+  "sections": [
+    {
+      "id": "SEC-001",
+      "name": "ROLES",
+      "purpose": "Defines the operational roles the AI must embody during execution",
+      "line_range": "1-36",
+      "dependencies": [],
+      "required_outputs": [],
+      "completion_criteria": "Roles acknowledged and applied throughout execution"
+    },
+    {
+      "id": "SEC-002",
+      "name": "CORE_DIRECTIVE",
+      "purpose": "Defines the mission: investigate, verify, repair confirmed defects, preserve all features",
+      "line_range": "37-148",
+      "dependencies": ["SEC-001"],
+      "required_outputs": [],
+      "completion_criteria": "All directives followed throughout protocol execution"
+    },
+    {
+      "id": "SEC-003",
+      "name": "PRIMARY_OBJECTIVE",
+      "purpose": "Defines the required URLs and route verification requirements",
+      "line_range": "149-200",
+      "dependencies": ["SEC-002"],
+      "required_outputs": ["ROUTE_VALIDATION_REPORT.md"],
+      "completion_criteria": "All 12 listed URLs verified to return HTTP 200 with correct UI"
+    },
+    {
+      "id": "SEC-004",
+      "name": "MANDATORY_INVESTIGATION_PHASE",
+      "purpose": "Requires generating PROJECT_FORENSIC_AUDIT_V2.md before any modification",
+      "line_range": "201-216",
+      "dependencies": ["SEC-003"],
+      "required_outputs": ["PROJECT_FORENSIC_AUDIT_V2.md"],
+      "completion_criteria": "PROJECT_FORENSIC_AUDIT_V2.md generated covering all sub-audits"
+    },
+    {
+      "id": "SEC-005",
+      "name": "FRONTEND_AUDIT",
+      "purpose": "Full scan of frontend/src/**/* verifying router, pages, guards, API clients, stores",
+      "line_range": "217-276",
+      "dependencies": ["SEC-004"],
+      "required_outputs": ["PROJECT_FORENSIC_AUDIT_V2.md (frontend section)"],
+      "completion_criteria": "All 18 frontend components verified"
+    },
+    {
+      "id": "SEC-006",
+      "name": "BACKEND_AUDIT",
+      "purpose": "Full scan of backend-api/src/**/* verifying routes, controllers, services, middleware",
+      "line_range": "277-336",
+      "dependencies": ["SEC-004"],
+      "required_outputs": ["PROJECT_FORENSIC_AUDIT_V2.md (backend section)"],
+      "completion_criteria": "All 20 backend components verified"
+    },
+    {
+      "id": "SEC-007",
+      "name": "FACE_AI_AUDIT",
+      "purpose": "Full scan of face-ai-service/**/* verifying face detection, MTCNN, FaceNet, liveness",
+      "line_range": "337-382",
+      "dependencies": ["SEC-004"],
+      "required_outputs": ["PROJECT_FORENSIC_AUDIT_V2.md (face-ai section)"],
+      "completion_criteria": "All 14 face AI components verified"
+    },
+    {
+      "id": "SEC-008",
+      "name": "DATABASE_AUDIT",
+      "purpose": "Verify tables, indexes, constraints, FKs, triggers, views, functions, migrations 001-018",
+      "line_range": "383-426",
+      "dependencies": ["SEC-004"],
+      "required_outputs": ["PROJECT_FORENSIC_AUDIT_V2.md (database section)", "DATABASE_INTEGRITY_REPORT.md"],
+      "completion_criteria": "All DB objects verified, migrations 001-018 confirmed applied"
+    },
+    {
+      "id": "SEC-009",
+      "name": "DOCKER_AUDIT",
+      "purpose": "Verify docker-compose.yml, docker-compose.prod.yml, Dockerfiles, health checks, startup order",
+      "line_range": "427-448",
+      "dependencies": ["SEC-004"],
+      "required_outputs": ["DOCKER_HEALTH_REPORT.md"],
+      "completion_criteria": "All Docker services verified healthy with correct dependency order"
+    },
+    {
+      "id": "SEC-010",
+      "name": "NGINX_AUDIT",
+      "purpose": "Verify reverse proxy, route forwarding, HTTPS, API forwarding, SPA fallback",
+      "line_range": "449-468",
+      "dependencies": ["SEC-004"],
+      "required_outputs": ["PROJECT_FORENSIC_AUDIT_V2.md (nginx section)"],
+      "completion_criteria": "All nginx routes verified forwarding correctly"
+    },
+    {
+      "id": "SEC-011",
+      "name": "BOOTSTRAP_RECOVERY_INVESTIGATION",
+      "purpose": "Determine why /setup/admin-face is unavailable, investigate all bootstrap/recovery paths",
+      "line_range": "469-507",
+      "dependencies": ["SEC-005", "SEC-006"],
+      "required_outputs": ["BOOTSTRAP_ROOT_CAUSE_REPORT.md"],
+      "completion_criteria": "Root cause identified, BOOTSTRAP_ROOT_CAUSE_REPORT.md generated"
+    },
+    {
+      "id": "SEC-012",
+      "name": "AUTHENTICATION_INVESTIGATION",
+      "purpose": "Validate Admin, Employee, Face, Password, Recovery, OTP, JWT, Refresh, Device Trust, Enrollment flows",
+      "line_range": "511-553",
+      "dependencies": ["SEC-006"],
+      "required_outputs": ["AUTH_FLOW_VALIDATION_REPORT.md"],
+      "completion_criteria": "All 11 auth flows validated, AUTH_FLOW_VALIDATION_REPORT.md generated"
+    },
+    {
+      "id": "SEC-013",
+      "name": "FACE_PIPELINE_INVESTIGATION",
+      "purpose": "Validate camera capture through similarity matching for face registration and face login",
+      "line_range": "557-595",
+      "dependencies": ["SEC-007"],
+      "required_outputs": ["FACE_PIPELINE_VALIDATION_REPORT.md"],
+      "completion_criteria": "All 12 face pipeline stages validated"
+    },
+    {
+      "id": "SEC-014",
+      "name": "FACE_RECOGNITION_PIPELINE_HARDENING",
+      "purpose": "Verify complete face authentication pipeline: enrollment, persistence, mapping, restart survival",
+      "line_range": "599-718",
+      "dependencies": ["SEC-013"],
+      "required_outputs": [
+        "FACE_STORAGE_AUDIT_REPORT.md",
+        "FACE_EMBEDDING_INTEGRITY_REPORT.md",
+        "FACE_PIPELINE_END_TO_END_REPORT.md",
+        "FACE_CAPTURE_OPTIMIZATION_REPORT.md"
+      ],
+      "completion_criteria": "All 8 face recognition areas hardened and verified"
+    },
+    {
+      "id": "SEC-015",
+      "name": "FACE_CAPTURE_OPTIMIZATION_INVESTIGATION",
+      "purpose": "Determine whether single-frame capture is sufficient vs multi-frame without reducing security",
+      "line_range": "643-688",
+      "dependencies": ["SEC-014"],
+      "required_outputs": ["FACE_CAPTURE_OPTIMIZATION_REPORT.md"],
+      "completion_criteria": "Frame count analysis complete, optimization decision documented"
+    },
+    {
+      "id": "SEC-016",
+      "name": "GIT_CONFLICT_INVESTIGATION",
+      "purpose": "Audit 4 priority files for unresolved merge markers <<<<<<< ======= >>>>>>>",
+      "line_range": "721-771",
+      "dependencies": ["SEC-004"],
+      "required_outputs": ["GIT_CONFLICT_FORENSIC_REPORT.md"],
+      "completion_criteria": "All 4 files scanned, no conflict markers remain"
+    },
+    {
+      "id": "SEC-017",
+      "name": "ADDITIONAL_RECOMMENDATION_PRIORITY_INSPECTION",
+      "purpose": "Deep forensic inspection of BootstrapSetupPage.tsx, FaceLogin.tsx, auth/routes.js, main.py, migrations 017 & 018",
+      "line_range": "777-961",
+      "dependencies": ["SEC-011", "SEC-016"],
+      "required_outputs": ["PRIORITY_FILE_FORENSIC_REPORT.md"],
+      "completion_criteria": "All 6 priority files fully inspected and documented"
+    },
+    {
+      "id": "SEC-018",
+      "name": "MANDATORY_CONFLICT_VALIDATION",
+      "purpose": "For each priority file, search for conflict markers and verify clean merge",
+      "line_range": "963-1025",
+      "dependencies": ["SEC-017"],
+      "required_outputs": ["PRIORITY_FILE_FORENSIC_REPORT.md"],
+      "completion_criteria": "Zero conflict markers found in all priority files"
+    },
+    {
+      "id": "SEC-019",
+      "name": "PRE_REPAIR_EVIDENCE_CAPTURE",
+      "purpose": "Before any modification: capture system state, routes, APIs, DB schema, Docker, Redis state",
+      "line_range": "1029-1093",
+      "dependencies": ["SEC-011", "SEC-012", "SEC-013", "SEC-016", "SEC-017"],
+      "required_outputs": [
+        "SYSTEM_STATE_SNAPSHOT.md",
+        "ROUTE_DISCOVERY_MAP.md",
+        "API_ENDPOINT_DISCOVERY_MAP.md",
+        "DATABASE_SCHEMA_SNAPSHOT.md",
+        "DOCKER_RUNTIME_STATE.md",
+        "REDIS_RUNTIME_STATE.md"
+      ],
+      "completion_criteria": "All 6 evidence documents generated, stored in /forensic-evidence/<timestamp>/"
+    },
+    {
+      "id": "SEC-020",
+      "name": "CHECKPOINT_SYSTEM",
+      "purpose": "Before ANY modification: create named checkpoint with file hashes, dependency graphs, rollback instructions",
+      "line_range": "1097-1175",
+      "dependencies": ["SEC-019"],
+      "required_outputs": [
+        "repair_summary.md",
+        "rollback_instructions.md",
+        "dependency_snapshot.json",
+        "repair_manifest.json",
+        "FILE_HASH_MANIFEST.json",
+        "ROUTE_DEPENDENCY_MAP.json",
+        "AUTH_DEPENDENCY_MAP.json",
+        "DATABASE_RELATIONSHIP_MAP.json",
+        "SERVICE_COMMUNICATION_MAP.json"
+      ],
+      "completion_criteria": "Checkpoint created with all 9 artifacts before any file is modified"
+    },
+    {
+      "id": "SEC-021",
+      "name": "PERSISTENT_MISSION_CONTROL_SYSTEM",
+      "purpose": "Generate and maintain mission control files to survive context loss during extended execution",
+      "line_range": "1179-1295",
+      "dependencies": ["SEC-019"],
+      "required_outputs": [
+        "MISSION_CONTROL.md",
+        "MISSION_INDEX.json",
+        "OBJECTIVE_TRACKER.json",
+        "REPAIR_PROGRESS_LEDGER.json",
+        "COMPLIANCE_TRACKER.json",
+        "REQUIREMENT_TRACEABILITY_MATRIX.md"
+      ],
+      "completion_criteria": "All 6 mission control files generated and continuously updated"
+    },
+    {
+      "id": "SEC-022",
+      "name": "OBJECTIVE_TRACKING",
+      "purpose": "Convert every major protocol section into tracked objectives with NOT_STARTED/IN_PROGRESS/COMPLETED/FAILED/BLOCKED status",
+      "line_range": "1299-1406",
+      "dependencies": ["SEC-021"],
+      "required_outputs": ["OBJECTIVE_TRACKER.json"],
+      "completion_criteria": "All 19 listed objectives tracked with statuses"
+    },
+    {
+      "id": "SEC-023",
+      "name": "REPAIR_PROGRESS_LEDGER",
+      "purpose": "Log every repair action with timestamp, file, reason, dependency impact, validation result, checkpoint reference",
+      "line_range": "1411-1444",
+      "dependencies": ["SEC-020", "SEC-021"],
+      "required_outputs": ["REPAIR_PROGRESS_LEDGER.json"],
+      "completion_criteria": "All repair actions logged in ledger"
+    },
+    {
+      "id": "SEC-024",
+      "name": "COMPLIANCE_ENFORCEMENT",
+      "purpose": "Before every modification verify no forbidden action, no protected feature modified, no protected data removed",
+      "line_range": "1449-1476",
+      "dependencies": ["SEC-020"],
+      "required_outputs": ["COMPLIANCE_CHECK_REPORT.md"],
+      "completion_criteria": "Compliance check passed before every modification"
+    },
+    {
+      "id": "SEC-025",
+      "name": "ANTI_FORGETTING_LOOP",
+      "purpose": "Before every new phase, re-read mission control files and generate PHASE_RECONCILIATION_REPORT.md",
+      "line_range": "1481-1530",
+      "dependencies": ["SEC-021"],
+      "required_outputs": ["PHASE_RECONCILIATION_REPORT.md"],
+      "completion_criteria": "Reconciliation performed before each phase transition"
+    },
+    {
+      "id": "SEC-026",
+      "name": "API_CREDIT_EXHAUSTION_PROTECTION",
+      "purpose": "If execution stops, resume from last validated checkpoint rather than restarting",
+      "line_range": "1535-1590",
+      "dependencies": ["SEC-020", "SEC-021"],
+      "required_outputs": ["RESUME_STATE_ANALYSIS.md"],
+      "completion_criteria": "Resume protocol documented and ready to activate if needed"
+    },
+    {
+      "id": "SEC-027",
+      "name": "FINAL_COMPLETION_GUARD",
+      "purpose": "Before declaring success verify PROTOCOL_SECTION_INDEX, MASTER_REQUIREMENT_REGISTRY, PROTOCOL_COVERAGE_MATRIX, FINAL_PROTOCOL_COMPLIANCE_AUDIT all show 100%",
+      "line_range": "1595-1663",
+      "dependencies": ["SEC-022"],
+      "required_outputs": [
+        "FINAL_PROTOCOL_COMPLIANCE_AUDIT.md",
+        "MISSION_COMPLETION_CERTIFICATE.md"
+      ],
+      "completion_criteria": "All deliverables generated, all objectives COMPLETED, certificate issued"
+    },
+    {
+      "id": "SEC-028",
+      "name": "MASTER_PROTOCOL_INGESTION_AND_INTEGRITY_VERIFICATION",
+      "purpose": "Complete protocol ingestion in 5 phases: ingestion, extraction, coverage, re-verification, final audit",
+      "line_range": "1667-1939",
+      "dependencies": [],
+      "required_outputs": [
+        "PROTOCOL_SECTION_INDEX.json",
+        "MASTER_REQUIREMENT_REGISTRY.json",
+        "PROTOCOL_COVERAGE_MATRIX.md",
+        "REQUIREMENT_RECONCILIATION_REPORT.md",
+        "FINAL_PROTOCOL_COMPLIANCE_AUDIT.md"
+      ],
+      "completion_criteria": "Coverage = 100%, all 5 phases complete"
+    },
+    {
+      "id": "SEC-029",
+      "name": "SAFE_REPAIR_RULES",
+      "purpose": "Defines allowed and forbidden repair operations",
+      "line_range": "1943-2079",
+      "dependencies": ["SEC-019", "SEC-020"],
+      "required_outputs": [],
+      "completion_criteria": "Rules applied to every repair action"
+    },
+    {
+      "id": "SEC-030",
+      "name": "VALIDATION_PHASE",
+      "purpose": "After every repair: route validation, API validation, face validation, database validation, Docker validation",
+      "line_range": "2081-2154",
+      "dependencies": ["SEC-029"],
+      "required_outputs": [
+        "ROUTE_VALIDATION_REPORT.md",
+        "FINAL_RUNTIME_VALIDATION.md"
+      ],
+      "completion_criteria": "All validations pass after every repair"
+    },
+    {
+      "id": "SEC-031",
+      "name": "FINAL_ACCEPTANCE_TEST",
+      "purpose": "System passes only if all 30 listed acceptance criteria are met",
+      "line_range": "2155-2325",
+      "dependencies": ["SEC-030"],
+      "required_outputs": ["POST_RESTART_VALIDATION_REPORT.md"],
+      "completion_criteria": "All 30 acceptance criteria verified TRUE"
+    },
+    {
+      "id": "SEC-032",
+      "name": "POST_REPAIR_DEPLOYMENT_AND_RESTART",
+      "purpose": "Create final backups, restart all services, re-run validations, confirm all URLs return HTTP 200",
+      "line_range": "2327-2399",
+      "dependencies": ["SEC-031"],
+      "required_outputs": ["POST_RESTART_VALIDATION_REPORT.md"],
+      "completion_criteria": "All containers healthy post-restart, all validations re-passed"
+    },
+    {
+      "id": "SEC-033",
+      "name": "DATABASE_RESET_MODE",
+      "purpose": "Optional: Preserve Data Mode vs Fresh Installation Mode - only on explicit user request",
+      "line_range": "2403-2451",
+      "dependencies": ["SEC-031"],
+      "required_outputs": ["DATABASE_RESET_REPORT.md (if triggered)"],
+      "completion_criteria": "Mode determined from user intent, no automatic destructive action"
+    },
+    {
+      "id": "SEC-034",
+      "name": "DATABASE_PRESERVATION_AND_SELECTIVE_CLEANUP_POLICY",
+      "purpose": "Strictly forbid full wipes; define allowed vs forbidden cleanup operations",
+      "line_range": "2453-2660",
+      "dependencies": ["SEC-033"],
+      "required_outputs": [
+        "DATABASE_DEPENDENCY_ANALYSIS.md",
+        "DATABASE_CLEANUP_PLAN.md",
+        "DATABASE_PRESERVATION_REPORT.md",
+        "DATABASE_RESTORE_VALIDATION_REPORT.md"
+      ],
+      "completion_criteria": "Protected data preserved, only allowed cleanup executed"
+    },
+    {
+      "id": "SEC-035",
+      "name": "EMERGENCY_RESUME_PROTOCOL",
+      "purpose": "If execution stops: read manifests, locate latest checkpoint, verify integrity, resume from last checkpoint",
+      "line_range": "2663-2765",
+      "dependencies": ["SEC-020"],
+      "required_outputs": [
+        "RESUME_VALIDATION_REPORT.md",
+        "POST_RESUME_INTEGRITY_REPORT.md",
+        "CHECKPOINT_RESUME_VALIDATION_<TIMESTAMP>"
+      ],
+      "completion_criteria": "Resume protocol tested and ready; execution continues from exact stopping point"
+    },
+    {
+      "id": "SEC-036",
+      "name": "FINAL_SYSTEM_CERTIFICATION",
+      "purpose": "12-step certification: verify URLs, containers, no merge markers, migrations, auth flows, face functions",
+      "line_range": "2769-2829",
+      "dependencies": ["SEC-032", "SEC-031"],
+      "required_outputs": ["SYSTEM_CERTIFICATION_REPORT.md"],
+      "completion_criteria": "All 12 certification checks pass"
+    },
+    {
+      "id": "SEC-037",
+      "name": "END_TO_END_FACE_AUTHENTICATION_VALIDATION",
+      "purpose": "Validate complete admin and employee face auth lifecycle from enrollment through dashboard access",
+      "line_range": "2833-2905",
+      "dependencies": ["SEC-036"],
+      "required_outputs": ["END_TO_END_FACE_AUTH_REPORT.md"],
+      "completion_criteria": "Full E2E face auth validated for both admin and employee flows"
+    },
+    {
+      "id": "SEC-038",
+      "name": "ONE_TIME_EXECUTION_DIRECTIVE",
+      "purpose": "After all investigations/repairs/validations: perform one-time selective Fresh Installation Reset",
+      "line_range": "2909-3073",
+      "dependencies": ["SEC-036", "SEC-037"],
+      "required_outputs": [
+        "PRE_RESET_VALIDATION_REPORT.md",
+        "DATABASE_RESET_REPORT.md",
+        "POST_RESET_VALIDATION_REPORT.md"
+      ],
+      "completion_criteria": "Selective cleanup executed, platform restarted, bootstrap available"
+    },
+    {
+      "id": "SEC-039",
+      "name": "FINAL_DELIVERABLES",
+      "purpose": "Generate all 24 final deliverable reports",
+      "line_range": "3077-3149",
+      "dependencies": ["SEC-036", "SEC-037", "SEC-038"],
+      "required_outputs": [
+        "SYSTEM_CERTIFICATION_REPORT.md",
+        "DATABASE_RESET_REPORT.md",
+        "POST_RESET_VALIDATION_REPORT.md",
+        "PRE_RESET_VALIDATION_REPORT.md",
+        "RESET_ABORT_REPORT.md",
+        "POST_RESUME_INTEGRITY_REPORT.md",
+        "FORENSIC_EVIDENCE_INDEX.md",
+        "MASTER_FORENSIC_REPAIR_REPORT.md",
+        "ROOT_CAUSE_ANALYSIS.md",
+        "BOOTSTRAP_RECOVERY_REPORT.md",
+        "AUTH_FLOW_VALIDATION_REPORT.md",
+        "DATABASE_PRESERVATION_REPORT.md",
+        "DATABASE_RESTORE_VALIDATION_REPORT.md",
+        "FACE_STORAGE_AUDIT_REPORT.md",
+        "FACE_EMBEDDING_INTEGRITY_REPORT.md",
+        "FACE_PIPELINE_END_TO_END_REPORT.md",
+        "FACE_CAPTURE_OPTIMIZATION_REPORT.md",
+        "END_TO_END_FACE_AUTH_REPORT.md",
+        "FACE_PIPELINE_VALIDATION_REPORT.md",
+        "DATABASE_INTEGRITY_REPORT.md",
+        "ROUTE_VALIDATION_REPORT.md",
+        "DOCKER_HEALTH_REPORT.md",
+        "GIT_CONFLICT_REPORT.md",
+        "PRIORITY_FILE_FORENSIC_REPORT.md",
+        "PROJECT_FORENSIC_AUDIT_V2.md",
+        "FINAL_RUNTIME_VALIDATION.md",
+        "SYSTEM_STATE_SNAPSHOT.md",
+        "PRE_REPAIR_EVIDENCE_REPORT.md",
+        "RESUME_VALIDATION_REPORT.md",
+        "CHECKPOINT_INDEX.md"
+      ],
+      "completion_criteria": "All 30 deliverable documents generated and validated"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "status": "FINAL_POST_REPAIR_DEPENDENCY_SNAPSHOT",
+  "timestamp": "2026-06-15T21:46:00Z",
+  "dependencies": {
+    "face-ai-service": {
+      "python_packages": [
+        "torch",
+        "facenet_pytorch",
+        "mediapipe",
+        "opencv-python",
+        "flask",
+        "flask-cors",
+        "flask-socketio"
+      ],
+      "files": [
+        "face-ai-service/src/main.py",
+        "face-ai-service/src/face_detection/detector.py",
+        "face-ai-service/src/liveness_detection/liveness_detector.py",
+        "face-ai-service/src/anti_spoof_detection/spoof_detector.py"
+      ]
+    },
+    "backend-api": {
+      "node_packages": [
+        "express",
+        "cors",
+        "helmet",
+        "jsonwebtoken",
+        "bcryptjs",
+        "pg",
+        "ioredis",
+        "socket.io"
+      ],
+      "files": [
+        "backend-api/src/server.js",
+        "backend-api/src/modules/auth/routes.js",
+        "backend-api/src/modules/face-management/routes.js"
+      ]
+    },
+    "frontend": {
+      "framework": "React (Vite)",
+      "files": [
+        "frontend/src/router.tsx",
+        "frontend/src/components/FaceLogin.tsx",
+        "frontend/src/pages/BootstrapSetupPage.tsx",
+        "frontend/src/pages/RecoveryRequestPage.tsx"
+      ]
+    },
+    "infra": {
+      "files": [
+        "docker-compose.yml",
+        "nginx/nginx.conf"
+      ]
+    }
+  }
+}
