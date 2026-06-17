@@ -56,7 +56,7 @@ const { attachRedisAdapter } = require('./config/redisAdapter');
 const { distributedLock } = require('./config/distributedLock');
 
 // Import database and Redis
-const { connectDB, isDatabaseHealthy, pool } = require('./config/database');
+const { connectDB, connectFaceDB, isDatabaseHealthy, pool } = require('./config/database');
 const { connectRedis, isRedisHealthy, disconnectRedis } = require('./config/redis');
 const { runMigrations } = require('./migrations/runMigrations');
 
@@ -176,7 +176,7 @@ app.get('/api/admin/contact-info', async (req, res) => {
       result = await _dbQuery(
         `SELECT CONCAT(first_name, ' ', last_name) as name, email,
                 phone_number as phone, position as designation
-         FROM employees WHERE role = 'admin' AND is_active = TRUE LIMIT 1`
+         FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1`
       );
     }
     if (!result || result.rows.length === 0) {
@@ -313,7 +313,7 @@ app.get('/health', asyncHandler(async (req, res) => {
   else degradedMode.setHealthy('ai-service');
 
   const degradedStatus = degradedMode.getStatus();
-  const status     = degradedStatus.overall;
+  const status = degradedStatus.overall;
   const httpStatus = dbOk ? 200 : 503;
 
   res.status(httpStatus).json({
@@ -321,9 +321,9 @@ app.get('/health', asyncHandler(async (req, res) => {
     timestamp: new Date().toISOString(),
     version: require('../package.json').version || '1.0.0',
     services: {
-      database: dbOk    ? 'connected' : 'unavailable',
-      redis:    redisOk ? 'connected' : 'unavailable (degraded mode)',
-      'ai-service': aiOk  ? 'connected' : 'unavailable (degraded mode)',
+      database: dbOk ? 'connected' : 'unavailable',
+      redis: redisOk ? 'connected' : 'unavailable (degraded mode)',
+      'ai-service': aiOk ? 'connected' : 'unavailable (degraded mode)',
     },
     circuitBreakers: getAllStatus(),
     degradedMode: degradedStatus,
@@ -353,6 +353,9 @@ async function startServer() {
     await connectDB();
     logger.info('Database connected successfully');
 
+    await connectFaceDB();
+    logger.info('Face database connected successfully');
+
     if (process.env.RUN_MIGRATIONS !== 'false') {
       await runMigrations();
     }
@@ -370,21 +373,21 @@ async function startServer() {
         env: process.env.NODE_ENV || 'development',
         cors: process.env.FRONTEND_URL || 'http://localhost:3000',
         observability: {
-          logging:            'ENABLED',
-          circuitBreakers:    'ACTIVE',
-          rateLimitFallback:  'ACTIVE',
-          degradedMode:       'ACTIVE',
-          telemetry:          'ACTIVE',
-          apiVersioning:      'ACTIVE',
-          featureFlags:       'ACTIVE',
-          tracing:            'ACTIVE',
-          opentelemetry:      enhancedTracing.isOTelActive() ? 'ACTIVE' : 'BUILT-IN',
-          sentry:             sentry.isActive() ? 'ACTIVE' : 'DISABLED',
-          alerting:           'ACTIVE',
-          correlationId:      'ACTIVE',
-          rbac:               'ACTIVE',
-          requestTimeout:     'ACTIVE',
-          securityHeaders:    'ACTIVE',
+          logging: 'ENABLED',
+          circuitBreakers: 'ACTIVE',
+          rateLimitFallback: 'ACTIVE',
+          degradedMode: 'ACTIVE',
+          telemetry: 'ACTIVE',
+          apiVersioning: 'ACTIVE',
+          featureFlags: 'ACTIVE',
+          tracing: 'ACTIVE',
+          opentelemetry: enhancedTracing.isOTelActive() ? 'ACTIVE' : 'BUILT-IN',
+          sentry: sentry.isActive() ? 'ACTIVE' : 'DISABLED',
+          alerting: 'ACTIVE',
+          correlationId: 'ACTIVE',
+          rbac: 'ACTIVE',
+          requestTimeout: 'ACTIVE',
+          securityHeaders: 'ACTIVE',
         }
       });
 

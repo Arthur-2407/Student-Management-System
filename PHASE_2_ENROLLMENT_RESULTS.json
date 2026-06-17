@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-06-17T18:16:07.582806",
+  "successful": 3,
+  "total": 3,
+  "results": [
+    {
+      "employee_id": "REAL_FACE_001",
+      "db_id": 129,
+      "status": "SUCCESS",
+      "embedding_dim": 512,
+      "norm": 1.0
+    },
+    {
+      "employee_id": "REAL_FACE_002",
+      "db_id": 130,
+      "status": "SUCCESS",
+      "embedding_dim": 512,
+      "norm": 1.0
+    },
+    {
+      "employee_id": "REAL_FACE_003",
+      "db_id": 131,
+      "status": "SUCCESS",
+      "embedding_dim": 512,
+      "norm": 1.0
+    }
+  ]
+}

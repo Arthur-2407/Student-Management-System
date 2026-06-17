@@ -16,6 +16,18 @@ function runQuery(sql) {
   }
 }
 
+// Helper to run database queries via docker exec on face db
+function runFaceQuery(sql) {
+  const sanitizedSql = sql.replace(/"/g, '\\"');
+  const cmd = `docker exec attendance-face-db psql -U face_admin -d attendance_face_system -c "${sanitizedSql}"`;
+  try {
+    return execSync(cmd, { encoding: 'utf8' }).trim();
+  } catch (err) {
+    console.error(`Face database query failed: ${sql}`, err.message);
+    throw err;
+  }
+}
+
 // 1x1 pixel base64 Jpeg/Png frame
 const dummyBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 const dummyFrames = Array(10).fill(dummyBase64);
@@ -112,7 +124,10 @@ async function runAllTests() {
   // STEP 1: FRESH DATABASE SETUP
   console.log('\n--- STEP 1: RESETING DATABASE TO FRESH STATE ---');
   try {
-    runQuery('TRUNCATE face_embeddings CASCADE;');
+    runFaceQuery('TRUNCATE face_embeddings CASCADE;');
+    try {
+      runQuery('DELETE FROM face_embeddings;');
+    } catch (e) {}
     runQuery('TRUNCATE login_logs CASCADE;');
     runQuery('TRUNCATE security_events CASCADE;');
     runQuery('TRUNCATE attendance_records CASCADE;');
@@ -165,7 +180,9 @@ async function runAllTests() {
   // Verify Admin in Database
   let adminFaceEnrolled = false;
   try {
-    const faceCountStr = runQuery("SELECT COUNT(*) FROM face_embeddings fe JOIN employees e ON fe.employee_id = e.id WHERE e.employee_id = 'admin' AND fe.is_active = TRUE;");
+    const adminIdStr = runQuery("SELECT id FROM employees WHERE employee_id = 'admin' LIMIT 1;");
+    const adminId = parseInt(adminIdStr.split('\n')[2].trim());
+    const faceCountStr = runFaceQuery(`SELECT COUNT(*) FROM face_embeddings WHERE employee_id = ${adminId} AND is_active = TRUE;`);
     const faceCount = parseInt(faceCountStr.split('\n')[2].trim());
     adminFaceEnrolled = faceCount > 0;
     console.log(`Admin Active Face Embeddings in DB: ${faceCount} (Enrolled: ${adminFaceEnrolled})`);
@@ -346,7 +363,9 @@ async function runAllTests() {
   // Verify persistence in DB
   let dbEnrolled = false;
   try {
-    const dbRes = runQuery("SELECT COUNT(*) FROM face_embeddings fe JOIN employees e ON fe.employee_id = e.id WHERE e.employee_id = 'EMP_TEST001' AND fe.is_active = TRUE;");
+    const empIdStr = runQuery("SELECT id FROM employees WHERE employee_id = 'EMP_TEST001' LIMIT 1;");
+    const empId = parseInt(empIdStr.split('\n')[2].trim());
+    const dbRes = runFaceQuery(`SELECT COUNT(*) FROM face_embeddings WHERE employee_id = ${empId} AND is_active = TRUE;`);
     const count = parseInt(dbRes.split('\n')[2].trim());
     dbEnrolled = count > 0;
     console.log(`EMP_TEST001 Active Face Embeddings in DB: ${count} (Persisted: ${dbEnrolled})`);
@@ -466,6 +485,17 @@ async function runAllTests() {
     } catch (e) {
       console.error('Failed to update runtime_validation.json:', e.message);
     }
+  }
+
+  // RESTORE ADMIN PASSWORD TO Admin@123
+  try {
+    const adminIdStr = runQuery("SELECT id FROM employees WHERE employee_id = 'admin' LIMIT 1;");
+    const adminId = parseInt(adminIdStr.split('\n')[2].trim());
+    const admin123Hash = '$2a$10$GVLZHVknOoWu3SCwL32e7ubzZreMHC2yEmkil.VEJGdx5Jmla2LEC';
+    runQuery(`UPDATE employees SET password_hash = '${admin123Hash}' WHERE id = ${adminId};`);
+    console.log('✅ Restored admin password to Admin@123 in database.');
+  } catch (err) {
+    console.error('❌ Failed to restore admin password to Admin@123:', err.message);
   }
 
   process.exit(overallPass ? 0 : 1);

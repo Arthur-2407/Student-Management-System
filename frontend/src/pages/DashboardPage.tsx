@@ -37,7 +37,7 @@ interface SecurityEvent {
 const REFRESH_INTERVAL_MS = 60_000;
 
 const DashboardPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { showError, showSuccess } = useNotification();
   
   
@@ -95,6 +95,7 @@ const DashboardPage: React.FC = () => {
         if (response.data.instant) {
           showSuccess('Face profile registered instantly!');
           setFaceEnrolled(true);
+          await refreshUser();
         } else {
           showSuccess('Face change request submitted successfully and is pending approval.');
         }
@@ -328,6 +329,26 @@ const DashboardPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600 mt-1">Welcome back, {(user as any)?.firstName ?? ''} {(user as any)?.lastName ?? ''}</p>
+          {user && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-gray-500">
+              <span><strong>ID:</strong> {user.employeeId}</span>
+              <span className="text-gray-300">•</span>
+              <span><strong>Department:</strong> {user.department}</span>
+              {user.role === 'employee' && (
+                <>
+                  <span className="text-gray-300">•</span>
+                  <span>
+                    <strong>Supervisor:</strong>{' '}
+                    {(user as any).supervisorName ? (
+                      <span className="text-blue-600 font-medium">{(user as any).supervisorName}</span>
+                    ) : (
+                      <span className="text-amber-500 italic">Unassigned</span>
+                    )}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -575,7 +596,7 @@ const DashboardPage: React.FC = () => {
                 className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-lg transition-colors font-medium"
               >
                 <FaCamera className="mr-2" />
-                {faceEnrolled ? 'Request Face Update' : 'Enroll Face Profile'}
+                {faceEnrolled ? (user?.role === 'admin' ? 'Update Face Profile' : 'Request Face Update') : 'Enroll Face Profile'}
               </button>
             </div>
 
@@ -617,7 +638,7 @@ const DashboardPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
             <h3 className="text-2xl font-bold text-gray-800 mb-2">
-              {faceEnrolled ? 'Request Face Profile Update' : 'Enroll Face Profile'}
+              {faceEnrolled ? (user?.role === 'admin' ? 'Update Face Profile' : 'Request Face Profile Update') : 'Enroll Face Profile'}
             </h3>
             <p className="text-gray-600 text-sm mb-4">
               Please position your face clearly in the frame. We will capture multiple frames to compute your secure biometric signature.
@@ -674,7 +695,7 @@ const DashboardPage: React.FC = () => {
                     Submitting...
                   </>
                 ) : (
-                  'Submit Request'
+                  user?.role === 'admin' ? (faceEnrolled ? 'Update Face' : 'Enroll Face') : 'Submit Request'
                 )}
               </button>
             </div>

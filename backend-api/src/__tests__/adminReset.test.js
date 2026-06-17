@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 // Mock database and other services
 jest.mock('../config/database', () => ({
   query: jest.fn(),
+  faceQuery: jest.fn(),
 }));
 
 jest.mock('../config/redis', () => ({
@@ -24,7 +25,7 @@ jest.mock('../modules/security-monitoring/securityLogger', () => ({
 jest.mock('axios');
 const axios = require('axios');
 
-const { query } = require('../config/database');
+const { query, faceQuery } = require('../config/database');
 const redis = require('../config/redis');
 
 // Setup mini-express app to test admin routes
@@ -53,7 +54,7 @@ describe('Admin Reset Workflow Endpoints', () => {
     // Mock bcrypt compare
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
     // Mock embedding query
-    query.mockResolvedValueOnce({
+    faceQuery.mockResolvedValueOnce({
       rows: [{ embedding_vector: '[0.1, 0.2]' }],
     });
     // Mock face match service call

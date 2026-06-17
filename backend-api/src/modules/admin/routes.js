@@ -19,7 +19,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const validator = require('validator');
 const { v4: uuidv4 } = require('uuid');
-const { query } = require('../../config/database');
+const { query, faceQuery } = require('../../config/database');
 const { logger } = require('../../config/logger');
 const { requireRole, requirePermission } = require('../../middleware/rbac');
 const { logAuditEvent } = require('../security-monitoring/securityLogger');
@@ -135,9 +135,8 @@ router.post('/employees', requireRole('admin'), async (req, res) => {
     }
 
     // Hash password
-    const passwordHash = password 
-      ? await bcrypt.hash(password, 10)
-      : await bcrypt.hash(uuidv4().slice(0, 16), 10); // Generate random if not provided
+    const actualPassword = (password && String(password).trim() !== '') ? String(password) : String(employeeId);
+    const passwordHash = await bcrypt.hash(actualPassword, 10);
 
     // Insert employee
     const result = await query(
@@ -155,6 +154,22 @@ router.post('/employees', requireRole('admin'), async (req, res) => {
     );
 
     const newEmployee = result.rows[0];
+
+    // Create supervisor assignment if supervisorId is provided
+    if (supervisorId) {
+      const parsedId = isNaN(supervisorId) ? null : parseInt(supervisorId, 10);
+      const supRes = await query('SELECT id, role FROM employees WHERE id = $1 OR employee_id = $2', [parsedId, String(supervisorId)]);
+      if (supRes.rows.length > 0 && ['supervisor', 'admin'].includes(supRes.rows[0].role)) {
+        const targetSupId = supRes.rows[0].id;
+        await query(
+          `INSERT INTO supervisor_assignments (supervisor_id, employee_id, assigned_by, assigned_at, is_active)
+           VALUES ($1, $2, $3, NOW(), TRUE)
+           ON CONFLICT (supervisor_id, employee_id) DO UPDATE
+           SET is_active = TRUE, assigned_at = NOW(), assigned_by = $3, unassigned_at = NULL, unassigned_by = NULL`,
+          [targetSupId, newEmployee.id, req.user.id]
+        );
+      }
+    }
 
     // Log audit event
     await logAuditEvent({
@@ -188,12 +203,12 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
     const { employeeId } = req.params;
     const {
       firstName, lastName, email, phoneNumber,
-      department, position, role, supervisorId, isActive
+      department, position, role, supervisorId, isActive, password
     } = req.body;
 
     // Fetch existing employee
     const empResult = await query(
-      'SELECT id FROM employees WHERE id = $1 OR employee_id = $2',
+      'SELECT id, employee_id FROM employees WHERE id = $1 OR employee_id = $2',
       [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
     );
 
@@ -202,11 +217,24 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
     }
 
     const empId = empResult.rows[0].id;
+    const targetEmployeeId = empResult.rows[0].employee_id;
 
     // Build update query
     const updates = [];
     const values = [empId];
     let paramCount = 1;
+
+    if (password !== undefined) {
+      if (targetEmployeeId === 'admin') {
+        return res.status(403).json({ error: 'Cannot change password for admin account' });
+      }
+      if (password && password.trim() !== '') {
+        const passwordHash = await bcrypt.hash(password, 10);
+        paramCount++;
+        updates.push(`password_hash = $${paramCount}`);
+        values.push(passwordHash);
+      }
+    }
 
     if (firstName !== undefined) {
       paramCount++;
@@ -246,15 +274,31 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
       updates.push(`role = $${paramCount}`);
       values.push(role);
     }
+    let targetSupId = null;
     if (supervisorId !== undefined) {
+      if (supervisorId) {
+        const parsedId = isNaN(supervisorId) ? null : parseInt(supervisorId, 10);
+        const supRes = await query('SELECT id, role FROM employees WHERE id = $1 OR employee_id = $2', [parsedId, String(supervisorId)]);
+        if (supRes.rows.length > 0 && ['supervisor', 'admin'].includes(supRes.rows[0].role)) {
+          targetSupId = supRes.rows[0].id;
+        } else {
+          return res.status(400).json({ error: 'Selected supervisor not found or invalid role' });
+        }
+      }
       paramCount++;
       updates.push(`supervisor_id = $${paramCount}`);
-      values.push(supervisorId || null);
+      values.push(targetSupId);
     }
     if (isActive !== undefined) {
       paramCount++;
       updates.push(`is_active = $${paramCount}`);
       values.push(isActive);
+      if (isActive === false) {
+        await query(
+          'UPDATE refresh_tokens SET revoked_at = NOW() WHERE employee_id = $1',
+          [empId]
+        );
+      }
     }
 
     updates.push(`updated_at = NOW()`);
@@ -269,6 +313,27 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
     );
 
     const updatedEmployee = updateResult.rows[0];
+
+    if (supervisorId !== undefined) {
+      // Deactivate old active assignments
+      await query(
+        `UPDATE supervisor_assignments 
+         SET is_active = FALSE, unassigned_at = NOW(), unassigned_by = $2 
+         WHERE employee_id = $1 AND is_active = TRUE`,
+        [empId, req.user.id]
+      );
+      
+      // If we have a new supervisor ID, insert/activate it
+      if (targetSupId) {
+        await query(
+          `INSERT INTO supervisor_assignments (supervisor_id, employee_id, assigned_by, assigned_at, is_active)
+           VALUES ($1, $2, $3, NOW(), TRUE)
+           ON CONFLICT (supervisor_id, employee_id) DO UPDATE
+           SET is_active = TRUE, assigned_at = NOW(), assigned_by = $3, unassigned_at = NULL, unassigned_by = NULL`,
+          [targetSupId, empId, req.user.id]
+        );
+      }
+    }
 
     // Log audit event
     await logAuditEvent({
@@ -313,26 +378,86 @@ router.delete('/employees/:employeeId', requireRole('admin'), async (req, res) =
     const empId = empResult.rows[0].id;
     const empIdStr = empResult.rows[0].employee_id;
 
-    // Soft delete
-    await query(
-      'UPDATE employees SET is_active = FALSE, updated_at = NOW() WHERE id = $1',
-      [empId]
-    );
+    // Start transaction for clean hard deletion of the employee and all their references
+    await query('BEGIN');
+    try {
+      // 1. Delete or nullify records where employee is creator/approver/lead/head/supervisor
+      await query('UPDATE employees SET supervisor_id = NULL WHERE supervisor_id = $1', [empId]);
+      await query('UPDATE department_config SET department_head_id = NULL WHERE department_head_id = $1', [empId]);
+      await query('UPDATE team_config SET team_lead_id = NULL WHERE team_lead_id = $1', [empId]);
+      await query('UPDATE office_locations SET created_by = NULL WHERE created_by = $1', [empId]);
+      await query('UPDATE impossible_travel_events SET resolved_by = NULL WHERE resolved_by = $1', [empId]);
+      await query('UPDATE face_update_requests SET approver_id = NULL WHERE approver_id = $1', [empId]);
+      await query('UPDATE password_reset_requests SET approver_id = NULL WHERE approver_id = $1', [empId]);
+      await query('UPDATE account_recovery_requests SET requested_by = NULL WHERE requested_by = $1', [empId]);
+      await query('UPDATE account_recovery_requests SET reviewed_by = NULL WHERE reviewed_by = $1', [empId]);
+      await query('UPDATE account_recovery_requests SET completed_by = NULL WHERE completed_by = $1', [empId]);
+      
+      // 2. Delete employee specific records (the employee is the main actor/target)
+      await query('DELETE FROM supervisor_assignments WHERE employee_id = $1 OR supervisor_id = $1', [empId]);
+      await query('DELETE FROM employee_relationships WHERE employee_id = $1 OR supervisor_id = $1', [empId]);
+      await query('DELETE FROM team_members WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM role_assignments WHERE employee_id = $1 OR assigned_by = $1', [empId]);
+      await query('DELETE FROM face_update_requests WHERE requester_id = $1', [empId]);
+      await query('DELETE FROM password_reset_requests WHERE requester_id = $1', [empId]);
+      await query('DELETE FROM account_recovery_requests WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM account_recovery_audit_log WHERE actor_id = $1', [empId]);
+      await query('DELETE FROM attendance_records WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM leave_requests WHERE employee_id = $1 OR supervisor_id = $1 OR approved_by = $1 OR approver_id = $1', [empId]);
+      await query('DELETE FROM work_reports WHERE employee_id = $1 OR supervisor_id = $1 OR approved_by = $1', [empId]);
+      await query('DELETE FROM login_logs WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM security_events WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM refresh_tokens WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM notifications WHERE employee_id = $1 OR recipient_id = $1 OR sender_id = $1', [empId]);
+      await query('DELETE FROM audit_logs WHERE user_id = $1 OR actor_employee_id = $1', [empId]);
+      await query('DELETE FROM work_timings WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM face_approval_history WHERE actioned_by = $1', [empId]);
+      await query('DELETE FROM leave_balance WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM face_embeddings WHERE employee_id = $1 OR enrolled_by = $1', [empId]);
+      await query('DELETE FROM face_enrollment_logs WHERE employee_id = $1 OR target_employee_id = $1', [empId]);
+      await query('DELETE FROM device_fingerprints WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM impossible_travel_events WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM employee_login_locations WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM leave_approval_history WHERE actor_employee_id = $1', [empId]);
+      await query('DELETE FROM face_change_requests WHERE employee_id = $1 OR requested_by = $1', [empId]);
+      await query('DELETE FROM face_audit_logs WHERE employee_id = $1 OR performed_by = $1', [empId]);
+      await query('UPDATE employees SET supervisor_id = NULL, face_enrolled_by = NULL, deleted_by = NULL WHERE supervisor_id = $1 OR face_enrolled_by = $1 OR deleted_by = $1', [empId]);
+
+      // 3. Delete from face database tables using faceQuery
+      try {
+        await faceQuery('BEGIN');
+        await faceQuery('DELETE FROM user_images WHERE user_id = $1', [empId]);
+        await faceQuery('DELETE FROM users WHERE user_id = $1', [empId]);
+        await faceQuery('DELETE FROM face_embeddings WHERE employee_id = $1', [empId]);
+        await faceQuery('COMMIT');
+      } catch (faceErr) {
+        try { await faceQuery('ROLLBACK'); } catch (_) {}
+        logger.warn(`Failed to clean up face database for deleted employee ${empId}`, { error: faceErr.message });
+      }
+
+      // 4. Finally delete the employee record from main database
+      await query('DELETE FROM employees WHERE id = $1', [empId]);
+      
+      await query('COMMIT');
+    } catch (txError) {
+      await query('ROLLBACK');
+      throw txError;
+    }
 
     // Log audit event
     await logAuditEvent({
       actorEmployeeId: req.user.employeeId,
-      action: 'employee.deactivate',
+      action: 'employee.remove',
       resourceType: 'employee',
       resourceId: String(empId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { deactivatedEmployeeId: empIdStr }
+      details: { removedEmployeeId: empIdStr }
     });
 
     res.json({
       success: true,
-      message: 'Employee deactivated successfully'
+      message: 'Employee removed successfully'
     });
   } catch (error) {
     logger.error('Employee delete error', { error: error.message, userId: req.user?.id });
@@ -762,7 +887,7 @@ router.post('/work-timings', requireRole('admin'), async (req, res) => {
  */
 router.get('/hierarchy', requireRole('admin'), async (req, res) => {
   try {
-    // Fetch all supervisors with their assigned employees
+    // Fetch all supervisors with their assigned employees (checking both direct field and assignments table)
     const supervisorHierarchy = await query(
       `SELECT 
          s.id, s.employee_id, s.first_name, s.last_name, s.email, s.department,
@@ -775,17 +900,26 @@ router.get('/hierarchy', requireRole('admin'), async (req, res) => {
          ) FILTER (WHERE e.id IS NOT NULL) AS assigned_employees,
          COUNT(DISTINCT e.id) FILTER (WHERE e.is_active = TRUE) AS active_employee_count
        FROM employees s
-       LEFT JOIN employees e ON s.id = e.supervisor_id AND e.is_active = TRUE
+       LEFT JOIN employees e ON (s.id = e.supervisor_id OR EXISTS (
+         SELECT 1 FROM supervisor_assignments sa 
+         WHERE sa.supervisor_id = s.id AND sa.employee_id = e.id AND sa.is_active = TRUE
+       )) AND e.is_active = TRUE
        WHERE s.role IN ('supervisor', 'admin') AND s.is_active = TRUE
        GROUP BY s.id, s.employee_id, s.first_name, s.last_name, s.email, s.department
        ORDER BY s.first_name, s.last_name`
     );
 
-    // Fetch unassigned employees (those without supervisors)
+    // Fetch unassigned employees (those without supervisors in both fields)
     const unassignedEmployees = await query(
       `SELECT id, employee_id, first_name, last_name, email, position, department, is_active
        FROM employees
-       WHERE role = 'employee' AND supervisor_id IS NULL AND is_active = TRUE
+       WHERE role = 'employee' 
+         AND supervisor_id IS NULL 
+         AND NOT EXISTS (
+           SELECT 1 FROM supervisor_assignments sa 
+           WHERE sa.employee_id = employees.id AND sa.is_active = TRUE
+         )
+         AND is_active = TRUE
        ORDER BY first_name, last_name`
     );
 
@@ -827,7 +961,10 @@ router.get('/supervisor/team', requireRole('supervisor'), async (req, res) => {
               (SELECT status FROM leave_requests 
                WHERE employee_id = e.id AND status = 'pending' LIMIT 1) AS pending_leave_status
        FROM employees e
-       WHERE e.supervisor_id = $1 AND e.is_active = TRUE
+       WHERE (e.supervisor_id = $1 OR EXISTS (
+         SELECT 1 FROM supervisor_assignments sa 
+         WHERE sa.supervisor_id = $1 AND sa.employee_id = e.id AND sa.is_active = TRUE
+       )) AND e.is_active = TRUE
        ORDER BY e.first_name, e.last_name`,
       [supervisorId]
     );
@@ -951,6 +1088,90 @@ router.post('/employees/:employeeId/mfa/reset', requireRole('admin'), async (req
   } catch (error) {
     logger.error('Employee MFA reset error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ error: 'Failed to reset employee MFA' });
+  }
+});
+
+/**
+ * POST /api/admin/employees/:employeeId/reset-password
+ * Reset employee or supervisor password (accessible to Admin and Supervisor)
+ * Hierarchy checks:
+ *   - Admin: can reset anyone's password
+ *   - Supervisor: can ONLY reset passwords of employees assigned to them
+ */
+router.post('/employees/:employeeId/reset-password', requireRole('supervisor'), async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { newPassword } = req.body;
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+
+    const empResult = await query(
+      'SELECT id, employee_id, role, supervisor_id FROM employees WHERE id = $1 OR employee_id = $2',
+      [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
+    );
+
+    if (empResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    const targetEmployee = empResult.rows[0];
+
+    // Check hierarchy permissions
+    let isAuthorized = false;
+    if (actorRole === 'admin') {
+      isAuthorized = true;
+    } else if (actorRole === 'supervisor') {
+      // Supervisor can ONLY reset password of employees (not admin or supervisor)
+      if (targetEmployee.role === 'employee') {
+        // Must supervise this employee
+        const isSupervised = targetEmployee.supervisor_id === actorId || await query(
+          `SELECT id FROM supervisor_assignments
+           WHERE supervisor_id = $1 AND employee_id = $2 AND is_active = TRUE`,
+          [actorId, targetEmployee.id]
+        ).then(r => r.rows.length > 0);
+        
+        if (isSupervised) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ error: 'Unauthorized to reset password for this user' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await query(
+      `UPDATE employees 
+       SET password_hash = $1, 
+           password_changed_at = NOW(),
+           updated_at = NOW() 
+       WHERE id = $2`,
+      [hashedPassword, targetEmployee.id]
+    );
+
+    // Log audit event
+    await logAuditEvent({
+      actorEmployeeId: req.user.employeeId,
+      action: 'employee.password_reset',
+      resourceType: 'employee_password',
+      resourceId: String(targetEmployee.id),
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { resetEmployeeId: targetEmployee.employee_id }
+    });
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully'
+    });
+  } catch (error) {
+    logger.error('Employee password reset error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to reset employee password' });
   }
 });
 
@@ -1640,7 +1861,7 @@ router.post('/reset/initiate', requireRole('admin'), async (req, res) => {
 
     // Step 1: Verify password
     const adminResult = await query(
-      "SELECT id, password_hash, employee_id FROM employees WHERE role = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, password_hash, employee_id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminResult.rows.length === 0) {
       return res.status(404).json({ error: 'System administrator account not found.' });
@@ -1654,13 +1875,34 @@ router.post('/reset/initiate', requireRole('admin'), async (req, res) => {
 
     // Step 2: Verify face
     let storedEmbeddingVector = null;
-    const embeddingResult = await query(
-      `SELECT embedding_vector FROM face_embeddings WHERE employee_id = $1 AND is_active = TRUE LIMIT 1`,
-      [admin.id]
-    );
-    if (embeddingResult.rows.length > 0 && embeddingResult.rows[0].embedding_vector) {
-      const raw = embeddingResult.rows[0].embedding_vector;
-      storedEmbeddingVector = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    try {
+      let embeddingResult = await faceQuery(
+        `SELECT face_embedding
+         FROM user_images
+         WHERE user_id = $1 AND verification_status = 'VERIFIED'
+         ORDER BY uploaded_at DESC
+         LIMIT 1`,
+        [admin.id]
+      );
+      if (embeddingResult.rows.length > 0 && embeddingResult.rows[0].face_embedding) {
+        const raw = embeddingResult.rows[0].face_embedding;
+        storedEmbeddingVector = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } else {
+        embeddingResult = await faceQuery(
+          `SELECT embedding_vector
+           FROM face_embeddings
+           WHERE employee_id = $1 AND is_active = TRUE
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [admin.id]
+        );
+        if (embeddingResult.rows.length > 0 && embeddingResult.rows[0].embedding_vector) {
+          const raw = embeddingResult.rows[0].embedding_vector;
+          storedEmbeddingVector = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        }
+      }
+    } catch (embErr) {
+      logger.warn('[admin-reset] Could not fetch stored embedding from DB', { error: embErr.message, adminId: admin.id });
     }
 
     if (!storedEmbeddingVector) {
@@ -1682,7 +1924,8 @@ router.post('/reset/initiate', requireRole('admin'), async (req, res) => {
           { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
         );
 
-        if (!aiResponse.data.success || !aiResponse.data.authenticated) {
+        const isAuthenticated = aiResponse.data.authenticated ?? aiResponse.data.success;
+        if (!isAuthenticated) {
           return res.status(401).json({
             error: 'Face verification failed',
             spoofDetected: aiResponse.data.spoofDetected || false,
@@ -1738,7 +1981,7 @@ router.post('/reset/verify-otp', requireRole('admin'), async (req, res) => {
     }
 
     const adminResult = await query(
-      "SELECT id FROM employees WHERE role = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     const admin = adminResult.rows[0];
 
@@ -1779,7 +2022,7 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
     }
 
     const oldAdminResult = await query(
-      "SELECT id, employee_id FROM employees WHERE role = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, employee_id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     const oldAdmin = oldAdminResult.rows[0];
 
@@ -1844,58 +2087,106 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
     const firstName = splitName(adminName)[0];
     const lastName = splitName(adminName)[1];
 
-    await query('BEGIN');
+    let mainTxBegun = false;
+    let faceTxBegun = false;
+    try {
+      await faceQuery('BEGIN');
+      faceTxBegun = true;
+      await query('BEGIN');
+      mainTxBegun = true;
 
-    // Update employees table details for administrator
-    await query(
-      `UPDATE employees
-       SET employee_id = $1,
-           first_name = $2,
-           last_name = $3,
-           email = $4,
-           phone_number = $5,
-           position = $6,
-           password_hash = $7,
-           password_changed_at = NOW(),
-           face_enrolled = TRUE,
-           face_enrolled_at = NOW(),
-           failed_login_count = 0,
-           locked_until = NULL,
-           updated_at = NOW()
-       WHERE id = $8`,
-      [adminEmployeeId, firstName, lastName, adminEmail, adminPhone || null, adminDesignation || null, hashedPassword, oldAdmin.id]
-    );
+      // Update employees table details for administrator
+      await query(
+        `UPDATE employees
+         SET employee_id = $1,
+             first_name = $2,
+             last_name = $3,
+             email = $4,
+             phone_number = $5,
+             position = $6,
+             password_hash = $7,
+             password_changed_at = NOW(),
+             face_enrolled = TRUE,
+             face_enrolled_at = NOW(),
+             failed_login_count = 0,
+             locked_until = NULL,
+             updated_at = NOW()
+         WHERE id = $8`,
+        [adminEmployeeId, firstName, lastName, adminEmail, adminPhone || null, adminDesignation || null, hashedPassword, oldAdmin.id]
+      );
 
-    // Deactivate old face embeddings
-    await query(
-      'UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1',
-      [oldAdmin.id]
-    );
+      // Deactivate old face embeddings
+      await faceQuery(
+        'UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1',
+        [oldAdmin.id]
+      );
 
-    // Insert new face embedding
-    await query(
-      `INSERT INTO face_embeddings (
-         employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by
-       ) VALUES ($1, $2, $3, $4, $5)`,
-      [oldAdmin.id, embeddingVector, modelVersion, confidenceScore, oldAdmin.id]
-    );
+      // Insert new face embedding
+      await faceQuery(
+        `INSERT INTO face_embeddings (
+           employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by
+         ) VALUES ($1, $2, $3, $4, $5)`,
+        [oldAdmin.id, embeddingVector, modelVersion, confidenceScore, oldAdmin.id]
+      );
 
-    // Update admin configuration table
-    await query(
-      `UPDATE admin_configuration
-       SET admin_name = $1,
-           admin_email = $2,
-           admin_phone = $3,
-           admin_address = $4,
-           admin_designation = $5,
-           recovery_email = $6,
-           recovery_phone = $7,
-           updated_at = NOW()
-       WHERE admin_employee_id = $8`,
-      [adminName, adminEmail, adminPhone || null, adminAddress || null, adminDesignation || null, recoveryEmail || null, recoveryPhone || null, oldAdmin.id]
-    );
+      // Ensure users exists
+      await faceQuery(
+        `INSERT INTO users (user_id, name)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name`,
+        [oldAdmin.id, `${firstName} ${lastName}`]
+      );
 
-    await query('COMMIT');
+      // Process frames to generate image data and image hash
+      let imageData = null;
+      let imageHash = null;
+      if (Array.isArray(frames) && frames.length > 0) {
+        try {
+          const cleanBase64 = frames[0].includes(',') ? frames[0].split(',')[1] : frames[0];
+          imageData = Buffer.from(cleanBase64, 'base64');
+          const crypto = require('crypto');
+          imageHash = crypto.createHash('sha256').update(imageData).digest('hex');
+        } catch (err) {
+          logger.warn('Failed to parse frame in configuration replace', { error: err.message });
+        }
+      }
+
+      // Insert into user_images
+      await faceQuery(
+        `INSERT INTO user_images (user_id, image_data, image_hash, face_embedding, verification_status, uploaded_at)
+         VALUES ($1, $2, $3, $4, 'VERIFIED', NOW())`,
+        [
+          oldAdmin.id,
+          imageData,
+          imageHash,
+          embeddingVector,
+        ]
+      );
+
+      // Update admin configuration table
+      await query(
+        `UPDATE admin_configuration
+         SET admin_name = $1,
+             admin_email = $2,
+             admin_phone = $3,
+             admin_address = $4,
+             admin_designation = $5,
+             recovery_email = $6,
+             recovery_phone = $7,
+             updated_at = NOW()
+         WHERE admin_employee_id = $8`,
+        [adminName, adminEmail, adminPhone || null, adminAddress || null, adminDesignation || null, recoveryEmail || null, recoveryPhone || null, oldAdmin.id]
+      );
+
+      await query('COMMIT');
+      mainTxBegun = false;
+      await faceQuery('COMMIT');
+      faceTxBegun = false;
+    } catch (txErr) {
+      if (mainTxBegun) await query('ROLLBACK').catch(() => {});
+      if (faceTxBegun) await faceQuery('ROLLBACK').catch(() => {});
+      throw txErr;
+    }
 
     // Step 7: Create immutable audit log
     await logAuditEvent({
@@ -1921,7 +2212,6 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
       message: 'Administrator identity and credentials successfully replaced.',
     });
   } catch (error) {
-    await query('ROLLBACK');
     logger.error('Admin reset replacement error', { error: error.message });
     res.status(500).json({ error: 'Replacement failed: internal server error' });
   }
@@ -1935,7 +2225,7 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
 router.get('/configuration', requireRole('admin'), async (req, res) => {
   try {
     const adminResult = await query(
-      "SELECT id, employee_id FROM employees WHERE role = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, employee_id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminResult.rows.length === 0) {
       return res.status(404).json({ error: 'System administrator account not found.' });
@@ -1983,7 +2273,7 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
     } = req.body;
 
     const adminResult = await query(
-      "SELECT id, employee_id FROM employees WHERE role = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, employee_id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminResult.rows.length === 0) {
       return res.status(404).json({ error: 'System administrator account not found.' });

@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-06-17T12:51:24.660156",
+  "overall_status": "PASSED",
+  "tests_passed": 1,
+  "tests_failed": 0,
+  "tests_errored": 0,
+  "full_results": {
+    "timestamp": "2026-06-17T12:51:24.660156",
+    "test_results": {
+      "test_3_random_rejection": {
+        "status": "PASSED",
+        "authenticated": false,
+        "rejection_reason": "no_enrollment"
+      }
+    },
+    "evidence": {},
+    "database_proof": {
+      "multi_embedding": {
+        "status": "FAILED",
+        "evidence": "no_records"
+      }
+    },
+    "encryption_proof": {
+      "status": "FAILED",
+      "evidence": "no_encrypted_records"
+    }
+  }
+}

@@ -90,15 +90,20 @@ api.interceptors.response.use(
 
     // ── RESILIENCE: Serialized token refresh on 401 ──
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
+      // Don't refresh for logout or refresh endpoints to avoid loops
+      if (originalRequest.url?.includes('/auth/logout') || originalRequest.url?.includes('/auth/refresh')) {
+        return Promise.reject(error);
+      }
 
+      originalRequest._retry = true;
+ 
       const refreshToken = localStorage.getItem('refreshToken');
       if (!refreshToken) {
         // No refresh token — session is definitely expired
         window.dispatchEvent(new CustomEvent('auth:session-expired'));
         return Promise.reject(error);
       }
-
+ 
       if (isRefreshing) {
         // Another request already triggered a refresh — queue this one
         return new Promise<AxiosResponse>((resolve) => {
@@ -110,13 +115,13 @@ api.interceptors.response.use(
           });
         });
       }
-
+ 
       isRefreshing = true;
-
+ 
       try {
         const response = await api.post('/auth/refresh', { refreshToken });
         const { accessToken, refreshToken: newRefreshToken } = response.data.tokens;
-
+ 
         localStorage.setItem('accessToken', accessToken);
         if (newRefreshToken) {
           localStorage.setItem('refreshToken', newRefreshToken);
@@ -124,8 +129,9 @@ api.interceptors.response.use(
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         }
-
+ 
         onRefreshSuccess(accessToken);
+        window.dispatchEvent(new CustomEvent('auth:token-refreshed', { detail: { accessToken, employee: response.data.employee } }));
         return api(originalRequest);
       } catch (refreshError) {
         onRefreshFailure();

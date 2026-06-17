@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-06-17T18:16:12.040467",
+  "tests": {
+    "api_operational": true,
+    "ai_service_operational": true,
+    "real_frames_captured": 15,
+    "database_embeddings_exist": true,
+    "face_login_api_responds": false
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "phase": "PHASE 6 - PIPELINE INTEGRITY AUDIT",
+  "timestamp": "2026-06-17T18:17:17.060095",
+  "audit_results": {
+    "broken_imports": [
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\alerting.js",
+        "require": "./config/alerting",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\configValidator.js",
+        "require": "./config/configValidator",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\degradedMode.js",
+        "require": "./config/degradedMode",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\distributedLock.js",
+        "require": "./config/distributedLock",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\eventBus.js",
+        "require": "./config/eventBus",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\jobQueue.js",
+        "require": "./config/jobQueue",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\logger.js",
+        "require": "./config/logger",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\opentelemetry.js",
+        "require": "./config/opentelemetry",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\redisAdapter.js",
+        "require": "./config/redisAdapter",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\sentry.js",
+        "require": "./config/sentry",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\config\\tracing.js",
+        "require": "./config/tracing",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\middleware\\rateLimiter.js",
+        "require": "./middleware/rateLimiter",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\modules\\security\\deviceTrust.js",
+        "require": "./modules/security/deviceTrust",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\modules\\security\\impossibleTravel.js",
+        "require": "./modules/security/impossibleTravel",
+        "severity": "high"
+      },
+      {
+        "file": "d:/Website\\backend-api\\src\\modules\\security\\siemExporter.js",
+        "require": "./modules/security/siemExporter",
+        "severity": "high"
+      }
+    ],
+    "startup_failures": [],
+    "runtime_exceptions": [],
+    "dead_code": [],
+    "orphaned_routes": [],
+    "broken_api_contracts": [
+      {
+        "issue": "Routes not documented",
+        "routes": [
+          "GET /me",
+          "POST /recovery/:recoveryId/reject",
+          "POST /recovery/reset",
+          "GET /bootstrap/status",
+          "POST /face-login",
+          "POST /recovery/:recoveryId/approve",
+          "POST /register-face",
+          "POST /logout",
+          "POST /bootstrap/setup",
+          "POST /pre-login-check",
+          "POST /login",
+          "POST /refresh",
+          "POST /recovery/admin/initiate",
+          "POST /recovery/request",
+          "GET /verify",
+          "POST /recovery/admin/verify-otp",
+          "GET /recovery/pending"
+        ],
+        "severity": "low"
+      }
+    ],
+    "schema_mismatches": [
+      {
+        "issue": "Missing critical tables",
+        "tables": [
+          "face_embeddings",
+          "refresh_tokens",
+          "audit_logs"
+        ],
+        "severity": "critical"
+      }
+    ],
+    "serialization_issues": [],
+    "database_errors": [],
+    "race_conditions": [],
+    "null_reference_errors": [
+      {
+        "file": "d:/Website/backend-api/src\\middleware\\authMiddleware.js",
+        "line": 186,
+        "code": "const requestedEmployee = req.params.employeeId || req.body.employeeId;",
+        "severity": "medium"
+      },
+      {
+        "file": "d:/Website/backend-api/src\\modules\\auth\\routes.js",
+        "line": 1118,
+        "code": "employeeId: req.body.employeeId,",
+        "severity": "medium"
+      },
+      {
+        "file": "d:/Website/backend-api/src\\modules\\leave\\routes.js",
+        "line": 50,
+        "code": "const leaveType = req.body.leaveType || req.body.leave_type;",
+        "severity": "medium"
+      },
+      {
+        "file": "d:/Website/backend-api/src\\modules\\leave\\routes.js",
+        "line": 51,
+        "code": "const startDate = toDateOnly(req.body.startDate || req.body.start_date);",
+        "severity": "medium"
+      },
+      {
+        "file": "d:/Website/backend-api/src\\modules\\leave\\routes.js",
+        "line": 52,
+        "code": "const endDate = toDateOnly(req.body.endDate || req.body.end_date);",
+        "severity": "medium"
+      }
+    ],
+    "invalid_assumptions": [],
+    "dependency_failures": [
+      {
+        "issue": "Missing environment variables",
+        "variables": [
+          "SMTP_HOST",
+          "SMTP_USER",
+          "BACKUP_SCHEDULE",
+          "SMTP_PORT",
+          "BACKUP_S3_BUCKET",
+          "SMTP_PASSWORD",
+          "BACKUP_RETENTION_DAYS",
+          "SMTP_FROM"
+        ],
+        "severity": "medium"
+      }
+    ]
+  },
+  "issue_summary": {
+    "total_issues": 23,
+    "critical": 1,
+    "high": 15,
+    "medium": 6,
+    "low": 1
+  }
+}

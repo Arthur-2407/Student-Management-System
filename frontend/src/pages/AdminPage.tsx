@@ -4,6 +4,8 @@ import {
   FaUsers,
   FaUserPlus,
   FaUserSlash,
+  FaUserCheck,
+  FaUserMinus,
   FaBuilding,
   FaClock,
   FaSearch,
@@ -20,16 +22,18 @@ import {
   FaSync,
   FaExclamationTriangle,
   FaCheckCircle,
+  FaKey,
 } from 'react-icons/fa';
 import { adminApi, Employee, Supervisor, WorkTiming } from '@api/adminApi';
 import { faceManagementApi, FaceChangeRequest, FaceAuditLog } from '@api/faceManagementApi';
+import { leaveApi, LeaveRequest } from '@api/leaveApi';
 import FaceCamera from '@components/camera/FaceCamera';
 import { useNotification } from '@contexts/NotificationContext';
 import { useAuth } from '@contexts/AuthContext';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Tab = 'hierarchy' | 'employees' | 'supervisors' | 'timings' | 'mfa' | 'approvals' | 'system';
+type Tab = 'hierarchy' | 'employees' | 'supervisors' | 'timings' | 'mfa' | 'approvals' | 'leaves' | 'system';
 
 interface CreateEmployeeForm {
   employeeId: string;
@@ -728,6 +732,10 @@ const AdminPage: React.FC = () => {
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [actionNotes, setActionNotes] = useState<string>('');
+  const [pendingLeaveRequests, setPendingLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [approvingLeaveId, setApprovingLeaveId] = useState<number | null>(null);
+  const [rejectingLeaveId, setRejectingLeaveId] = useState<number | null>(null);
+  const [leaveActionReason, setLeaveActionReason] = useState<string>('');
 
   // UI state
   const [activeTab, setActiveTab] = useState<Tab>('hierarchy');
@@ -742,18 +750,82 @@ const AdminPage: React.FC = () => {
   const [formLoading, setFormLoading] = useState(false);
 
   // Assignment modal
-  const [_assignTarget, setAssignTarget] = useState<{ supervisorId: number; supervisorName: string } | null>(null);
+  const [assignTargetEmployee, setAssignTargetEmployee] = useState<Employee | null>(null);
+  const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>('');
+  const [assignLoading, setAssignLoading] = useState(false);
+
+  const handleAssignSupervisor = async () => {
+    if (!assignTargetEmployee) return;
+    if (!selectedSupervisorId) {
+      showError('Please select a supervisor');
+      return;
+    }
+
+    setAssignLoading(true);
+    try {
+      const response = await adminApi.updateEmployee(assignTargetEmployee.id, {
+        supervisorId: parseInt(selectedSupervisorId, 10)
+      });
+
+      if (response.data.success || response.status === 200) {
+        showSuccess(`Successfully assigned ${assignTargetEmployee.first_name} ${assignTargetEmployee.last_name} to supervisor`);
+        setAssignTargetEmployee(null);
+        setSelectedSupervisorId('');
+        fetchData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      showError(err.response?.data?.error || 'Failed to assign supervisor');
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  // Change Password Modal States
+  const [selectedEmpForPassword, setSelectedEmpForPassword] = useState<Employee | null>(null);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
+  const handleUpdatePassword = async () => {
+    if (!selectedEmpForPassword) return;
+    if (!newPassword || newPassword.trim() === '') {
+      showError('Password cannot be empty');
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const response = await adminApi.updateEmployee(selectedEmpForPassword.id, {
+        password: newPassword
+      });
+
+      if (response.data.success || response.status === 200) {
+        showSuccess(`Successfully updated password for ${selectedEmpForPassword.first_name} ${selectedEmpForPassword.last_name}`);
+        setIsPasswordModalOpen(false);
+        setSelectedEmpForPassword(null);
+        setNewPassword('');
+        fetchData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      showError(err.response?.data?.error || 'Failed to update password');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
 
   // Fetch all data
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [empResult, hierarchyResult, timingsResult, pendingResult, logsResult] = await Promise.allSettled([
+      const [empResult, hierarchyResult, timingsResult, pendingResult, logsResult, leaveResult] = await Promise.allSettled([
         adminApi.getEmployees({ limit: 200 }),
         adminApi.getHierarchy(),
         adminApi.getWorkTimings(),
         faceManagementApi.getPendingRequests(),
         faceManagementApi.getHistory(),
+        leaveApi.getTeamRequests(200),
       ]);
 
       if (empResult.status === 'fulfilled') {
@@ -777,11 +849,59 @@ const AdminPage: React.FC = () => {
       if (logsResult.status === 'fulfilled' && logsResult.value.data.success) {
         setAuditLogs(logsResult.value.data.data);
       }
+
+      if (leaveResult.status === 'fulfilled') {
+        setPendingLeaveRequests((leaveResult.value.data || []).filter((r: LeaveRequest) => r.status === 'pending'));
+      }
     } catch (err) {
       console.error('Admin data fetch error:', err);
       showError('Failed to load admin data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLeaveRequests = async () => {
+    try {
+      const response = await leaveApi.getTeamRequests(200);
+      setPendingLeaveRequests((response.data || []).filter((r: LeaveRequest) => r.status === 'pending'));
+    } catch (err) {
+      console.error('Failed to fetch pending leave requests:', err);
+    }
+  };
+
+  const handleApproveLeave = async (id: number) => {
+    try {
+      setApprovingLeaveId(id);
+      const response = await leaveApi.approveRequest(id);
+      if (response.status === 200 || response.data) {
+        showSuccess('Leave request approved successfully!');
+        setApprovingLeaveId(null);
+        fetchLeaveRequests();
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to approve leave request');
+      setApprovingLeaveId(null);
+    }
+  };
+
+  const handleRejectLeave = async (id: number) => {
+    if (!leaveActionReason.trim()) {
+      showError('Please provide a rejection reason');
+      return;
+    }
+    try {
+      setRejectingLeaveId(id);
+      const response = await leaveApi.rejectRequest(id, leaveActionReason);
+      if (response.status === 200 || response.data) {
+        showSuccess('Leave request rejected successfully!');
+        setLeaveActionReason('');
+        setRejectingLeaveId(null);
+        fetchLeaveRequests();
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to reject leave request');
+      setRejectingLeaveId(null);
     }
   };
 
@@ -939,11 +1059,34 @@ const AdminPage: React.FC = () => {
   const handleDeactivate = async (emp: Employee) => {
     if (!window.confirm(`Deactivate ${emp.first_name} ${emp.last_name}? They will no longer be able to log in.`)) return;
     try {
-      await adminApi.deactivateEmployee(emp.employee_id);
+      await adminApi.updateEmployee(emp.id, { isActive: false });
       showSuccess(`${emp.first_name} ${emp.last_name} has been deactivated`);
       fetchData();
     } catch (err: any) {
       showError(err.response?.data?.message || 'Failed to deactivate employee');
+    }
+  };
+
+  // Activate employee
+  const handleActivate = async (emp: Employee) => {
+    try {
+      await adminApi.updateEmployee(emp.id, { isActive: true });
+      showSuccess(`${emp.first_name} ${emp.last_name} has been activated successfully`);
+      fetchData();
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to activate employee');
+    }
+  };
+
+  // Remove employee (hard delete)
+  const handleRemoveEmployee = async (emp: Employee) => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY remove employee ${emp.first_name} ${emp.last_name} and all their records from the database? This action cannot be undone.`)) return;
+    try {
+      await adminApi.deactivateEmployee(emp.id);
+      showSuccess(`Employee ${emp.first_name} ${emp.last_name} removed successfully`);
+      fetchData();
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to remove employee');
     }
   };
 
@@ -955,6 +1098,7 @@ const AdminPage: React.FC = () => {
     { id: 'timings', label: 'Work Timings', icon: <FaClock /> },
     { id: 'mfa', label: 'MFA Status', icon: <FaLock /> },
     { id: 'approvals', label: 'Face Approvals', icon: <FaCheck /> },
+    { id: 'leaves', label: 'Leave Approvals', icon: <FaClock /> },
     { id: 'system', label: 'System Settings', icon: <FaSync /> },
   ];
 
@@ -1132,7 +1276,10 @@ const AdminPage: React.FC = () => {
                             </div>
                           </div>
                           <button
-                            onClick={() => setAssignTarget({ supervisorId: 0, supervisorName: '' })}
+                            onClick={() => {
+                              setAssignTargetEmployee(emp);
+                              setSelectedSupervisorId('');
+                            }}
                             className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
                           >
                             <FaLink className="text-xs" />
@@ -1270,14 +1417,44 @@ const AdminPage: React.FC = () => {
                                       )}
                                     </>
                                   )}
-                                  {emp.is_active && emp.employee_id !== 'admin' && (
-                                    <button
-                                      onClick={() => handleDeactivate(emp)}
-                                      className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors"
-                                      title="Deactivate employee"
-                                    >
-                                      <FaUserSlash className="text-sm" />
-                                    </button>
+                                  {emp.employee_id !== 'admin' && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedEmpForPassword(emp);
+                                          setNewPassword('');
+                                          setIsPasswordModalOpen(true);
+                                        }}
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                        title="Change password"
+                                      >
+                                        <FaKey className="text-sm" />
+                                      </button>
+                                      {emp.is_active ? (
+                                        <button
+                                          onClick={() => handleDeactivate(emp)}
+                                          className="p-1.5 text-orange-500 hover:bg-orange-50 rounded transition-colors"
+                                          title="Deactivate employee"
+                                        >
+                                          <FaUserSlash className="text-sm" />
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => handleActivate(emp)}
+                                          className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
+                                          title="Activate employee"
+                                        >
+                                          <FaUserCheck className="text-sm" />
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={() => handleRemoveEmployee(emp)}
+                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                        title="Remove employee"
+                                      >
+                                        <FaUserMinus className="text-sm" />
+                                      </button>
+                                    </>
                                   )}
                                 </div>
                               </td>
@@ -1703,6 +1880,110 @@ const AdminPage: React.FC = () => {
             {activeTab === 'system' && (
               <SystemSettingsTab />
             )}
+
+            {/* ── LEAVE APPROVALS TAB ── */}
+            {activeTab === 'leaves' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">Pending Leave Approvals</h2>
+                      <p className="text-gray-500 text-sm mt-0.5">Review and approve or reject leave requests submitted by employees.</p>
+                    </div>
+                    <button
+                      onClick={fetchLeaveRequests}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors"
+                    >
+                      <FaSync className="text-xs" /> Refresh
+                    </button>
+                  </div>
+
+                  {pendingLeaveRequests.length === 0 ? (
+                    <div className="py-12 text-center text-gray-500">
+                      <FaCheckCircle className="mx-auto text-4xl text-green-300 mb-3" />
+                      <p>No pending leave requests.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-200">
+                      {pendingLeaveRequests.map((request) => (
+                        <div key={request.id} className="p-6 flex flex-col md:flex-row md:items-center md:justify-between hover:bg-gray-50 transition-colors">
+                          <div className="mb-4 md:mb-0">
+                            <div className="flex items-center space-x-3">
+                              <span className="font-semibold text-gray-900">
+                                {request.employee?.first_name} {request.employee?.last_name}
+                              </span>
+                              <span className="text-xs text-gray-500 font-normal">({request.employee?.employee_id})</span>
+                              <span className="px-2 py-0.5 text-xs rounded-full font-bold bg-yellow-100 text-yellow-800 uppercase">
+                                {request.leave_type}
+                              </span>
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              <strong>Period:</strong> {new Date(request.start_date).toLocaleDateString()} to {new Date(request.end_date).toLocaleDateString()} ({request.total_days} {request.total_days === 1 ? 'day' : 'days'})
+                            </div>
+                            <div className="text-sm text-gray-700 mt-2 italic bg-gray-50 p-2 rounded border border-gray-100">
+                              "{request.reason}"
+                            </div>
+                            <div className="text-xs text-gray-400 mt-2">
+                              Submitted on {new Date(request.created_at).toLocaleDateString()}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                            {rejectingLeaveId === request.id ? (
+                              <div className="flex flex-col space-y-2 w-full sm:w-64">
+                                <input
+                                  type="text"
+                                  placeholder="Rejection reason (required)..."
+                                  value={leaveActionReason}
+                                  onChange={(e) => setLeaveActionReason(e.target.value)}
+                                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm w-full focus:ring-1 focus:ring-blue-500"
+                                />
+                                <div className="flex justify-end space-x-2">
+                                  <button
+                                    onClick={() => {
+                                      setRejectingLeaveId(null);
+                                      setLeaveActionReason('');
+                                    }}
+                                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-lg font-medium"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectLeave(request.id)}
+                                    className="px-3 py-1 text-white text-xs rounded-lg font-medium bg-red-600 hover:bg-red-700"
+                                  >
+                                    Confirm Reject
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  disabled={approvingLeaveId === request.id}
+                                  onClick={() => handleApproveLeave(request.id)}
+                                  className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  {approvingLeaveId === request.id ? 'Approving...' : 'Approve'}
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setRejectingLeaveId(request.id);
+                                    setLeaveActionReason('');
+                                  }}
+                                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>
@@ -1985,6 +2266,191 @@ const AdminPage: React.FC = () => {
                       </>
                     ) : (
                       'Save Changes'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── ASSIGN SUPERVISOR MODAL ── */}
+      <AnimatePresence>
+        {assignTargetEmployee && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setAssignTargetEmployee(null); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <FaLink className="text-blue-600" />
+                  Assign Supervisor
+                </h3>
+                <button
+                  onClick={() => setAssignTargetEmployee(null)}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                >
+                  <FaTimes />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+                    Employee
+                  </label>
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="font-semibold text-gray-900">
+                      {assignTargetEmployee.first_name} {assignTargetEmployee.last_name}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      ID: {assignTargetEmployee.employee_id} · Dept: {assignTargetEmployee.department} · Role: {assignTargetEmployee.position}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="assign-supervisor-select" className="block text-xs font-medium text-gray-700 mb-1">
+                    Select Supervisor *
+                  </label>
+                  <select
+                    id="assign-supervisor-select"
+                    value={selectedSupervisorId}
+                    onChange={(e) => setSelectedSupervisorId(e.target.value)}
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="">-- Choose a Supervisor --</option>
+                    {supervisors.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.first_name} {s.last_name} ({s.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => setAssignTargetEmployee(null)}
+                    className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAssignSupervisor}
+                    disabled={assignLoading || !selectedSupervisorId}
+                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {assignLoading ? (
+                      <>
+                        <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        Assigning...
+                      </>
+                    ) : (
+                      'Confirm Assignment'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── CHANGE PASSWORD MODAL ── */}
+      <AnimatePresence>
+        {isPasswordModalOpen && selectedEmpForPassword && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) { setIsPasswordModalOpen(false); setSelectedEmpForPassword(null); setNewPassword(''); } }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <FaKey className="text-blue-600" />
+                  Change Password
+                </h3>
+                <button
+                  onClick={() => {
+                    setIsPasswordModalOpen(false);
+                    setSelectedEmpForPassword(null);
+                    setNewPassword('');
+                  }}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                >
+                  <FaTimes />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+                    Employee
+                  </label>
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="font-semibold text-gray-900">
+                      {selectedEmpForPassword.first_name} {selectedEmpForPassword.last_name}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      ID: {selectedEmpForPassword.employee_id} · Dept: {selectedEmpForPassword.department}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="new-password-input" className="block text-xs font-medium text-gray-700 mb-1">
+                    New Password *
+                  </label>
+                  <input
+                    id="new-password-input"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => {
+                      setIsPasswordModalOpen(false);
+                      setSelectedEmpForPassword(null);
+                      setNewPassword('');
+                    }}
+                    className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUpdatePassword}
+                    disabled={passwordLoading || !newPassword}
+                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {passwordLoading ? (
+                      <>
+                        <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      'Update Password'
                     )}
                   </button>
                 </div>

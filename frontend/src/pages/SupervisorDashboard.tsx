@@ -24,6 +24,7 @@ import { securityApi } from '@api/securityApi';
 import { attendanceApi } from '@api/attendanceApi';
 import { adminApi, TeamMember } from '@api/adminApi';
 import { faceManagementApi, FaceChangeRequest } from '@api/faceManagementApi';
+import { leaveApi, LeaveRequest } from '@api/leaveApi';
 import { useNotification } from '@contexts/NotificationContext';
 
 interface SecurityEvent {
@@ -77,6 +78,10 @@ const SupervisorDashboard: React.FC = () => {
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [actionNotes, setActionNotes] = useState<string>('');
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [approvingLeaveId, setApprovingLeaveId] = useState<number | null>(null);
+  const [rejectingLeaveId, setRejectingLeaveId] = useState<number | null>(null);
+  const [leaveActionReason, setLeaveActionReason] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
@@ -127,6 +132,51 @@ const SupervisorDashboard: React.FC = () => {
     }
   };
 
+  // Fetch pending leave requests
+  const fetchLeaveRequests = async () => {
+    try {
+      const response = await leaveApi.getTeamRequests();
+      setLeaveRequests((response.data || []).filter((r: LeaveRequest) => r.status === 'pending'));
+    } catch (err) {
+      console.error('Failed to fetch pending leave requests:', err);
+    }
+  };
+
+  const handleApproveLeave = async (id: number) => {
+    try {
+      setApprovingLeaveId(id);
+      const response = await leaveApi.approveRequest(id);
+      if (response.status === 200 || response.data) {
+        showSuccess('Leave request approved successfully!');
+        setApprovingLeaveId(null);
+        fetchLeaveRequests();
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to approve leave request');
+      setApprovingLeaveId(null);
+    }
+  };
+
+  const handleRejectLeave = async (id: number) => {
+    if (!leaveActionReason.trim()) {
+      showError('Please provide a rejection reason');
+      return;
+    }
+    try {
+      setRejectingLeaveId(id);
+      const response = await leaveApi.rejectRequest(id, leaveActionReason);
+      if (response.status === 200 || response.data) {
+        showSuccess('Leave request rejected successfully!');
+        setLeaveActionReason('');
+        setRejectingLeaveId(null);
+        fetchLeaveRequests();
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to reject leave request');
+      setRejectingLeaveId(null);
+    }
+  };
+
   // STABILIZATION: Fetch supervisor data with AbortController and resilient parallel fetching
   useEffect(() => {
     const abortController = new AbortController();
@@ -136,7 +186,7 @@ const SupervisorDashboard: React.FC = () => {
         setLoading(true);
 
         // STABILIZATION: Parallel fetch with allSettled — one failure doesn't block others
-        const [securityResult, loginResult, attendanceResult, teamResult, faceRequestsResult] = await Promise.allSettled([
+        const [securityResult, loginResult, attendanceResult, teamResult, faceRequestsResult, leaveRequestsResult] = await Promise.allSettled([
           securityApi.getSecurityEvents(10),
           securityApi.getLoginLogs(10),
           attendanceApi.getHistory({
@@ -146,6 +196,7 @@ const SupervisorDashboard: React.FC = () => {
           }),
           adminApi.getMyTeam(),
           faceManagementApi.getPendingRequests(),
+          leaveApi.getTeamRequests(),
         ]);
 
         if (abortController.signal.aborted) return;
@@ -192,6 +243,12 @@ const SupervisorDashboard: React.FC = () => {
           setFaceRequests(faceRequestsResult.value.data.data);
         } else {
           console.error('Face requests fetch error:', faceRequestsResult);
+        }
+
+        if (leaveRequestsResult.status === 'fulfilled') {
+          setLeaveRequests((leaveRequestsResult.value.data || []).filter((r: LeaveRequest) => r.status === 'pending'));
+        } else {
+          console.error('Leave requests fetch error:', leaveRequestsResult.reason);
         }
       } catch (error: any) {
         if (error?.name === 'CanceledError') return;
@@ -509,6 +566,98 @@ const SupervisorDashboard: React.FC = () => {
                           onClick={() => {
                             setRejectingId(request.id);
                             setApprovingId(null);
+                          }}
+                          className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pending Leave Approvals Panel */}
+        <div className="bg-white rounded-xl shadow overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-900">Pending Leave Approvals</h2>
+            <p className="text-gray-500 text-sm mt-1">Review and approve or reject leave requests from your team members.</p>
+          </div>
+          
+          {leaveRequests.length === 0 ? (
+            <div className="py-12 text-center">
+              <FaUserCheck className="mx-auto text-4xl text-green-300" />
+              <p className="mt-4 text-gray-600">No pending leave requests.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {leaveRequests.map((request) => (
+                <div key={request.id} className="p-6 flex flex-col md:flex-row md:items-center md:justify-between hover:bg-gray-50 transition-colors">
+                  <div className="mb-4 md:mb-0">
+                    <div className="flex items-center space-x-3">
+                      <span className="font-semibold text-gray-900">
+                        {request.employee?.first_name} {request.employee?.last_name}
+                      </span>
+                      <span className="text-xs text-gray-500">({request.employee?.employee_id})</span>
+                      <span className="px-2 py-0.5 text-xs rounded-full font-bold bg-yellow-100 text-yellow-800 uppercase">
+                        {request.leave_type}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      <strong>Period:</strong> {new Date(request.start_date).toLocaleDateString()} to {new Date(request.end_date).toLocaleDateString()} ({request.total_days} {request.total_days === 1 ? 'day' : 'days'})
+                    </div>
+                    <div className="text-sm text-gray-700 mt-2 italic bg-gray-50 p-2 rounded border border-gray-100">
+                      "{request.reason}"
+                    </div>
+                    <div className="text-xs text-gray-400 mt-2">
+                      Submitted on {new Date(request.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                    {rejectingLeaveId === request.id ? (
+                      <div className="flex flex-col space-y-2 w-full sm:w-64">
+                        <input
+                          type="text"
+                          placeholder="Rejection reason (required)..."
+                          value={leaveActionReason}
+                          onChange={(e) => setLeaveActionReason(e.target.value)}
+                          className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm w-full focus:ring-1 focus:ring-blue-500"
+                        />
+                        <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => {
+                              setRejectingLeaveId(null);
+                              setLeaveActionReason('');
+                            }}
+                            className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-lg font-medium"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleRejectLeave(request.id)}
+                            className="px-3 py-1 text-white text-xs rounded-lg font-medium bg-red-600 hover:bg-red-700"
+                          >
+                            Confirm Reject
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          disabled={approvingLeaveId === request.id}
+                          onClick={() => handleApproveLeave(request.id)}
+                          className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                        >
+                          {approvingLeaveId === request.id ? 'Approving...' : 'Approve'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRejectingLeaveId(request.id);
+                            setLeaveActionReason('');
                           }}
                           className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors"
                         >

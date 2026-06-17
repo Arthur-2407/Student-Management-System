@@ -402,6 +402,14 @@ class FaceAuthenticationPipeline:
                 is_dummy = True
 
             if is_dummy:
+                # Retrieve active embedding to check if user is registered/enrolled
+                db_embedding = stored_embedding if stored_embedding is not None \
+                    else self._get_stored_embedding(employee_id)
+                if db_embedding is None:
+                    result["errors"].append("No stored face embedding found — enroll face first")
+                    result["security_events"].append("NO_STORED_EMBEDDING")
+                    return result
+
                 if os.getenv('FACE_RECOGNITION_MODE') != 'real':
                     return {
                         "authenticated": True,
@@ -427,6 +435,10 @@ class FaceAuthenticationPipeline:
             
             for i, frame in enumerate(video_frames):
                 faces, boxes = face_detector.detect_faces(frame)
+                if len(faces) > 1:
+                    result["errors"].append("Multiple faces detected")
+                    result["security_events"].append("MULTIPLE_FACES_DETECTED")
+                    return result
                 if faces:
                     faces_detected.append(faces[0])  # Take first face
                     face_boxes.append(boxes[0])
@@ -527,24 +539,24 @@ class FaceAuthenticationPipeline:
                     
                     face_recognition_mock = os.getenv('FACE_RECOGNITION_MODE', 'real') != 'real'
                     
-                    if match_result["similarity"] >= self.config["similarity_threshold"]:
+                    if match_result["similarity"] >= self.config["similarity_threshold"] or face_recognition_mock:
                         result["face_matched"] = True
                         result["confidence"] = max(result["confidence"], match_result["similarity"])
+                        if face_recognition_mock and match_result["similarity"] < self.config["similarity_threshold"]:
+                            self.logger.info(
+                                f"Mock face recognition bypass: similarity={match_result['similarity']:.2f} "
+                                f"below threshold={self.config['similarity_threshold']}"
+                            )
                     else:
                         self.logger.warning(
                             f"Face mismatch detected: {match_result['similarity']:.2f} "
                             f"(threshold: {self.config['similarity_threshold']})"
                         )
-                        if face_recognition_mock:
-                            self.logger.warning("Bypassing face mismatch in mock development mode.")
-                            result["face_matched"] = True
-                            result["confidence"] = max(result["confidence"], 0.75)
-                        else:
-                            result["errors"].append(
-                                f"Face mismatch: {match_result['similarity']:.2f} "
-                                f"(threshold: {self.config['similarity_threshold']})"
-                            )
-                            result["security_events"].append("FACE_MISMATCH")
+                        result["errors"].append(
+                            f"Face mismatch: {match_result['similarity']:.2f} "
+                            f"(threshold: {self.config['similarity_threshold']})"
+                        )
+                        result["security_events"].append("FACE_MISMATCH")
                 else:
                     result["errors"].append("No stored face embedding found — enroll face first")
                     result["security_events"].append("NO_STORED_EMBEDDING")
@@ -743,7 +755,20 @@ def register_face():
             is_dummy = True
 
         if is_dummy:
-            # Generate a standard mock embedding for E2E tests
+            # In REAL mode, reject mock bypass attempts during enrollment
+            # Must enforce same security as login endpoint
+            if os.getenv('FACE_RECOGNITION_MODE') == 'real':
+                return jsonify({
+                    'success': False,
+                    'registered': False,
+                    'error': 'Mock bypass forbidden in production/real mode',
+                    'code': 'MOCK_BYPASS_FORBIDDEN',
+                    'security_event': 'MOCK_BYPASS_FORBIDDEN_REGISTRATION',
+                    'employee_id': data['employee_id'],
+                    'timestamp': datetime.now().isoformat()
+                }), 403
+            
+            # In non-real mode, allow mock embedding for E2E tests
             mock_embedding = np.zeros(512, dtype=np.float32)
             mock_embedding[0] = 0.35 # Guard against constraint violation
             return jsonify({
@@ -765,15 +790,17 @@ def register_face():
                 'code': 'INVALID_FRAMES'
             }), 400
 
-        # Detect faces — early-exit: stop as soon as we find a face to avoid
-        # running expensive RetinaFace detection on every frame
+        # Detect faces
         faces = []
         for frame in frames:
             detected_faces, _ = face_detector.detect_faces(frame)
+            if len(detected_faces) > 1:
+                return jsonify({
+                    'error': 'Multiple faces detected in frame',
+                    'code': 'MULTIPLE_FACES_DETECTED'
+                }), 400
             if detected_faces:
                 faces.append(detected_faces[0])
-                # One good face is sufficient for registration embedding
-                break
         
         if not faces:
             return jsonify({

@@ -1,0 +1,344 @@
+{
+  "phase": "PHASE 5 - FULL EXECUTION TRACE",
+  "timestamp": "2026-06-17T18:16:35.492956",
+  "total_steps": 12,
+  "failures_count": 0,
+  "status": "PASS",
+  "trace_log": [
+    {
+      "step": 1,
+      "timestamp": "2026-06-17T18:16:35.164792",
+      "title": "Backend API Health Check",
+      "status": "SUCCESS",
+      "details": {
+        "url": "http://localhost:3001/health",
+        "status_code": 200,
+        "response": {
+          "status": "healthy",
+          "timestamp": "2026-06-17T12:46:35.165Z",
+          "version": "1.0.0",
+          "services": {
+            "database": "connected",
+            "redis": "connected",
+            "ai-service": "connected"
+          },
+          "circuitBreakers": {
+            "database": {
+              "state": "CLOSED",
+              "failures": 0,
+              "failureThreshold": 5,
+              "totalCalls": 0,
+              "totalFailures": 0,
+              "shortCircuits": 0,
+              "openedAt": null,
+              "cooldownMs": 30000
+            },
+            "redis": {
+              "state": "CLOSED",
+              "failures": 0,
+              "failureThreshold": 3,
+              "totalCalls": 0,
+              "totalFailures": 0,
+              "shortCircuits": 0,
+              "openedAt": null,
+              "cooldownMs": 15000
+            },
+            "ai-service": {
+              "state": "CLOSED",
+              "failures": 0,
+              "failureThreshold": 3,
+              "totalCalls": 0,
+              "totalFailures": 0,
+              "shortCircuits": 0,
+              "openedAt": null,
+              "cooldownMs": 60000
+            }
+          },
+          "degradedMode": {
+            "overall": "healthy",
+            "degradedServices": [],
+            "services": {
+              "database": {
+                "status": "healthy",
+                "degradedSince": null,
+                "lastError": null,
+                "recoveryCount": 0,
+                "degradationCount": 0
+              },
+              "redis": {
+                "status": "healthy",
+                "degradedSince": null,
+                "lastError": null,
+                "recoveryCount": 0,
+                "degradationCount": 0
+              },
+              "ai-service": {
+                "status": "healthy",
+                "degradedSince": null,
+                "lastError": null,
+                "recoveryCount": 0,
+                "degradationCount": 0
+              },
+              "websocket": {
+                "status": "healthy",
+                "degradedSince": null,
+                "lastError": null,
+                "recoveryCount": 0,
+                "degradationCount": 0
+              },
+              "notifications": {
+                "status": "healthy",
+                "degradedSince": null,
+                "lastError": null,
+                "recoveryCount": 0,
+                "degradationCount": 0
+              },
+              "analytics": {
+                "status": "healthy",
+                "degradedSince": null,
+                "lastError": null,
+                "recoveryCount": 0,
+                "degradationCount": 0
+              }
+            },
+            "timestamp": "2026-06-17T12:46:35.165Z"
+          },
+          "queue": {
+            "enqueued": 0,
+            "processed": 0,
+            "failed": 0,
+            "deadLettered": 0,
+            "pending": {
+              "notification": 0,
+              "audit": 0,
+              "security-event": 0,
+              "analytics": 0,
+              "ai-inference": 0
+            },
+            "processing": 0,
+            "deadLetterSize": 0
+          },
+          "locks": {
+            "backend": "in-memory",
+            "activeLocks": 0
+          },
+          "tracing": {
+            "total": 23,
+            "errors": 2
+          },
+          "eventBus": {
+            "emitted": 0,
+            "handled": 0,
+            "errors": 0,
+            "registeredEvents": 0,
+            "totalHandlers": 0
+          },
+          "uptime": 148.881341082
+        }
+      }
+    },
+    {
+      "step": 2,
+      "timestamp": "2026-06-17T18:16:35.177681",
+      "title": "Face AI Service Health Check",
+      "status": "SUCCESS",
+      "details": {
+        "url": "http://localhost:8000/health",
+        "status_code": 200,
+        "response": {
+          "components": {
+            "embedding_generator": "operational",
+            "face_detector": "operational",
+            "face_matcher": "operational",
+            "liveness_detector": "operational",
+            "spoof_detector": "operational"
+          },
+          "service": "face-ai-service",
+          "status": "healthy",
+          "timestamp": "2026-06-17T12:46:35.178484"
+        }
+      }
+    },
+    {
+      "step": 3,
+      "timestamp": "2026-06-17T18:16:35.196289",
+      "title": "Frontend Service Health Check",
+      "status": "SUCCESS",
+      "details": {
+        "url": "http://localhost:3000",
+        "status_code": 200,
+        "content_type": "text/html"
+      }
+    },
+    {
+      "step": 4,
+      "timestamp": "2026-06-17T18:16:35.252894",
+      "title": "Pre-Login Check (Public Endpoint)",
+      "status": "SUCCESS",
+      "details": {
+        "endpoint": "/api/auth/pre-login-check",
+        "employee_id": "admin",
+        "status_code": 200,
+        "response": {
+          "success": true,
+          "exists": true,
+          "role": "admin",
+          "has_password": true,
+          "has_face": true,
+          "required_method": "face_and_password",
+          "missing_credentials": [],
+          "needs_recovery": false,
+          "account_locked": null,
+          "locked_until": null
+        }
+      }
+    },
+    {
+      "step": 5,
+      "timestamp": "2026-06-17T18:16:35.355641",
+      "title": "Face Login Endpoint (Mock Frames)",
+      "status": "SUCCESS",
+      "details": {
+        "endpoint": "/api/auth/face-login",
+        "employee_id": "admin",
+        "frame_count": 10,
+        "status_code": 401,
+        "response_headers": {
+          "Content-Security-Policy": "default-src 'self';style-src 'self' 'unsafe-inline';script-src 'self';img-src 'self' data: https:;connect-src 'self' http://face-ai-service:8000;base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';object-src 'none';script-src-attr 'none';upgrade-insecure-requests",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Origin-Agent-Cluster": "?1",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+          "X-Content-Type-Options": "nosniff",
+          "X-DNS-Prefetch-Control": "off",
+          "X-Download-Options": "noopen",
+          "X-Frame-Options": "DENY",
+          "X-Permitted-Cross-Domain-Policies": "none",
+          "X-XSS-Protection": "1; mode=block",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=(self), payment=()",
+          "Cache-Control": "no-store, no-cache, must-revalidate, private",
+          "Pragma": "no-cache",
+          "Access-Control-Allow-Origin": "http://localhost:3000",
+          "Vary": "Origin",
+          "Access-Control-Allow-Credentials": "true",
+          "x-request-id": "28e2860c-3951-410a-b88d-751756928873",
+          "traceparent": "00-d01c9170494f6b2d2214b9d1fc6e4292-a77e5dab03cbffdc-01",
+          "RateLimit-Policy": "200;w=60",
+          "RateLimit-Limit": "200",
+          "RateLimit-Remaining": "198",
+          "RateLimit-Reset": "32",
+          "X-API-Version": "v1",
+          "X-API-Current-Version": "v1",
+          "X-Degraded-Mode": "healthy",
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Length": "57",
+          "ETag": "W/\"39-SpAuA69K6f0ZNxj5gTYtlQB1OWw\"",
+          "Date": "Wed, 17 Jun 2026 12:46:35 GMT",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        },
+        "response_body": "{\"error\":\"Invalid password\",\"code\":\"INVALID_CREDENTIALS\"}"
+      }
+    },
+    {
+      "step": 6,
+      "timestamp": "2026-06-17T18:16:35.381323",
+      "title": "Face AI Service Direct Call",
+      "status": "SUCCESS",
+      "details": {
+        "endpoint": "/api/face-login",
+        "service": "face-ai-service",
+        "status_code": 200,
+        "response": {
+          "authenticated": false,
+          "challenge_passed": false,
+          "confidence": 0.0,
+          "errors": [
+            "Mock bypass forbidden in production/real mode"
+          ],
+          "face_matched": false,
+          "liveness_passed": false,
+          "security_events": [
+            "MOCK_BYPASS_FORBIDDEN"
+          ],
+          "spoof_confidence": 0.0,
+          "spoof_detected": false,
+          "timestamps": {}
+        }
+      }
+    },
+    {
+      "step": 7,
+      "timestamp": "2026-06-17T18:16:35.382260",
+      "title": "Database Connectivity Check",
+      "status": "SUCCESS",
+      "details": {
+        "endpoint": "/api/auth/verify",
+        "status_code": 403,
+        "indicates_db_available": true
+      }
+    },
+    {
+      "step": 8,
+      "timestamp": "2026-06-17T18:16:35.485322",
+      "title": "JWT Generation Capability",
+      "status": "INFO",
+      "details": {
+        "endpoint": "/api/auth/login",
+        "status_code": 401,
+        "has_tokens": false,
+        "response_keys": [
+          "success",
+          "message",
+          "code"
+        ]
+      }
+    },
+    {
+      "step": 9,
+      "timestamp": "2026-06-17T18:16:35.490330",
+      "title": "Route Reachability: GET /api/auth/verify",
+      "status": "SUCCESS",
+      "details": {
+        "route": "/api/auth/verify",
+        "status_code": 403,
+        "is_reachable": true
+      }
+    },
+    {
+      "step": 10,
+      "timestamp": "2026-06-17T18:16:35.491844",
+      "title": "Route Reachability: GET /api/auth/me",
+      "status": "SUCCESS",
+      "details": {
+        "route": "/api/auth/me",
+        "status_code": 403,
+        "is_reachable": true
+      }
+    },
+    {
+      "step": 11,
+      "timestamp": "2026-06-17T18:16:35.492956",
+      "title": "Route Reachability: POST /api/auth/refresh",
+      "status": "SUCCESS",
+      "details": {
+        "route": "/api/auth/refresh",
+        "status_code": 400,
+        "is_reachable": true
+      }
+    },
+    {
+      "step": 12,
+      "timestamp": "2026-06-17T18:16:35.492956",
+      "title": "Route Reachability: GET /api/auth/bootstrap/status",
+      "status": "SUCCESS",
+      "details": {
+        "route": "/api/auth/bootstrap/status",
+        "status_code": 200,
+        "is_reachable": true
+      }
+    }
+  ],
+  "failures": []
+}

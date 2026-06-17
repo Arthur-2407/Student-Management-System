@@ -20,6 +20,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # PostgreSQL Face Database
+  postgres-face:
+    image: postgres:15-alpine
+    container_name: attendance-face-db
+    environment:
+      POSTGRES_DB: ${FACE_DB_NAME:-attendance_face_system}
+      POSTGRES_USER: ${FACE_DB_USER:-face_admin}
+      POSTGRES_PASSWORD: ${FACE_DB_PASSWORD:-securefacepassword123}
+    volumes:
+      - postgres_face_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - attendance-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U face_admin -d attendance_face_system"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Redis Cache
   redis:
     image: redis:7-alpine
@@ -42,11 +62,11 @@ services:
     build: ./face-ai-service
     container_name: face-ai-service
     environment:
-      - NODE_ENV=development
-      - FACE_RECOGNITION_MODE=mock
+      - NODE_ENV=production
+      - FACE_RECOGNITION_MODE=real
       - FACE_DETECTOR_BACKEND=${FACE_DETECTOR_BACKEND:-opencv}
-      - FACE_AI_DISABLE_SPOOF_DETECTION=${FACE_AI_DISABLE_SPOOF_DETECTION:-true}
-      - FACE_AI_DISABLE_LIVENESS_DETECTION=${FACE_AI_DISABLE_LIVENESS_DETECTION:-true}
+      - FACE_AI_DISABLE_SPOOF_DETECTION=false
+      - FACE_AI_DISABLE_LIVENESS_DETECTION=false
       - PORT=8000
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redispassword123}@redis:6379
       - MODEL_PATH=/app/models
@@ -80,6 +100,11 @@ services:
       - DB_NAME=${DB_NAME:-attendance_system}
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:-securepassword123}
+      - FACE_DB_HOST=postgres-face
+      - FACE_DB_PORT=5432
+      - FACE_DB_NAME=${FACE_DB_NAME:-attendance_face_system}
+      - FACE_DB_USER=${FACE_DB_USER:-face_admin}
+      - FACE_DB_PASSWORD=${FACE_DB_PASSWORD:-securefacepassword123}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redispassword123}@redis:6379
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET:-your-super-secret-jwt-access-key-change-in-production}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-your-super-secret-jwt-refresh-key-change-in-production}
@@ -94,6 +119,9 @@ services:
       - AUTH_RATE_LIMIT_MAX_REQUESTS=${AUTH_RATE_LIMIT_MAX_REQUESTS:-200}
       - LOGIN_RATE_LIMIT=${LOGIN_RATE_LIMIT:-100}
       - LOGIN_RATE_WINDOW_MS=${LOGIN_RATE_WINDOW_MS:-60000}
+      - ACCOUNT_LOCKOUT_DISABLED=${ACCOUNT_LOCKOUT_DISABLED:-false}
+      - MAX_FAILED_LOGINS=${MAX_FAILED_LOGINS:-10}
+      - LOGIN_LOCKOUT_MINUTES=${LOGIN_LOCKOUT_MINUTES:-30}
     volumes:
       - ./backend-api:/app
       - /app/node_modules
@@ -103,6 +131,8 @@ services:
       - attendance-network
     depends_on:
       postgres:
+        condition: service_healthy
+      postgres-face:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -167,5 +197,6 @@ networks:
 
 volumes:
   postgres_data:
+  postgres_face_data:
   redis_data:
   face_ai_models:

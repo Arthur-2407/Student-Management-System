@@ -9,7 +9,8 @@
 
 const express = require('express');
 const axios = require('axios');
-const { query } = require('../../config/database');
+const crypto = require('crypto');
+const { query, faceQuery } = require('../../config/database');
 const { logger } = require('../../config/logger');
 const { requireRole } = require('../../middleware/rbac');
 const { authenticateToken } = require('../../middleware/authMiddleware');
@@ -20,6 +21,19 @@ const router = express.Router();
 // Enforce token authentication only on face management and request endpoints
 router.use('/face-change-requests', authenticateToken);
 router.use('/face-management', authenticateToken);
+
+// Helper to create notifications in main db
+async function createNotification(employeeId, title, message, payload = {}) {
+  try {
+    await query(
+      `INSERT INTO notifications (employee_id, type, title, message, payload)
+       VALUES ($1, 'face', $2, $3, $4)`,
+      [employeeId, title, message, JSON.stringify(payload)]
+    );
+  } catch (err) {
+    logger.warn('Failed to create notification', { error: err.message });
+  }
+}
 
 // Helper to check if a supervisor supervises an employee
 async function isSupervisedBy(supervisorId, employeeId) {
@@ -37,13 +51,104 @@ async function isSupervisedBy(supervisorId, employeeId) {
   return result.rows.length > 0;
 }
 
-// Helper to fetch active face embedding for an employee
+// Helper to fetch active face embedding for an employee (from face db)
 async function getActiveEmbedding(employeeId) {
-  const result = await query(
+  const result = await faceQuery(
     'SELECT id, embedding_vector FROM face_embeddings WHERE employee_id = $1 AND is_active = TRUE LIMIT 1',
     [employeeId]
   );
   return result.rows[0] || null;
+}
+
+// Embedding Encryption Helpers (AES-256-GCM)
+function getEncryptionKey() {
+  const keyEnv = process.env.ENCRYPTION_MASTER_KEY;
+  if (!keyEnv) {
+    logger.warn('⚠️ No ENCRYPTION_MASTER_KEY in environment - embeddings will be stored unencrypted');
+    return null;
+  }
+  try {
+    return Buffer.from(keyEnv, 'base64');
+  } catch (err) {
+    logger.error('Failed to decode encryption key:', err.message);
+    return null;
+  }
+}
+
+function encryptEmbedding(embeddingArray) {
+  const key = getEncryptionKey();
+  if (!key) {
+    // No encryption configured - return plaintext
+    return JSON.stringify(embeddingArray);
+  }
+  
+  try {
+    const plaintext = JSON.stringify(embeddingArray);
+    const nonce = crypto.randomBytes(12); // 96-bit nonce for GCM
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce);
+    
+    let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    
+    const authTag = cipher.getAuthTag();
+    
+    // Combine nonce + authTag + ciphertext, encode as base64
+    const combined = Buffer.concat([nonce, authTag, Buffer.from(encrypted, 'hex')]);
+    const encoded = combined.toString('base64');
+    
+    return JSON.stringify({
+      encrypted: true,
+      data: encoded,
+      algorithm: 'aes-256-gcm'
+    });
+  } catch (err) {
+    logger.error('Embedding encryption failed:', err.message);
+    // Fallback to plaintext
+    return JSON.stringify(embeddingArray);
+  }
+}
+
+function decryptEmbedding(encryptedData) {
+  const key = getEncryptionKey();
+  if (!key) {
+    // No encryption - try to parse as plain array
+    try {
+      const parsed = typeof encryptedData === 'string' ? JSON.parse(encryptedData) : encryptedData;
+      if (parsed.encrypted) {
+        logger.warn('Encrypted embedding found but no decryption key available');
+        return null;
+      }
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  
+  try {
+    const parsed = typeof encryptedData === 'string' ? JSON.parse(encryptedData) : encryptedData;
+    
+    // If not marked as encrypted, return as-is
+    if (!parsed.encrypted) {
+      return Array.isArray(parsed) ? parsed : null;
+    }
+    
+    // Decrypt
+    const combined = Buffer.from(parsed.data, 'base64');
+    const nonce = combined.slice(0, 12);
+    const authTag = combined.slice(12, 28);
+    const ciphertext = combined.slice(28).toString('hex');
+    
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, nonce);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return JSON.parse(decrypted);
+  } catch (err) {
+    logger.error('Embedding decryption failed:', err.message);
+    return null;
+  }
 }
 
 // Helper to generate embedding vector from frames via Face-AI service
@@ -96,6 +201,8 @@ async function generateEmbeddingFromFrames(frames, employeeId) {
  * Submit a face change request (ADD, UPDATE, REPLACE, DELETE)
  */
 router.post('/face-change-requests', async (req, res) => {
+  let faceTxBegun = false;
+  let mainTxBegun = false;
   try {
     const { employeeId, requestType, frames } = req.body;
     const requesterId = req.user.id;
@@ -111,7 +218,7 @@ router.post('/face-change-requests', async (req, res) => {
 
     // Resolve target employee
     const targetResult = await query(
-      'SELECT id, employee_id, role, face_enrolled FROM employees WHERE employee_id = $1 AND is_active = TRUE',
+      'SELECT id, employee_id, first_name, last_name, role, face_enrolled FROM employees WHERE employee_id = $1 AND is_active = TRUE',
       [employeeId]
     );
     if (targetResult.rows.length === 0) {
@@ -160,23 +267,66 @@ router.post('/face-change-requests', async (req, res) => {
 
     // If Admin, apply changes instantly
     if (requesterRole === 'admin') {
+      await faceQuery('BEGIN');
+      faceTxBegun = true;
+
       await query('BEGIN');
+      mainTxBegun = true;
       
       let newEmbId = null;
 
       if (requestType === 'DELETE') {
-        await query('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
+        await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
         await query('UPDATE employees SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1', [target.id]);
       } else {
-        await query('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
+        // Deactivate previous embeddings and store new one (encrypted)
+        await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
         
-        const insResult = await query(
+        // Encrypt the embedding before storage
+        const embeddingArray = JSON.parse(newEmbedding);
+        const encryptedEmbedding = encryptEmbedding(embeddingArray);
+        
+        const insResult = await faceQuery(
           `INSERT INTO face_embeddings (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by)
            VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-          [target.id, newEmbedding, embVersion, embConfidence, requesterId]
+          [target.id, encryptedEmbedding, embVersion, embConfidence, requesterId]
         );
         newEmbId = insResult.rows[0].id;
         
+        // Ensure user exists in users table in face db
+        const targetName = `${target.first_name} ${target.last_name}`;
+        await faceQuery(
+          `INSERT INTO users (user_id, name)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name`,
+          [target.id, targetName]
+        );
+
+        // Process frames to generate image data and image hash
+        let imageData = null;
+        let imageHash = null;
+        if (Array.isArray(frames) && frames.length > 0) {
+          try {
+            const cleanBase64 = frames[0].includes(',') ? frames[0].split(',')[1] : frames[0];
+            imageData = Buffer.from(cleanBase64, 'base64');
+            imageHash = crypto.createHash('sha256').update(imageData).digest('hex');
+          } catch (err) {
+            logger.warn('Failed to parse admin frame for image_data in direct face change request', { error: err.message });
+          }
+        }
+
+        // Insert into user_images with status 'VERIFIED'
+        await faceQuery(
+          `INSERT INTO user_images (user_id, image_data, image_hash, face_embedding, verification_status, uploaded_at)
+           VALUES ($1, $2, $3, $4, 'VERIFIED', NOW())`,
+          [
+            target.id,
+            imageData,
+            imageHash,
+            newEmbedding,
+          ]
+        );
+
         await query(
           `UPDATE employees SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
           [requesterId, target.id]
@@ -184,26 +334,29 @@ router.post('/face-change-requests', async (req, res) => {
       }
 
       // Record in audit logs
-      await query(
+      await faceQuery(
         `INSERT INTO face_audit_logs (employee_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
          VALUES ($1, $2, $3, $4, $5, $6::inet, $7)`,
         [target.id, requestType, requesterId, prevEmbeddingId, newEmbId, req.ip, req.headers['user-agent']]
       );
 
       // Record in requests history as auto-approved
-      const reqResult = await query(
+      const reqResult = await faceQuery(
         `INSERT INTO face_change_requests (employee_id, request_type, requested_by, new_face_embedding, previous_face_embedding, status)
          VALUES ($1, $2, $3, $4, $5, 'APPROVED') RETURNING id`,
         [target.id, requestType, requesterId, newEmbedding, prevEmbedding]
       );
 
-      await query(
+      await faceQuery(
         `INSERT INTO face_approval_history (request_id, action, actioned_by, notes)
          VALUES ($1, 'APPROVE', $2, 'Auto-approved by Administrator')`,
         [reqResult.rows[0].id, requesterId]
       );
 
       await query('COMMIT');
+      mainTxBegun = false;
+      await faceQuery('COMMIT');
+      faceTxBegun = false;
 
       await logAuditEvent({
         actorEmployeeId: req.user.employeeId,
@@ -219,26 +372,96 @@ router.post('/face-change-requests', async (req, res) => {
     }
 
     // Supervisor / Employee requests (require approvals)
-    await query('BEGIN');
+    await faceQuery('BEGIN');
+    faceTxBegun = true;
 
     // Create change request
-    const changeReq = await query(
+    const changeReq = await faceQuery(
       `INSERT INTO face_change_requests (employee_id, request_type, requested_by, new_face_embedding, previous_face_embedding, status)
        VALUES ($1, $2, $3, $4, $5, 'PENDING') RETURNING id`,
       [target.id, requestType, requesterId, newEmbedding, prevEmbedding]
     );
     const requestId = changeReq.rows[0].id;
 
+    if (requestType !== 'DELETE' && newEmbedding) {
+      // Ensure user exists in users table
+      const targetName = `${target.first_name} ${target.last_name}`;
+      await faceQuery(
+        `INSERT INTO users (user_id, name)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name`,
+        [target.id, targetName]
+      );
+
+      // Process frames to generate image data and image hash
+      let imageData = null;
+      let imageHash = null;
+      if (Array.isArray(frames) && frames.length > 0) {
+        try {
+          const cleanBase64 = frames[0].includes(',') ? frames[0].split(',')[1] : frames[0];
+          imageData = Buffer.from(cleanBase64, 'base64');
+          const crypto = require('crypto');
+          imageHash = crypto.createHash('sha256').update(imageData).digest('hex');
+        } catch (err) {
+          logger.warn('Failed to parse frame for image_data in pending change request', { error: err.message });
+        }
+      }
+
+      // Insert into user_images with status 'PENDING'
+      await faceQuery(
+        `INSERT INTO user_images (user_id, image_data, image_hash, face_embedding, verification_status, uploaded_at)
+         VALUES ($1, $2, $3, $4, 'PENDING', NOW())`,
+        [
+          target.id,
+          imageData,
+          imageHash,
+          newEmbedding,
+        ]
+      );
+    }
+
     // Create approval request
-    // Supervisor requests need Admin approval; Employee requests need Supervisor approval (which Admins can also approve)
     const assignedRole = (requesterRole === 'supervisor') ? 'admin' : 'supervisor';
-    await query(
+    await faceQuery(
       `INSERT INTO face_approval_requests (request_id, assigned_approver_role, status)
        VALUES ($1, $2, 'PENDING')`,
       [requestId, assignedRole]
     );
 
-    await query('COMMIT');
+    await faceQuery('COMMIT');
+    faceTxBegun = false;
+
+    // Async create notifications in main db (outside transaction)
+    let notifyTargetId = null;
+    if (assignedRole === 'admin') {
+      const adminResult = await query("SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1");
+      if (adminResult.rows.length > 0) {
+        notifyTargetId = adminResult.rows[0].id;
+      }
+    } else {
+      const supervisorResult = await query(
+        `SELECT supervisor_id FROM employees WHERE id = $1 AND supervisor_id IS NOT NULL
+         UNION ALL
+         SELECT supervisor_id FROM supervisor_assignments WHERE employee_id = $1 AND is_active = TRUE AND supervisor_id IS NOT NULL
+         LIMIT 1`,
+        [target.id]
+      );
+      notifyTargetId = supervisorResult.rows[0]?.supervisor_id || null;
+      if (!notifyTargetId) {
+        const adminResult = await query("SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1");
+        if (adminResult.rows.length > 0) {
+          notifyTargetId = adminResult.rows[0].id;
+        }
+      }
+    }
+    if (notifyTargetId) {
+      await createNotification(
+        notifyTargetId,
+        'New face change request',
+        `${req.user.employeeId} submitted a face change request.`,
+        { faceRequestId: requestId }
+      );
+    }
 
     await logAuditEvent({
       actorEmployeeId: req.user.employeeId,
@@ -257,9 +480,14 @@ router.post('/face-change-requests', async (req, res) => {
       assignedApproverRole: assignedRole
     });
   } catch (error) {
-    await query('ROLLBACK');
+    if (faceTxBegun) {
+      try { await faceQuery('ROLLBACK'); } catch {}
+    }
+    if (mainTxBegun) {
+      try { await query('ROLLBACK'); } catch {}
+    }
     logger.error('Face change request submission error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ success: false, message: 'Failed to submit request' });
+    return res.status(500).json({ success: false, message: 'Failed to submit request' });
   }
 });
 
@@ -272,52 +500,87 @@ router.get('/face-change-requests/pending', async (req, res) => {
     const userId = req.user.id;
     const role = req.user.role;
 
-    let result;
+    let rows = [];
     if (role === 'admin') {
-      // Admins see all pending requests
-      result = await query(
-        `SELECT r.id, r.request_type, r.created_at,
-                e.employee_id, e.first_name, e.last_name, e.department,
-                req.employee_id as requester_employee_id, req.first_name as requester_first_name, req.last_name as requester_last_name
+      // Admins see all pending requests in the approval queue
+      const result = await faceQuery(
+        `SELECT r.id, r.employee_id, r.request_type, r.created_at, r.requested_by, r.status
          FROM face_change_requests r
-         JOIN employees e ON r.employee_id = e.id
-         JOIN employees req ON r.requested_by = req.id
+         JOIN face_approval_requests ar ON r.id = ar.request_id
          WHERE r.status = 'PENDING' AND r.deleted_at IS NULL
+           AND ar.status = 'PENDING'
          ORDER BY r.created_at DESC`
       );
+      rows = result.rows;
     } else if (role === 'supervisor') {
-      // Supervisors see pending requests assigned to supervisors for employees in their team
-      result = await query(
-        `SELECT r.id, r.request_type, r.created_at,
-                e.employee_id, e.first_name, e.last_name, e.department,
-                req.employee_id as requester_employee_id, req.first_name as requester_first_name, req.last_name as requester_last_name
+      // Get all employee IDs supervised by this supervisor
+      const supervisedResult = await query(
+        `SELECT id FROM employees 
+         WHERE supervisor_id = $1 
+            OR EXISTS (
+              SELECT 1 FROM supervisor_assignments 
+              WHERE supervisor_id = $1 AND employee_id = employees.id AND is_active = TRUE
+            )`,
+        [userId]
+      );
+      const supervisedIds = supervisedResult.rows.map(r => r.id);
+
+      // Fetch pending requests assigned to supervisors
+      const reqResult = await faceQuery(
+        `SELECT r.id, r.employee_id, r.request_type, r.created_at, r.requested_by, r.status
          FROM face_change_requests r
-         JOIN employees e ON r.employee_id = e.id
-         JOIN employees req ON r.requested_by = req.id
          JOIN face_approval_requests ar ON r.id = ar.request_id
          WHERE r.status = 'PENDING' AND r.deleted_at IS NULL
            AND ar.status = 'PENDING' AND ar.assigned_approver_role = 'supervisor'
-           AND (e.supervisor_id = $1 OR EXISTS (
-             SELECT 1 FROM supervisor_assignments sa 
-             WHERE sa.supervisor_id = $1 AND sa.employee_id = e.id AND sa.is_active = TRUE
-           ))
-         ORDER BY r.created_at DESC`,
-        [userId]
+         ORDER BY r.created_at DESC`
       );
+      // Filter requests for employees supervised by this supervisor
+      rows = reqResult.rows.filter(row => supervisedIds.includes(row.employee_id));
     } else {
       // Employees see their own pending requests
-      result = await query(
-        `SELECT r.id, r.request_type, r.created_at, r.status,
-                e.employee_id, e.first_name, e.last_name, e.department
+      const reqResult = await faceQuery(
+        `SELECT r.id, r.employee_id, r.request_type, r.created_at, r.status
          FROM face_change_requests r
-         JOIN employees e ON r.employee_id = e.id
          WHERE r.status = 'PENDING' AND r.employee_id = $1 AND r.deleted_at IS NULL
          ORDER BY r.created_at DESC`,
         [userId]
       );
+      rows = reqResult.rows;
     }
 
-    res.json({ success: true, data: result.rows });
+    // Enrich rows with employee details from the main database
+    const employeeIds = [...new Set(rows.flatMap(r => [r.employee_id, r.requested_by]).filter(Boolean))];
+    let employeesMap = {};
+    if (employeeIds.length > 0) {
+      const empResult = await query(
+        `SELECT id, employee_id, first_name, last_name, department FROM employees WHERE id = ANY($1)`,
+        [employeeIds]
+      );
+      employeesMap = empResult.rows.reduce((map, emp) => {
+        map[emp.id] = emp;
+        return map;
+      }, {});
+    }
+
+    const enrichedData = rows.map(r => {
+      const e = employeesMap[r.employee_id] || {};
+      const reqEmp = employeesMap[r.requested_by] || {};
+      return {
+        id: r.id,
+        request_type: r.request_type,
+        created_at: r.created_at,
+        status: r.status,
+        employee_id: e.employee_id,
+        first_name: e.first_name,
+        last_name: e.last_name,
+        department: e.department,
+        requester_employee_id: reqEmp.employee_id,
+        requester_first_name: reqEmp.first_name,
+        requester_last_name: reqEmp.last_name
+      };
+    });
+
+    res.json({ success: true, data: enrichedData });
   } catch (error) {
     logger.error('Pending requests list error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ success: false, message: 'Failed to fetch pending requests' });
@@ -329,6 +592,8 @@ router.get('/face-change-requests/pending', async (req, res) => {
  * Approve a pending request
  */
 router.post('/face-change-requests/:id/approve', async (req, res) => {
+  let faceTxBegun = false;
+  let mainTxBegun = false;
   try {
     const requestId = parseInt(req.params.id, 10);
     const approverId = req.user.id;
@@ -339,13 +604,12 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid requestId' });
     }
 
-    // Fetch change request details
-    const reqResult = await query(
+    // Fetch change request details from face db
+    const reqResult = await faceQuery(
       `SELECT r.id, r.employee_id, r.request_type, r.new_face_embedding, r.previous_face_embedding, r.status,
-              ar.assigned_approver_role, e.employee_id as target_employee_id
+              ar.assigned_approver_role
        FROM face_change_requests r
        JOIN face_approval_requests ar ON r.id = ar.request_id
-       JOIN employees e ON r.employee_id = e.id
        WHERE r.id = $1 AND r.deleted_at IS NULL`,
       [requestId]
     );
@@ -365,7 +629,6 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
     if (approverRole === 'admin') {
       canApprove = true;
     } else if (approverRole === 'supervisor' && changeRequest.assigned_approver_role === 'supervisor') {
-      // Supervisor can only approve if they supervise the target employee
       canApprove = await isSupervisedBy(approverId, changeRequest.employee_id);
     }
 
@@ -374,14 +637,18 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
     }
 
     // Execute approval inside transaction
+    await faceQuery('BEGIN');
+    faceTxBegun = true;
+
     await query('BEGIN');
+    mainTxBegun = true;
 
-    // Update request status
-    await query("UPDATE face_change_requests SET status = 'APPROVED', updated_at = NOW() WHERE id = $1", [requestId]);
-    await query("UPDATE face_approval_requests SET status = 'APPROVED' WHERE request_id = $1", [requestId]);
+    // Update request status in face db
+    await faceQuery("UPDATE face_change_requests SET status = 'APPROVED', updated_at = NOW() WHERE id = $1", [requestId]);
+    await faceQuery("UPDATE face_approval_requests SET status = 'APPROVED' WHERE request_id = $1", [requestId]);
 
-    // Record in history
-    await query(
+    // Record in history in face db
+    await faceQuery(
       `INSERT INTO face_approval_history (request_id, action, actioned_by, notes)
        VALUES ($1, 'APPROVE', $2, $3)`,
       [requestId, approverId, notes || 'Approved']
@@ -392,17 +659,26 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
     const prevEmbeddingId = activeEmb ? activeEmb.id : null;
 
     if (changeRequest.request_type === 'DELETE') {
-      await query('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [changeRequest.employee_id]);
+      await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [changeRequest.employee_id]);
+      await faceQuery("UPDATE user_images SET verification_status = 'DELETED' WHERE user_id = $1 AND verification_status = 'PENDING'", [changeRequest.employee_id]);
       await query('UPDATE employees SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1', [changeRequest.employee_id]);
     } else {
-      await query('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [changeRequest.employee_id]);
+      await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [changeRequest.employee_id]);
       
-      const insResult = await query(
+      const insResult = await faceQuery(
         `INSERT INTO face_embeddings (employee_id, embedding_vector, enrolled_by)
          VALUES ($1, $2, $3) RETURNING id`,
         [changeRequest.employee_id, changeRequest.new_face_embedding, changeRequest.employee_id]
       );
       newEmbId = insResult.rows[0].id;
+
+      // Update pending user_images status to VERIFIED
+      await faceQuery(
+        `UPDATE user_images
+         SET verification_status = 'VERIFIED'
+         WHERE user_id = $1 AND verification_status = 'PENDING'`,
+        [changeRequest.employee_id]
+      );
 
       await query(
         `UPDATE employees SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
@@ -410,14 +686,22 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
       );
     }
 
-    // Record in audit logs
-    await query(
+    // Record in audit logs in face db
+    await faceQuery(
       `INSERT INTO face_audit_logs (employee_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
        VALUES ($1, $2, $3, $4, $5, $6::inet, $7)`,
       [changeRequest.employee_id, changeRequest.request_type, approverId, prevEmbeddingId, newEmbId, req.ip, req.headers['user-agent']]
     );
 
     await query('COMMIT');
+    mainTxBegun = false;
+
+    await faceQuery('COMMIT');
+    faceTxBegun = false;
+
+    // Fetch target employee info from main db for auditing
+    const empResult = await query('SELECT employee_id FROM employees WHERE id = $1', [changeRequest.employee_id]);
+    const targetEmployeeIdText = empResult.rows[0]?.employee_id || '';
 
     await logAuditEvent({
       actorEmployeeId: req.user.employeeId,
@@ -426,12 +710,25 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
       resourceId: String(requestId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { approvedFor: changeRequest.target_employee_id, requestType: changeRequest.request_type }
+      details: { approvedFor: targetEmployeeIdText, requestType: changeRequest.request_type }
     });
+
+    // Notify employee of approval
+    await createNotification(
+      changeRequest.employee_id,
+      'Face change request approved',
+      `Your face change request has been approved by ${req.user.employeeId}.`,
+      { faceRequestId: requestId }
+    );
 
     res.json({ success: true, message: 'Face change request approved and applied successfully' });
   } catch (error) {
-    await query('ROLLBACK');
+    if (mainTxBegun) {
+      try { await query('ROLLBACK'); } catch {}
+    }
+    if (faceTxBegun) {
+      try { await faceQuery('ROLLBACK'); } catch {}
+    }
     logger.error('Face change request approval error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ success: false, message: 'Failed to approve request' });
   }
@@ -442,6 +739,7 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
  * Reject a pending request
  */
 router.post('/face-change-requests/:id/reject', async (req, res) => {
+  let faceTxBegun = false;
   try {
     const requestId = parseInt(req.params.id, 10);
     const approverId = req.user.id;
@@ -452,12 +750,11 @@ router.post('/face-change-requests/:id/reject', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid requestId' });
     }
 
-    // Fetch request details
-    const reqResult = await query(
-      `SELECT r.id, r.employee_id, r.status, ar.assigned_approver_role, e.employee_id as target_employee_id
+    // Fetch request details from face db
+    const reqResult = await faceQuery(
+      `SELECT r.id, r.employee_id, r.status, ar.assigned_approver_role
        FROM face_change_requests r
        JOIN face_approval_requests ar ON r.id = ar.request_id
-       JOIN employees e ON r.employee_id = e.id
        WHERE r.id = $1 AND r.deleted_at IS NULL`,
       [requestId]
     );
@@ -484,20 +781,27 @@ router.post('/face-change-requests/:id/reject', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized to reject this face change request' });
     }
 
-    // Execute rejection inside transaction
-    await query('BEGIN');
+    // Execute rejection inside transaction in face db
+    await faceQuery('BEGIN');
+    faceTxBegun = true;
 
-    await query("UPDATE face_change_requests SET status = 'REJECTED', updated_at = NOW() WHERE id = $1", [requestId]);
-    await query("UPDATE face_approval_requests SET status = 'REJECTED' WHERE request_id = $1", [requestId]);
+    await faceQuery("UPDATE face_change_requests SET status = 'REJECTED', updated_at = NOW() WHERE id = $1", [requestId]);
+    await faceQuery("UPDATE face_approval_requests SET status = 'REJECTED' WHERE request_id = $1", [requestId]);
+    await faceQuery("UPDATE user_images SET verification_status = 'REJECTED' WHERE user_id = $1 AND verification_status = 'PENDING'", [changeRequest.employee_id]);
 
-    // Record in history
-    await query(
+    // Record in history in face db
+    await faceQuery(
       `INSERT INTO face_approval_history (request_id, action, actioned_by, notes)
        VALUES ($1, 'REJECT', $2, $3)`,
       [requestId, approverId, notes || 'Rejected']
     );
 
-    await query('COMMIT');
+    await faceQuery('COMMIT');
+    faceTxBegun = false;
+
+    // Fetch target employee info from main db for auditing
+    const empResult = await query('SELECT employee_id FROM employees WHERE id = $1', [changeRequest.employee_id]);
+    const targetEmployeeIdText = empResult.rows[0]?.employee_id || '';
 
     await logAuditEvent({
       actorEmployeeId: req.user.employeeId,
@@ -506,12 +810,22 @@ router.post('/face-change-requests/:id/reject', async (req, res) => {
       resourceId: String(requestId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { rejectedFor: changeRequest.target_employee_id }
+      details: { rejectedFor: targetEmployeeIdText }
     });
+
+    // Notify employee of rejection
+    await createNotification(
+      changeRequest.employee_id,
+      'Face change request rejected',
+      `Your face change request has been rejected by ${req.user.employeeId}.`,
+      { faceRequestId: requestId }
+    );
 
     res.json({ success: true, message: 'Face change request rejected' });
   } catch (error) {
-    await query('ROLLBACK');
+    if (faceTxBegun) {
+      try { await faceQuery('ROLLBACK'); } catch {}
+    }
     logger.error('Face change request rejection error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ success: false, message: 'Failed to reject request' });
   }
@@ -526,45 +840,77 @@ router.get('/face-change-requests/history', async (req, res) => {
     const userId = req.user.id;
     const role = req.user.role;
 
-    let result;
+    let logResult;
     if (role === 'admin') {
-      result = await query(
-        `SELECT l.id, l.action, l.timestamp, l.ip_address, l.device_info,
-                e.employee_id, e.first_name, e.last_name,
-                p.employee_id as perf_employee_id, p.first_name as perf_first_name, p.last_name as perf_last_name
-         FROM face_audit_logs l
-         JOIN employees e ON l.employee_id = e.id
-         JOIN employees p ON l.performed_by = p.id
-         ORDER BY l.timestamp DESC LIMIT 100`
+      logResult = await faceQuery(
+        `SELECT id, employee_id, action, timestamp, ip_address, device_info, performed_by
+         FROM face_audit_logs
+         ORDER BY timestamp DESC LIMIT 100`
       );
     } else if (role === 'supervisor') {
-      result = await query(
-        `SELECT l.id, l.action, l.timestamp, l.ip_address, l.device_info,
-                e.employee_id, e.first_name, e.last_name,
-                p.employee_id as perf_employee_id, p.first_name as perf_first_name, p.last_name as perf_last_name
-         FROM face_audit_logs l
-         JOIN employees e ON l.employee_id = e.id
-         JOIN employees p ON l.performed_by = p.id
-         WHERE e.supervisor_id = $1 OR EXISTS (
-           SELECT 1 FROM supervisor_assignments sa
-           WHERE sa.supervisor_id = $1 AND sa.employee_id = e.id AND sa.is_active = TRUE
-         )
-         ORDER BY l.timestamp DESC LIMIT 100`,
+      // Get all employee IDs supervised by this supervisor
+      const supervisedResult = await query(
+        `SELECT id FROM employees 
+         WHERE supervisor_id = $1 
+            OR EXISTS (
+              SELECT 1 FROM supervisor_assignments 
+              WHERE supervisor_id = $1 AND employee_id = employees.id AND is_active = TRUE
+            )`,
         [userId]
       );
+      const supervisedIds = supervisedResult.rows.map(r => r.id);
+      const targetIds = [userId, ...supervisedIds];
+
+      logResult = await faceQuery(
+        `SELECT id, employee_id, action, timestamp, ip_address, device_info, performed_by
+         FROM face_audit_logs
+         WHERE employee_id = ANY($1)
+         ORDER BY timestamp DESC LIMIT 100`,
+        [targetIds]
+      );
     } else {
-      result = await query(
-        `SELECT l.id, l.action, l.timestamp, l.ip_address, l.device_info,
-                e.employee_id, e.first_name, e.last_name
-         FROM face_audit_logs l
-         JOIN employees e ON l.employee_id = e.id
-         WHERE l.employee_id = $1
-         ORDER BY l.timestamp DESC LIMIT 100`,
+      logResult = await faceQuery(
+        `SELECT id, employee_id, action, timestamp, ip_address, device_info
+         FROM face_audit_logs
+         WHERE employee_id = $1
+         ORDER BY timestamp DESC LIMIT 100`,
         [userId]
       );
     }
 
-    res.json({ success: true, data: result.rows });
+    const rows = logResult.rows;
+    const employeeIds = [...new Set(rows.flatMap(r => [r.employee_id, r.performed_by]).filter(Boolean))];
+    let employeesMap = {};
+    if (employeeIds.length > 0) {
+      const empResult = await query(
+        `SELECT id, employee_id, first_name, last_name FROM employees WHERE id = ANY($1)`,
+        [employeeIds]
+      );
+      employeesMap = empResult.rows.reduce((map, emp) => {
+        map[emp.id] = emp;
+        return map;
+      }, {});
+    }
+
+    const enrichedLogs = rows.map(r => {
+      const e = employeesMap[r.employee_id] || {};
+      const p = employeesMap[r.performed_by] || {};
+      return {
+        id: r.id,
+        action: r.action,
+        timestamp: r.timestamp,
+        ip_address: r.ip_address,
+        device_info: r.device_info,
+        employee_id: e.employee_id,
+        first_name: e.first_name,
+        last_name: e.last_name,
+        perf_employee_id: p.employee_id,
+        perf_first_name: p.first_name,
+        perf_last_name: p.last_name
+      };
+    });
+
+    res.json({ success: true, data: enrichedLogs });
   } catch (error) {
     logger.error('Face history fetch error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ success: false, message: 'Failed to fetch history' });
@@ -576,6 +922,8 @@ router.get('/face-change-requests/history', async (req, res) => {
  * Admin directly register face (skips request/approval workflow)
  */
 router.post('/face-management/admin-register', requireRole('admin'), async (req, res) => {
+  let mainTxBegun = false;
+  let faceTxBegun = false;
   try {
     const { employeeId, frames } = req.body;
     const adminId = req.user.id;
@@ -585,7 +933,7 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
     }
 
     const targetResult = await query(
-      'SELECT id, employee_id, face_enrolled FROM employees WHERE employee_id = $1 AND is_active = TRUE',
+      'SELECT id, employee_id, first_name, last_name, face_enrolled FROM employees WHERE employee_id = $1 AND is_active = TRUE',
       [employeeId]
     );
     if (targetResult.rows.length === 0) {
@@ -601,34 +949,77 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
       return res.status(400).json({ success: false, message: embGen.error });
     }
 
+    await faceQuery('BEGIN');
+    faceTxBegun = true;
+
     await query('BEGIN');
+    mainTxBegun = true;
 
-    // Deactivate old embeddings
-    await query('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
+    // Deactivate old embeddings in face db
+    await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
 
-    // Insert new embedding
-    const insResult = await query(
+    // Insert new embedding in face db
+    const insResult = await faceQuery(
       `INSERT INTO face_embeddings (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [target.id, embGen.embedding, embGen.version, embGen.confidence, adminId]
     );
     const newEmbId = insResult.rows[0].id;
 
-    // Update employees table
+    // Ensure user exists in users table
+    const targetName = `${target.first_name} ${target.last_name}`;
+    await faceQuery(
+      `INSERT INTO users (user_id, name)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name`,
+      [target.id, targetName]
+    );
+
+    // Process frames to generate image data and image hash
+    let imageData = null;
+    let imageHash = null;
+    if (Array.isArray(frames) && frames.length > 0) {
+      try {
+        const cleanBase64 = frames[0].includes(',') ? frames[0].split(',')[1] : frames[0];
+        imageData = Buffer.from(cleanBase64, 'base64');
+        const crypto = require('crypto');
+        imageHash = crypto.createHash('sha256').update(imageData).digest('hex');
+      } catch (err) {
+        logger.warn('Failed to parse admin frame for image_data', { error: err.message });
+      }
+    }
+
+    // Insert into user_images
+    await faceQuery(
+      `INSERT INTO user_images (user_id, image_data, image_hash, face_embedding, verification_status, uploaded_at)
+       VALUES ($1, $2, $3, $4, 'VERIFIED', NOW())`,
+      [
+        target.id,
+        imageData,
+        imageHash,
+        embGen.embedding,
+      ]
+    );
+
+    // Update employees table in main db
     await query(
       `UPDATE employees SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
       [adminId, target.id]
     );
 
-    // Audit logs
+    // Audit logs in face db
     const action = target.face_enrolled ? 'UPDATE' : 'ADD';
-    await query(
+    await faceQuery(
       `INSERT INTO face_audit_logs (employee_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
        VALUES ($1, $2, $3, $4, $5, $6::inet, $7)`,
       [target.id, action, adminId, prevEmbeddingId, newEmbId, req.ip, req.headers['user-agent']]
     );
 
     await query('COMMIT');
+    mainTxBegun = false;
+
+    await faceQuery('COMMIT');
+    faceTxBegun = false;
 
     await logAuditEvent({
       actorEmployeeId: req.user.employeeId,
@@ -642,7 +1033,12 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
 
     res.json({ success: true, message: 'Face registered directly by Administrator successfully' });
   } catch (error) {
-    await query('ROLLBACK');
+    if (mainTxBegun) {
+      try { await query('ROLLBACK'); } catch {}
+    }
+    if (faceTxBegun) {
+      try { await faceQuery('ROLLBACK'); } catch {}
+    }
     logger.error('Admin direct face registration error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ success: false, message: 'Failed to register face directly' });
   }
@@ -653,6 +1049,8 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
  * Admin directly delete face
  */
 router.delete('/face-management/admin-delete/:employeeId', requireRole('admin'), async (req, res) => {
+  let mainTxBegun = false;
+  let faceTxBegun = false;
   try {
     const { employeeId } = req.params;
     const adminId = req.user.id;
@@ -669,25 +1067,33 @@ router.delete('/face-management/admin-delete/:employeeId', requireRole('admin'),
     const activeEmb = await getActiveEmbedding(target.id);
     const prevEmbeddingId = activeEmb ? activeEmb.id : null;
 
+    await faceQuery('BEGIN');
+    faceTxBegun = true;
+
     await query('BEGIN');
+    mainTxBegun = true;
 
-    // Deactivate embeddings
-    await query('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
+    // Deactivate embeddings in face db
+    await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
 
-    // Update employees table
+    // Update employees table in main db
     await query(
       `UPDATE employees SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1`,
       [target.id]
     );
 
-    // Audit logs
-    await query(
+    // Audit logs in face db
+    await faceQuery(
       `INSERT INTO face_audit_logs (employee_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
        VALUES ($1, 'DELETE', $2, $3, NULL, $4::inet, $5)`,
       [target.id, adminId, prevEmbeddingId, req.ip, req.headers['user-agent']]
     );
 
     await query('COMMIT');
+    mainTxBegun = false;
+
+    await faceQuery('COMMIT');
+    faceTxBegun = false;
 
     await logAuditEvent({
       actorEmployeeId: req.user.employeeId,
@@ -701,7 +1107,12 @@ router.delete('/face-management/admin-delete/:employeeId', requireRole('admin'),
 
     res.json({ success: true, message: 'Face deleted directly by Administrator successfully' });
   } catch (error) {
-    await query('ROLLBACK');
+    if (mainTxBegun) {
+      try { await query('ROLLBACK'); } catch {}
+    }
+    if (faceTxBegun) {
+      try { await faceQuery('ROLLBACK'); } catch {}
+    }
     logger.error('Admin direct face deletion error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ success: false, message: 'Failed to delete face directly' });
   }

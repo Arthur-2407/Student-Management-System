@@ -15,10 +15,15 @@
  * Run with: npx jest face-recognition.test.js
  */
 
+process.env.PORT = '0';
+process.env.RUN_MIGRATIONS = 'false';
+process.env.NODE_ENV = 'test';
+
 const request = require('supertest');
-const { app } = require('../../server');
-const { pool, query } = require('../../config/database');
+const { app } = require('../server');
+const { pool, query, faceQuery } = require('../config/database');
 const bcrypt = require('bcryptjs');
+const { connectRedis, disconnectRedis } = require('../config/redis');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FIXTURES
@@ -28,7 +33,7 @@ const bcrypt = require('bcryptjs');
 const VALID_EMBEDDING_A = Array.from({ length: 512 }, (_, i) => Math.sin(i * 0.1) * 0.5 + 0.5);
 
 // 512-element valid embedding (simulates ArcFace output for person B — different identity)
-const VALID_EMBEDDING_B = Array.from({ length: 512 }, (_, i) => Math.cos(i * 0.1) * 0.5 + 0.5);
+const VALID_EMBEDDING_B = Array.from({ length: 512 }, (_, i) => Math.sin(i * 0.1 + Math.PI) * 0.5 + 0.5);
 
 // Normalize embeddings to unit vectors (as ArcFace does)
 function normalizeEmbedding(emb) {
@@ -83,11 +88,11 @@ async function createTestEmployee({ employeeIdStr, role, password = 'TestPass123
   const id = result.rows[0].id;
 
   // Deactivate any existing embeddings
-  await query('UPDATE face_embeddings SET is_active = FALSE WHERE employee_id = $1', [id]);
+  await faceQuery('UPDATE face_embeddings SET is_active = FALSE WHERE employee_id = $1', [id]);
 
   if (hasValidEmbedding) {
     const embedding = embeddingOverride || EMB_A_NORMALIZED;
-    await query(
+    await faceQuery(
       `INSERT INTO face_embeddings (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by)
        VALUES ($1, $2, 'arcface-1.0', 0.95, $1)`,
       [id, JSON.stringify(embedding)]
@@ -105,6 +110,7 @@ async function getAuthTokenFor(employeeIdStr, password) {
 }
 
 beforeAll(async () => {
+  await connectRedis();
   // Create test employees
   testEmployeeId = await createTestEmployee({
     employeeIdStr: 'test-face-emp',
@@ -137,8 +143,22 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Cleanup test data
-  await query("DELETE FROM face_embeddings WHERE employee_id IN (SELECT id FROM employees WHERE employee_id LIKE 'test-face-%')");
-  await query("DELETE FROM employees WHERE employee_id LIKE 'test-face-%'");
+  try {
+    const employeesRes = await query("SELECT id FROM employees WHERE employee_id LIKE 'test-face-%'");
+    const employeeIds = employeesRes.rows.map(r => r.id);
+    if (employeeIds.length > 0) {
+      const idsStr = employeeIds.join(',');
+      await faceQuery(`DELETE FROM user_images WHERE user_id IN (${idsStr})`);
+      await faceQuery(`DELETE FROM users WHERE user_id IN (${idsStr})`);
+      await faceQuery(`DELETE FROM face_embeddings WHERE employee_id IN (${idsStr})`);
+    }
+    await query("DELETE FROM login_logs WHERE employee_id IN (SELECT id FROM employees WHERE employee_id LIKE 'test-face-%')");
+    await query("DELETE FROM security_events WHERE employee_id IN (SELECT id FROM employees WHERE employee_id LIKE 'test-face-%')");
+    await query("DELETE FROM employees WHERE employee_id LIKE 'test-face-%'");
+  } catch (err) {
+    console.error('Teardown error:', err);
+  }
+  await disconnectRedis().catch(() => {});
   await pool.end();
 });
 
@@ -280,6 +300,7 @@ describe('POST /api/auth/face-login — Security Tests', () => {
     expect(res.body.authenticated).toBe(false);
 
     // Cleanup
+    await query("DELETE FROM security_events WHERE employee_id = (SELECT id FROM employees WHERE employee_id = 'test-no-face-emp')");
     await query("DELETE FROM employees WHERE employee_id = 'test-no-face-emp'");
   });
 
@@ -298,10 +319,10 @@ describe('POST /api/auth/face-login — Security Tests', () => {
     );
     const corruptId = corruptResult.rows[0].id;
 
-    // Insert a corrupted (too-short) embedding
-    await query(
+    // Insert a corrupted (too-short) embedding that passes DB constraint (length > 100)
+    await faceQuery(
       `INSERT INTO face_embeddings (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by)
-       VALUES ($1, '[]', '1.0', 0.5, $1)`,
+       VALUES ($1, '[1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0,1.0,2.0]', '1.0', 0.5, $1)`,
       [corruptId]
     );
 
@@ -314,7 +335,8 @@ describe('POST /api/auth/face-login — Security Tests', () => {
     expect(res.body.authenticated).toBe(false);
 
     // Cleanup
-    await query("DELETE FROM face_embeddings WHERE employee_id = $1", [corruptId]);
+    await faceQuery("DELETE FROM face_embeddings WHERE employee_id = $1", [corruptId]);
+    await query("DELETE FROM security_events WHERE employee_id = $1", [corruptId]);
     await query("DELETE FROM employees WHERE employee_id = 'test-corrupt-emp'");
   });
 
@@ -338,7 +360,7 @@ describe('POST /api/auth/face-login — Security Tests', () => {
     const res = await request(app)
       .post('/api/auth/face-login')
       .send({ frames: MOCK_FRAMES, employeeId: 'test-face-admin' });
-      // No password provided
+    // No password provided
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INCOMPLETE_CREDENTIALS');
@@ -510,7 +532,7 @@ describe('POST /api/auth/register-face — Registration Security Tests', () => {
     expect(res.body.success).toBe(true);
 
     // Verify embedding was actually stored in DB
-    const embResult = await query(
+    const embResult = await faceQuery(
       'SELECT embedding_vector FROM face_embeddings WHERE employee_id = $1 AND is_active = TRUE',
       [testEmployeeId]
     );
@@ -541,7 +563,7 @@ describe('POST /api/auth/register-face — Registration Security Tests', () => {
     expect(res.status).not.toBe(200);
 
     // Verify no garbage embedding was stored
-    const embResult = await query(
+    const embResult = await faceQuery(
       `SELECT embedding_vector FROM face_embeddings
        WHERE employee_id = $1 AND is_active = TRUE
        AND embedding_vector = '[]'`,
@@ -597,11 +619,11 @@ describe('POST /api/auth/logout — Session Cleanup Tests', () => {
 describe('Face Embedding Integrity', () => {
 
   test('23. Admin and Supervisor have different embeddings (no collision)', async () => {
-    const adminEmb = await query(
+    const adminEmb = await faceQuery(
       'SELECT embedding_vector FROM face_embeddings WHERE employee_id = $1 AND is_active = TRUE',
       [testAdminId]
     );
-    const supervisorEmb = await query(
+    const supervisorEmb = await faceQuery(
       'SELECT embedding_vector FROM face_embeddings WHERE employee_id = $1 AND is_active = TRUE',
       [testSupervisorId]
     );
@@ -623,16 +645,15 @@ describe('Face Embedding Integrity', () => {
   });
 
   test('24. No employee has a seeded bootstrap embedding (starts with [0.5,)', async () => {
-    const result = await query(
-      `SELECT e.employee_id FROM face_embeddings fe
-       JOIN employees e ON e.id = fe.employee_id
-       WHERE fe.is_active = TRUE AND fe.embedding_vector LIKE '[0.5,%'`
+    const result = await faceQuery(
+      `SELECT employee_id FROM face_embeddings
+       WHERE is_active = TRUE AND embedding_vector LIKE '[0.5,%'`
     );
     expect(result.rows.length).toBe(0);
   });
 
   test('25. No active empty embedding ([]) exists for any employee', async () => {
-    const result = await query(
+    const result = await faceQuery(
       `SELECT employee_id FROM face_embeddings
        WHERE is_active = TRUE AND embedding_vector = '[]'`
     );
@@ -640,7 +661,7 @@ describe('Face Embedding Integrity', () => {
   });
 
   test('26. Each employee has at most one active embedding', async () => {
-    const result = await query(
+    const result = await faceQuery(
       `SELECT employee_id, COUNT(*) as cnt
        FROM face_embeddings
        WHERE is_active = TRUE

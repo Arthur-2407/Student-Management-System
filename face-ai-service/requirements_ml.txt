@@ -1,0 +1,55 @@
+# Face AI Service - ML Requirements
+# All dependencies for Phase 8 ML module implementation
+
+# Core Framework
+Flask==3.0.2
+flask-cors==4.0.0
+
+# ML & Computer Vision
+insightface==0.7.3
+onnxruntime==1.18.0
+onnxruntime-gpu==1.18.0
+opencv-python==4.8.1.78
+opencv-contrib-python==4.8.1.78
+mediapipe==0.10.14
+
+# Deep Learning & Embeddings
+torch==2.2.0
+torchvision==0.17.0
+torchaudio==2.2.0
+TensorFlow==2.16.1
+keras==3.0.5
+
+# Face Processing
+facenet-pytorch==2.6.0
+deepface==0.0.92
+
+# Data & Utilities
+numpy==1.24.3
+scipy==1.12.0
+pandas==2.1.0
+Pillow==10.0.1
+
+# Security & Encryption
+cryptography==41.0.7
+
+# Database & Caching
+redis==5.0.1
+psycopg2-binary==2.9.9
+
+# Utilities
+python-dotenv==1.0.1
+requests==2.31.0
+pydantic==2.5.0
+python-multipart==0.0.6
+
+# Async & Concurrency
+gunicorn==21.2.0
+gevent==23.9.1
+
+# Logging & Monitoring
+python-json-logger==2.0.7
+
+# Development
+pytest==7.4.3
+pytest-cov==4.1.0

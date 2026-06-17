@@ -121,7 +121,7 @@ class TracingEngine {
 
       res.on('finish', () => {
         span.setAttribute('http.status_code', res.statusCode);
-        if (res.statusCode >= 400) span.setStatus('ERROR');
+        if (res.statusCode >= 500) span.setStatus('ERROR');
         span.end();
       });
 

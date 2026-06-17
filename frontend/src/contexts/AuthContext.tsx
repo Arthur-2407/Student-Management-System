@@ -14,6 +14,8 @@ export interface User {
   firstName?: string;
   lastName?: string;
   faceEnrolled?: boolean;
+  supervisorId?: number | null;
+  supervisorName?: string | null;
 }
 
 interface AuthContextType {
@@ -144,6 +146,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         if (!websocketService.isConnected()) {
           websocketService.connectAndJoin(accessToken, userData.employeeId, userData.role);
         }
+
+        // STABILIZATION: Schedule next proactive refresh
+        scheduleProactiveRefresh(accessToken);
       }
     } catch (error) {
       console.error('Token refresh failed:', error);
@@ -170,23 +175,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
 
     try {
-      // Decode JWT payload (base64url) to extract exp
+      // Decode JWT payload (base64url) to extract exp and iat
       const payloadBase64 = accessToken.split('.')[1];
       if (!payloadBase64) return;
       const payload = JSON.parse(atob(payloadBase64.replace(/-/g, '+').replace(/_/g, '/')));
-      const expiresAt = payload.exp * 1000; // ms
-      const now = Date.now();
-      const ttl = expiresAt - now;
-
-      if (ttl <= 0) {
-        // Already expired — refresh immediately
-        void refreshUserRef.current();
-        return;
-      }
-
-      // Refresh at 80% of TTL
-      const refreshDelay = Math.max(ttl * 0.8, 10_000); // minimum 10s
-      console.log(`[Auth] Proactive refresh scheduled in ${Math.round(refreshDelay / 1000)}s`);
+      
+      // Calculate token lifetime purely using server claims (immune to client clock skew)
+      const tokenDurationMs = (payload.exp - payload.iat) * 1000;
+      // Refresh at 80% of token duration (e.g. 12 minutes for a 15-minute token)
+      const refreshDelay = tokenDurationMs > 0 ? tokenDurationMs * 0.8 : 10 * 60 * 1000;
+      
+      console.log(`[Auth] Proactive refresh scheduled in ${Math.round(refreshDelay / 1000)}s (elapsed time)`);
 
       refreshTimerRef.current = setTimeout(() => {
         console.log('[Auth] Proactive token refresh firing...');
@@ -194,7 +193,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }, refreshDelay);
     } catch (err) {
       // If JWT decode fails, fall back to 10-minute timer
-      console.warn('[Auth] Could not decode JWT for proactive refresh, using 10m fallback.');
+      console.warn('[Auth] Could not decode JWT for proactive refresh, using 10m fallback.', err);
       refreshTimerRef.current = setTimeout(() => void refreshUserRef.current(), 10 * 60 * 1000);
     }
   }, []);
@@ -205,6 +204,22 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     };
   }, []);
+
+  // Synchronize proactive refresh timer and user state when api.ts does background refresh
+  useEffect(() => {
+    const handleTokenRefreshed = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { accessToken, employee } = customEvent.detail;
+      if (accessToken) {
+        scheduleProactiveRefresh(accessToken);
+      }
+      if (employee) {
+        setUser(employee);
+      }
+    };
+    window.addEventListener('auth:token-refreshed', handleTokenRefreshed);
+    return () => window.removeEventListener('auth:token-refreshed', handleTokenRefreshed);
+  }, [scheduleProactiveRefresh]);
 
   const value: AuthContextType = {
     user,

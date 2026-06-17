@@ -25,6 +25,30 @@ services:
         limits:
           memory: 1G
 
+  # PostgreSQL Face Database
+  postgres-face:
+    image: postgres:15-alpine
+    container_name: attendance-face-db-prod
+    environment:
+      POSTGRES_DB: attendance_face_system
+      POSTGRES_USER: face_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-securepassword123}
+    volumes:
+      - postgres_face_data:/var/lib/postgresql/data
+    networks:
+      - attendance-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U face_admin -d attendance_face_system"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
   # Redis Cache
   redis:
     image: redis:7-alpine
@@ -62,6 +86,11 @@ services:
       - DB_NAME=${DB_NAME:-attendance_system}
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:-securepassword123}
+      - FACE_DB_HOST=postgres-face
+      - FACE_DB_PORT=5432
+      - FACE_DB_NAME=attendance_face_system
+      - FACE_DB_USER=face_admin
+      - FACE_DB_PASSWORD=${DB_PASSWORD:-securepassword123}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redispassword123}@redis:6379
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET:-your-super-secret-jwt-access-key}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-your-super-secret-jwt-refresh-key}
@@ -77,6 +106,8 @@ services:
       - attendance-network
     depends_on:
       postgres:
+        condition: service_healthy
+      postgres-face:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -177,6 +208,8 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  postgres_face_data:
     driver: local
   redis_data:
     driver: local

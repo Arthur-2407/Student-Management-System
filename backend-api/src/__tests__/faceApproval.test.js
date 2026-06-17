@@ -7,11 +7,14 @@ process.env.RUN_MIGRATIONS = 'false';
 process.env.NODE_ENV = 'test';
 
 const mockQuery = jest.fn();
+const mockFaceQuery = jest.fn();
 
 jest.mock('../config/database', () => ({
   connectDB: jest.fn().mockResolvedValue(true),
+  connectFaceDB: jest.fn().mockResolvedValue(true),
   isDatabaseHealthy: jest.fn().mockResolvedValue(true),
   query: mockQuery,
+  faceQuery: mockQuery,
   pool: {
     end: jest.fn().mockImplementation((cb) => {
       if (cb) cb();

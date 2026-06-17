@@ -68,15 +68,18 @@ router.post('/request', async (req, res) => {
     }
 
     const employeeResult = await query(
-      'SELECT supervisor_id FROM employees WHERE id = $1',
+      `SELECT supervisor_id FROM employees WHERE id = $1 AND supervisor_id IS NOT NULL
+       UNION ALL
+       SELECT supervisor_id FROM supervisor_assignments WHERE employee_id = $1 AND is_active = TRUE AND supervisor_id IS NOT NULL
+       LIMIT 1`,
       [req.user.id]
     );
     let supervisorId = employeeResult.rows[0]?.supervisor_id || null;
 
-    // Supervisor Leave: Supervisor -> Admin (fallback if supervisor_id is null)
-    if (!supervisorId && req.user.role === 'supervisor') {
+    // Fallback to Admin if no supervisor is assigned
+    if (!supervisorId) {
       const adminResult = await query(
-        "SELECT id FROM employees WHERE role = 'admin' AND is_active = TRUE LIMIT 1"
+        "SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
       );
       if (adminResult.rows.length > 0) {
         supervisorId = adminResult.rows[0].id;
@@ -177,7 +180,17 @@ router.get('/team-requests', async (req, res) => {
 
     if (req.user.role === 'supervisor') {
       params.push(req.user.id);
-      scope = `AND lr.supervisor_id = $2`;
+      scope = `AND (
+        lr.supervisor_id = $2
+        OR lr.employee_id IN (
+          SELECT id FROM employees 
+          WHERE supervisor_id = $2 
+             OR EXISTS (
+               SELECT 1 FROM supervisor_assignments 
+               WHERE supervisor_id = $2 AND employee_id = employees.id AND is_active = TRUE
+             )
+        )
+      )`;
     }
 
     const result = await query(
@@ -221,6 +234,11 @@ router.get('/request/:id', async (req, res) => {
            lr.employee_id = $2
            OR $3::text = 'admin'
            OR lr.supervisor_id = $2
+           OR e.supervisor_id = $2
+           OR EXISTS (
+             SELECT 1 FROM supervisor_assignments 
+             WHERE supervisor_id = $2 AND employee_id = e.id AND is_active = TRUE
+           )
          )`,
       [id, req.user.id, req.user.role]
     );
@@ -303,7 +321,21 @@ router.put('/request/:id/approve', async (req, res) => {
            updated_at = NOW()
        WHERE lr.id = $1
          AND lr.status = 'pending'
-         AND ($3::text = 'admin' OR lr.supervisor_id = $2)
+         AND (
+           $3::text = 'admin' 
+           OR lr.supervisor_id = $2
+           OR EXISTS (
+             SELECT 1 FROM employees e
+             WHERE e.id = lr.employee_id
+               AND (
+                 e.supervisor_id = $2
+                 OR EXISTS (
+                   SELECT 1 FROM supervisor_assignments sa
+                   WHERE sa.supervisor_id = $2 AND sa.employee_id = e.id AND sa.is_active = TRUE
+                 )
+               )
+           )
+         )
        RETURNING *`,
       [id, req.user.id, req.user.role]
     );
@@ -384,7 +416,21 @@ router.put('/request/:id/reject', async (req, res) => {
            updated_at = NOW()
        WHERE lr.id = $1
          AND lr.status = 'pending'
-         AND ($4::text = 'admin' OR lr.supervisor_id = $2)
+         AND (
+           $4::text = 'admin' 
+           OR lr.supervisor_id = $2
+           OR EXISTS (
+             SELECT 1 FROM employees e
+             WHERE e.id = lr.employee_id
+               AND (
+                 e.supervisor_id = $2
+                 OR EXISTS (
+                   SELECT 1 FROM supervisor_assignments sa
+                   WHERE sa.supervisor_id = $2 AND sa.employee_id = e.id AND sa.is_active = TRUE
+                 )
+               )
+           )
+         )
        RETURNING *`,
       [id, req.user.id, reason, req.user.role]
     );
