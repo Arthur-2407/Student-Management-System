@@ -50,3 +50,7 @@ orchestration-report.json
 .state-integrity.json
 .state-snapshots/
 backups/
+
+# AI progress tracker — large auto-generated files, not needed in VCS
+.ai-progress/
+runtime_validation.md
