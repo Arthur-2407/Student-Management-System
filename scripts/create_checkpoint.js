@@ -53,10 +53,10 @@ function copyDirRecursive(src, dest, exclude = []) {
 
 // Only copy source and configuration files (skip node_modules, logs, dist, pycache, venv)
 const excludeDirs = ['node_modules', 'venv', 'logs', 'dist', '.git', '__pycache__', '.state-snapshots', '.ai-progress', '.ai-workspace'];
-copyDirRecursive(path.join(ROOT, 'backend-api', 'src'), path.join(srcDest, 'backend-api', 'src'), excludeDirs);
+copyDirRecursive(path.join(ROOT, 'student-backend', 'src'), path.join(srcDest, 'student-backend', 'src'), excludeDirs);
 copyDirRecursive(path.join(ROOT, 'frontend', 'src'), path.join(srcDest, 'frontend', 'src'), excludeDirs);
 copyDirRecursive(path.join(ROOT, 'nginx'), path.join(srcDest, 'nginx'), excludeDirs);
-copyDirRecursive(path.join(ROOT, 'face-ai-service', 'src'), path.join(srcDest, 'face-ai-service', 'src'), excludeDirs);
+copyDirRecursive(path.join(ROOT, 'student-face-ai', 'src'), path.join(srcDest, 'student-face-ai', 'src'), excludeDirs);
 
 // 2. Config Snapshot
 console.log('⚙️  Snapshotting configurations...');
@@ -79,7 +79,7 @@ let nodeVer = 'unknown', npmVer = 'unknown', dockerVer = 'unknown', dbStatus = '
 try { nodeVer = execSync('node -v', { encoding: 'utf8' }).trim(); } catch {}
 try { npmVer = execSync('npm -v', { encoding: 'utf8' }).trim(); } catch {}
 try { dockerVer = execSync('docker -v', { encoding: 'utf8' }).trim(); } catch {}
-try { dbStatus = execSync('docker exec attendance-db-prod pg_isready -U postgres', { encoding: 'utf8' }).trim(); } catch {}
+try { dbStatus = execSync('docker exec student-db-prod pg_isready -U postgres', { encoding: 'utf8' }).trim(); } catch {}
 
 const envSnapshot = {
   timestamp: new Date().toISOString(),
@@ -96,7 +96,7 @@ fs.writeFileSync(path.join(TARGET_DIR, 'environment.json'), JSON.stringify(envSn
 console.log('🗃️  Snapshotting migrations...');
 const migrationDest = path.join(TARGET_DIR, 'migrations');
 fs.mkdirSync(migrationDest, { recursive: true });
-const migrationSrc = path.join(ROOT, 'backend-api', 'src', 'migrations');
+const migrationSrc = path.join(ROOT, 'student-backend', 'src', 'migrations');
 if (fs.existsSync(migrationSrc)) {
   fs.readdirSync(migrationSrc).forEach(file => {
     if (file.endsWith('.sql')) {
@@ -118,8 +118,8 @@ const routes = {
     'POST /api/auth/bootstrap/setup',
     'GET /health',
     'GET /face-ai/health',
-    'POST /api/admin/employees',
-    'GET /api/admin/employees',
+    'POST /api/admin/students',
+    'GET /api/admin/students',
     'POST /api/admin/face/approval',
   ],
   frontend: [
@@ -130,7 +130,7 @@ const routes = {
     '/attendance',
     '/leave',
     '/reports',
-    '/admin/employees',
+    '/admin/students',
     '/admin/approvals',
   ]
 };
@@ -140,7 +140,7 @@ fs.writeFileSync(path.join(TARGET_DIR, 'routes.json'), JSON.stringify(routes, nu
 console.log('📦 Snapshotting dependencies...');
 const depDest = path.join(TARGET_DIR, 'dependencies');
 fs.mkdirSync(depDest, { recursive: true });
-['package.json', 'package-lock.json', 'backend-api/package.json', 'frontend/package.json', 'face-ai-service/requirements.txt'].forEach(file => {
+['package.json', 'package-lock.json', 'student-backend/package.json', 'frontend/package.json', 'student-face-ai/requirements.txt'].forEach(file => {
   const srcPath = path.join(ROOT, file);
   if (fs.existsSync(srcPath)) {
     fs.mkdirSync(path.join(depDest, path.dirname(file)), { recursive: true });
@@ -160,15 +160,15 @@ fs.writeFileSync(path.join(TARGET_DIR, 'docker_status.txt'), dockerStatus);
 console.log('📝 Snapshotting API contracts...');
 const contracts = {
   login: {
-    request: { employeeId: 'string', password: 'string' },
-    response: { success: 'boolean', tokens: { accessToken: 'string', refreshToken: 'string' }, employee: 'object' }
+    request: { studentId: 'string', password: 'string' },
+    response: { success: 'boolean', tokens: { accessToken: 'string', refreshToken: 'string' }, student: 'object' }
   },
   faceLogin: {
-    request: { employeeId: 'string', password: 'string', frames: 'array of base64 strings' },
-    response: { success: 'boolean', authenticated: 'boolean', tokens: 'object', employee: 'object' }
+    request: { studentId: 'string', password: 'string', frames: 'array of base64 strings' },
+    response: { success: 'boolean', authenticated: 'boolean', tokens: 'object', student: 'object' }
   },
   registerFace: {
-    request: { employeeId: 'string', frames: 'array of base64 strings' },
+    request: { studentId: 'string', frames: 'array of base64 strings' },
     response: { success: 'boolean', message: 'string' }
   }
 };
@@ -181,7 +181,7 @@ const manifest = {
   timestamp: new Date().toISOString(),
   filesModified: [
     'frontend/src/components/DegradedModeBanner.tsx',
-    'backend-api/src/migrations/017_restore_admin_face_embedding.up.sql',
+    'student-backend/src/migrations/017_restore_admin_face_embedding.up.sql',
     'frontend/src/components/FaceLogin.tsx',
     'frontend/src/pages/BootstrapSetupPage.tsx',
     'frontend/src/components/camera/FaceCamera.tsx',
@@ -189,21 +189,21 @@ const manifest = {
   ],
   filesVerified: [
     'frontend/src/components/DegradedModeBanner.tsx',
-    'backend-api/src/migrations/017_restore_admin_face_embedding.up.sql',
+    'student-backend/src/migrations/017_restore_admin_face_embedding.up.sql',
     'frontend/src/components/FaceLogin.tsx',
     'frontend/src/pages/BootstrapSetupPage.tsx',
     'frontend/src/components/camera/FaceCamera.tsx',
     'frontend/src/api/authApi.ts',
-    'backend-api/src/modules/auth/routes.js',
-    'face-ai-service/src/main.py'
+    'student-backend/src/modules/auth/routes.js',
+    'student-face-ai/src/main.py'
   ],
   servicesVerified: [
-    'attendance-db-prod',
-    'attendance-redis-prod',
-    'backend-api-prod',
-    'face-ai-service-prod',
-    'attendance-frontend-prod',
-    'attendance-nginx-prod'
+    'student-db-prod',
+    'student-redis-prod',
+    'student-backend-prod',
+    'student-face-ai-prod',
+    'student-frontend-prod',
+    'student-nginx-prod'
   ],
   endpointsVerified: [
     'GET /health',
@@ -212,7 +212,7 @@ const manifest = {
   ],
   rollbackMapping: {
     'frontend/src/components/DegradedModeBanner.tsx': `source/frontend/src/components/DegradedModeBanner.tsx`,
-    'backend-api/src/migrations/017_restore_admin_face_embedding.up.sql': null, // Added file
+    'student-backend/src/migrations/017_restore_admin_face_embedding.up.sql': null, // Added file
     'frontend/src/components/FaceLogin.tsx': `source/frontend/src/components/FaceLogin.tsx`,
     'frontend/src/pages/BootstrapSetupPage.tsx': `source/frontend/src/pages/BootstrapSetupPage.tsx`,
     'frontend/src/components/camera/FaceCamera.tsx': `source/frontend/src/components/camera/FaceCamera.tsx`,

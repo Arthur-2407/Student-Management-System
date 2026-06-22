@@ -14,27 +14,27 @@ conn = psycopg2.connect(
 cursor = conn.cursor()
 
 # Create test embedding vectors (128-dim FaceNet format)
-# Note: Only ONE active embedding per employee (database constraint)
+# Note: Only ONE active embedding per student (database constraint)
 # Multi-embedding means multiple in history, but one active
 test_embeddings = [
-    {'employee_id': 125, 'vector': [0.35] + [0.0]*127, 'confidence': 0.95, 'version': '2.0-facenet-vggface2'},
+    {'student_id': 125, 'vector': [0.35] + [0.0]*127, 'confidence': 0.95, 'version': '2.0-facenet-vggface2'},
 ]
 
 print('[INJECTING TEST EMBEDDINGS]')
-print('Target employee: biotest001 (ID: 125)')
-print('Embeddings to inject: 1 (database allows 1 active per employee)')
+print('Target student: biotest001 (ID: 125)')
+print('Embeddings to inject: 1 (database allows 1 active per student)')
 
 # Clear existing
-cursor.execute('DELETE FROM face_embeddings WHERE employee_id = %s', (125,))
+cursor.execute('DELETE FROM face_embeddings WHERE student_id = %s', (125,))
 print('Cleared existing embeddings')
 
 # Insert
 for i, emb in enumerate(test_embeddings, 1):
     cursor.execute('''
     INSERT INTO face_embeddings
-    (employee_id, embedding_vector, embedding_version, confidence_score, is_active, enrolled_by, enrollment_date)
+    (student_id, embedding_vector, embedding_version, confidence_score, is_active, enrolled_by, enrollment_date)
     VALUES (%s, %s, %s, %s, %s, %s, NOW())
-    ''', (emb['employee_id'], json.dumps(emb['vector']), emb['version'], emb['confidence'], True, 1))
+    ''', (emb['student_id'], json.dumps(emb['vector']), emb['version'], emb['confidence'], True, 1))
     print(f'  Embedding {i}: confidence={emb["confidence"]}')
 
 conn.commit()
@@ -42,7 +42,7 @@ conn.commit()
 # Verify
 cursor.execute('''
 SELECT COUNT(*) as count, AVG(confidence_score) as avg_confidence
-FROM face_embeddings WHERE employee_id = %s AND is_active = TRUE
+FROM face_embeddings WHERE student_id = %s AND is_active = TRUE
 ''', (125,))
 
 result = cursor.fetchone()

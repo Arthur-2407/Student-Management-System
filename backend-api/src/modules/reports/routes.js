@@ -41,29 +41,29 @@ function hoursString(value) {
   return asNumber(value).toFixed(2);
 }
 
-function scopedParams(role, startDate, endDate, employeeId) {
-  if (role === 'employee' || role === 'supervisor') {
-    return [startDate, endDate, employeeId];
+function scopedParams(role, startDate, endDate, studentId) {
+  if (role === 'student' || role === 'teacher') {
+    return [startDate, endDate, studentId];
   }
   return [startDate, endDate];
 }
 
-function employeeScope(role, column = 'employee_id') {
-  if (role === 'employee') {
+function studentScope(role, column = 'student_id') {
+  if (role === 'student') {
     return `AND ${column} = $3`;
   }
-  if (role === 'supervisor') {
-    return `AND (${column} = $3 OR ${column} IN (SELECT employee_id FROM supervisor_assignments WHERE supervisor_id = $3 AND is_active = TRUE))`;
+  if (role === 'teacher') {
+    return `AND (${column} = $3 OR ${column} IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = $3 AND is_active = TRUE))`;
   }
   return '';
 }
 
 // GET /api/reports - aggregated reports data for dashboard charts and cards.
 router.get('/', async (req, res) => {
-  const employeeId = req.user?.id;
+  const studentId = req.user?.id;
   const role = req.user?.role;
   const { startDate, endDate } = getDateRange(req.query);
-  const params = scopedParams(role, startDate, endDate, employeeId);
+  const params = scopedParams(role, startDate, endDate, studentId);
 
   try {
     // Fetch configurable work start time from office locations (or use default)
@@ -84,13 +84,13 @@ router.get('/', async (req, res) => {
     const attendanceStats = await query(
       `SELECT
          COUNT(*) AS total_checkins,
-         COUNT(DISTINCT employee_id) AS employees_checked_in,
+         COUNT(DISTINCT student_id) AS students_checked_in,
          AVG(EXTRACT(EPOCH FROM work_hours) / 3600) AS avg_hours_per_day,
          COUNT(*) FILTER (WHERE geo_fence_status IS TRUE) AS geo_compliant,
          COUNT(*) AS total_records
-       FROM attendance_records
+       FROM student_attendance
        WHERE check_in_time::DATE BETWEEN $1::DATE AND $2::DATE
-       ${employeeScope(role)}`,
+       ${studentScope(role)}`,
       params
     );
 
@@ -105,7 +105,7 @@ router.get('/', async (req, res) => {
          COALESCE(SUM(total_days) FILTER (WHERE status = 'approved' AND leave_type = 'sick'), 0) AS sick_days_used
        FROM leave_requests
        WHERE start_date >= $1::DATE AND end_date <= $2::DATE
-       ${employeeScope(role)}`,
+       ${studentScope(role)}`,
       params
     );
 
@@ -115,26 +115,26 @@ router.get('/', async (req, res) => {
          COUNT(*) FILTER (WHERE status = 'submitted') AS submitted,
          COUNT(*) FILTER (WHERE status = 'reviewed') AS reviewed,
          COUNT(*) FILTER (WHERE status = 'approved') AS approved
-       FROM work_reports
+       FROM student_reports
        WHERE report_date >= $1::DATE AND report_date <= $2::DATE
-       ${employeeScope(role)}`,
+       ${studentScope(role)}`,
       params
     );
 
     // Use configurable work start time instead of hardcoded 09:00:00
     const lateParams = [startDate, endDate, workStartTime];
     let lateScope = '';
-    if (role === 'employee') {
-      lateScope = `AND ar.employee_id = $4`;
-      lateParams.push(employeeId);
-    } else if (role === 'supervisor') {
-      lateScope = `AND (ar.employee_id = $4 OR ar.employee_id IN (SELECT employee_id FROM supervisor_assignments WHERE supervisor_id = $4 AND is_active = TRUE))`;
-      lateParams.push(employeeId);
+    if (role === 'student') {
+      lateScope = `AND ar.student_id = $4`;
+      lateParams.push(studentId);
+    } else if (role === 'teacher') {
+      lateScope = `AND (ar.student_id = $4 OR ar.student_id IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = $4 AND is_active = TRUE))`;
+      lateParams.push(studentId);
     }
 
     const lateArrivals = await query(
       `SELECT COUNT(*) AS late_count
-       FROM attendance_records ar
+       FROM student_attendance ar
        WHERE ar.check_in_time::DATE BETWEEN $1::DATE AND $2::DATE
          AND ar.check_in_time::TIME > $3::TIME
        ${lateScope}`,
@@ -144,12 +144,12 @@ router.get('/', async (req, res) => {
     // Use configurable work start time in weekly data query
     const weeklyParams = [startDate, endDate, workStartTime];
     let weeklyScope = '';
-    if (role === 'employee') {
-      weeklyScope = `AND ar.employee_id = $4`;
-      weeklyParams.push(employeeId);
-    } else if (role === 'supervisor') {
-      weeklyScope = `AND (ar.employee_id = $4 OR ar.employee_id IN (SELECT employee_id FROM supervisor_assignments WHERE supervisor_id = $4 AND is_active = TRUE))`;
-      weeklyParams.push(employeeId);
+    if (role === 'student') {
+      weeklyScope = `AND ar.student_id = $4`;
+      weeklyParams.push(studentId);
+    } else if (role === 'teacher') {
+      weeklyScope = `AND (ar.student_id = $4 OR ar.student_id IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = $4 AND is_active = TRUE))`;
+      weeklyParams.push(studentId);
     }
 
     const weeklyData = await query(
@@ -158,7 +158,7 @@ router.get('/', async (req, res) => {
          to_char(date_trunc('week', ar.check_in_time)::DATE, 'Mon DD') AS week,
          ROUND(COALESCE(SUM(EXTRACT(EPOCH FROM ar.work_hours) / 3600), 0)::NUMERIC, 2) AS hours,
          COUNT(*) FILTER (WHERE ar.check_in_time::TIME > $3::TIME) AS late_arrivals
-       FROM attendance_records ar
+       FROM student_attendance ar
        WHERE ar.check_in_time::DATE BETWEEN $1::DATE AND $2::DATE
        ${weeklyScope}
        GROUP BY week_start
@@ -171,16 +171,16 @@ router.get('/', async (req, res) => {
       const departmentStats = await query(
         `SELECT
            COALESCE(e.department, 'Unassigned') AS department,
-           COUNT(DISTINCT e.id) AS employees,
+           COUNT(DISTINCT e.id) AS students,
            COUNT(ar.id) AS total_checkins,
            ROUND(
-             COUNT(DISTINCT ar.employee_id)::NUMERIC
+             COUNT(DISTINCT ar.student_id)::NUMERIC
              / NULLIF(COUNT(DISTINCT e.id), 0) * 100,
              2
            ) AS attendance_rate
-         FROM employees e
-         LEFT JOIN attendance_records ar
-           ON e.id = ar.employee_id
+         FROM students e
+         LEFT JOIN student_attendance ar
+           ON e.id = ar.student_id
           AND ar.check_in_time::DATE BETWEEN $1::DATE AND $2::DATE
          WHERE e.is_active = TRUE
          GROUP BY COALESCE(e.department, 'Unassigned')
@@ -219,7 +219,7 @@ router.get('/', async (req, res) => {
       return {
         department: dept.department,
         name: dept.department,
-        employees: asInt(dept.employees),
+        students: asInt(dept.students),
         checkins: asInt(dept.total_checkins),
         attendanceRate,
         compliance: attendanceRate,
@@ -235,7 +235,7 @@ router.get('/', async (req, res) => {
         avgHoursPerDay: stats.averageHours,
         geoCompliance,
         lateArrivals: stats.lateArrivals,
-        totalEmployees: asInt(attendance.employees_checked_in),
+        totalStudents: asInt(attendance.students_checked_in),
       },
       attendance: {
         total: stats.totalCheckins,
@@ -259,7 +259,7 @@ router.get('/', async (req, res) => {
   } catch (error) {
     logger.error('Reports endpoint error', {
       error: error.message,
-      employeeId,
+      studentId,
       role,
       startDate,
       endDate,
@@ -276,7 +276,7 @@ router.get('/', async (req, res) => {
 router.get('/attendance', async (req, res) => {
   const role = req.user?.role;
   const userDbId = req.user?.id;
-  const { employeeId, department, startDate, endDate, limit = 50, offset = 0 } = req.query;
+  const { studentId, department, startDate, endDate, limit = 50, offset = 0 } = req.query;
 
   try {
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -286,19 +286,19 @@ router.get('/attendance', async (req, res) => {
     let filterSql = '';
     let paramIndex = 3;
 
-    if (role === 'employee') {
-      filterSql += ` AND ar.employee_id = $${paramIndex}`;
+    if (role === 'student') {
+      filterSql += ` AND ar.student_id = $${paramIndex}`;
       params.push(userDbId);
       paramIndex++;
     } else {
-      if (role === 'supervisor') {
-        filterSql += ` AND (ar.employee_id = $${paramIndex} OR ar.employee_id IN (SELECT employee_id FROM supervisor_assignments WHERE supervisor_id = $${paramIndex} AND is_active = TRUE))`;
+      if (role === 'teacher') {
+        filterSql += ` AND (ar.student_id = $${paramIndex} OR ar.student_id IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = $${paramIndex} AND is_active = TRUE))`;
         params.push(userDbId);
         paramIndex++;
       }
-      if (employeeId) {
-        filterSql += ` AND e.employee_id = $${paramIndex}`;
-        params.push(employeeId);
+      if (studentId) {
+        filterSql += ` AND e.student_id = $${paramIndex}`;
+        params.push(studentId);
         paramIndex++;
       }
       if (department) {
@@ -314,17 +314,17 @@ router.get('/attendance', async (req, res) => {
     const offsetIdx = paramIndex++;
 
     const result = await query(
-      `SELECT ar.*, e.employee_id, e.first_name, e.last_name, e.department,
+      `SELECT ar.*, e.student_id, e.first_name, e.last_name, e.department,
               COALESCE(wt_temp.work_start_time, wt_perm.work_start_time, '09:00:00') AS work_start_time,
               COALESCE(wt_temp.work_end_time, wt_perm.work_end_time, '18:00:00') AS work_end_time
-       FROM attendance_records ar
-       JOIN employees e ON ar.employee_id = e.id
-       LEFT JOIN work_timings wt_temp ON wt_temp.employee_id = ar.employee_id
+       FROM student_attendance ar
+       JOIN students e ON ar.student_id = e.id
+       LEFT JOIN work_timings wt_temp ON wt_temp.student_id = ar.student_id
          AND wt_temp.is_temporary = TRUE
          AND wt_temp.is_active = TRUE
          AND ar.check_in_time::DATE >= wt_temp.start_date
          AND ar.check_in_time::DATE <= wt_temp.end_date
-       LEFT JOIN work_timings wt_perm ON wt_perm.employee_id = ar.employee_id
+       LEFT JOIN work_timings wt_perm ON wt_perm.student_id = ar.student_id
          AND wt_perm.is_temporary = FALSE
          AND wt_perm.is_active = TRUE
        WHERE ar.check_in_time::DATE BETWEEN $1::DATE AND $2::DATE
@@ -345,7 +345,7 @@ router.get('/attendance', async (req, res) => {
 router.get('/leave', async (req, res) => {
   const role = req.user?.role;
   const userDbId = req.user?.id;
-  const { employeeId, department, status, startDate, endDate, limit = 50, offset = 0 } = req.query;
+  const { studentId, department, status, startDate, endDate, limit = 50, offset = 0 } = req.query;
 
   try {
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
@@ -355,19 +355,19 @@ router.get('/leave', async (req, res) => {
     let filterSql = '';
     let paramIndex = 3;
 
-    if (role === 'employee') {
-      filterSql += ` AND lr.employee_id = $${paramIndex}`;
+    if (role === 'student') {
+      filterSql += ` AND lr.student_id = $${paramIndex}`;
       params.push(userDbId);
       paramIndex++;
     } else {
-      if (role === 'supervisor') {
-        filterSql += ` AND (lr.employee_id = $${paramIndex} OR lr.employee_id IN (SELECT employee_id FROM supervisor_assignments WHERE supervisor_id = $${paramIndex} AND is_active = TRUE))`;
+      if (role === 'teacher') {
+        filterSql += ` AND (lr.student_id = $${paramIndex} OR lr.student_id IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = $${paramIndex} AND is_active = TRUE))`;
         params.push(userDbId);
         paramIndex++;
       }
-      if (employeeId) {
-        filterSql += ` AND e.employee_id = $${paramIndex}`;
-        params.push(employeeId);
+      if (studentId) {
+        filterSql += ` AND e.student_id = $${paramIndex}`;
+        params.push(studentId);
         paramIndex++;
       }
       if (department) {
@@ -389,9 +389,9 @@ router.get('/leave', async (req, res) => {
     const offsetIdx = paramIndex++;
 
     const result = await query(
-      `SELECT lr.*, e.employee_id, e.first_name, e.last_name, e.department
+      `SELECT lr.*, e.student_id, e.first_name, e.last_name, e.department
        FROM leave_requests lr
-       JOIN employees e ON lr.employee_id = e.id
+       JOIN students e ON lr.student_id = e.id
        WHERE lr.start_date >= $1::DATE AND lr.end_date <= $2::DATE
        ${filterSql}
        ORDER BY lr.created_at DESC
@@ -410,11 +410,11 @@ router.get('/leave', async (req, res) => {
 router.get('/security', async (req, res) => {
   const role = req.user?.role;
   const userDbId = req.user?.id;
-  if (role !== 'admin' && role !== 'supervisor' && role !== 'employee') {
+  if (role !== 'admin' && role !== 'teacher' && role !== 'student') {
     return res.status(403).json({ success: false, message: 'Insufficient permissions' });
   }
 
-  const { severity, eventType, employeeId, startDate, endDate, limit = 50, offset = 0 } = req.query;
+  const { severity, eventType, studentId, startDate, endDate, limit = 50, offset = 0 } = req.query;
 
   try {
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -424,12 +424,12 @@ router.get('/security', async (req, res) => {
     let filterSql = '';
     let paramIndex = 3;
 
-    if (role === 'employee') {
-      filterSql += ` AND se.employee_id = $${paramIndex}`;
+    if (role === 'student') {
+      filterSql += ` AND se.student_id = $${paramIndex}`;
       params.push(userDbId);
       paramIndex++;
-    } else if (role === 'supervisor') {
-      filterSql += ` AND (se.employee_id = $${paramIndex} OR se.employee_id IN (SELECT employee_id FROM supervisor_assignments WHERE supervisor_id = $${paramIndex} AND is_active = TRUE))`;
+    } else if (role === 'teacher') {
+      filterSql += ` AND (se.student_id = $${paramIndex} OR se.student_id IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = $${paramIndex} AND is_active = TRUE))`;
       params.push(userDbId);
       paramIndex++;
     }
@@ -444,9 +444,9 @@ router.get('/security', async (req, res) => {
       params.push(eventType);
       paramIndex++;
     }
-    if (employeeId) {
-      filterSql += ` AND e.employee_id = $${paramIndex}`;
-      params.push(employeeId);
+    if (studentId) {
+      filterSql += ` AND e.student_id = $${paramIndex}`;
+      params.push(studentId);
       paramIndex++;
     }
 
@@ -456,9 +456,9 @@ router.get('/security', async (req, res) => {
     const offsetIdx = paramIndex++;
 
     const result = await query(
-      `SELECT se.*, e.employee_id, e.first_name, e.last_name, e.department
+      `SELECT se.*, e.student_id, e.first_name, e.last_name, e.department
        FROM security_events se
-       LEFT JOIN employees e ON se.employee_id = e.id
+       LEFT JOIN students e ON se.student_id = e.id
        WHERE se.timestamp::DATE BETWEEN $1::DATE AND $2::DATE
        ${filterSql}
        ORDER BY se.timestamp DESC
@@ -473,11 +473,11 @@ router.get('/security', async (req, res) => {
   }
 });
 
-// GET /api/reports/performance - employee performance stats
+// GET /api/reports/performance - student performance stats
 router.get('/performance', async (req, res) => {
   const role = req.user?.role;
   const userDbId = req.user?.id;
-  if (role !== 'admin' && role !== 'supervisor' && role !== 'employee') {
+  if (role !== 'admin' && role !== 'teacher' && role !== 'student') {
     return res.status(403).json({ success: false, message: 'Insufficient permissions' });
   }
 
@@ -502,12 +502,12 @@ router.get('/performance', async (req, res) => {
     let filterSql = '';
     let paramIndex = 4;
 
-    if (role === 'employee') {
+    if (role === 'student') {
       filterSql += ` AND e.id = $${paramIndex}`;
       params.push(userDbId);
       paramIndex++;
-    } else if (role === 'supervisor') {
-      filterSql += ` AND (e.id = $${paramIndex} OR e.id IN (SELECT employee_id FROM supervisor_assignments WHERE supervisor_id = $${paramIndex} AND is_active = TRUE))`;
+    } else if (role === 'teacher') {
+      filterSql += ` AND (e.id = $${paramIndex} OR e.id IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = $${paramIndex} AND is_active = TRUE))`;
       params.push(userDbId);
       paramIndex++;
     }
@@ -524,16 +524,16 @@ router.get('/performance', async (req, res) => {
     const offsetIdx = paramIndex++;
 
     const result = await query(
-      `SELECT e.id, e.employee_id, e.first_name, e.last_name, e.department, e.position,
+      `SELECT e.id, e.student_id, e.first_name, e.last_name, e.department, e.position,
               COUNT(ar.id)::int AS total_checkins,
               ROUND(COALESCE(AVG(EXTRACT(EPOCH FROM ar.work_hours) / 3600), 0)::numeric, 2)::float AS avg_hours,
               COUNT(ar.id) FILTER (WHERE ar.check_in_time::TIME > $3::TIME)::int AS late_count
-       FROM employees e
-       LEFT JOIN attendance_records ar ON e.id = ar.employee_id 
+       FROM students e
+       LEFT JOIN student_attendance ar ON e.id = ar.student_id 
          AND ar.check_in_time::DATE BETWEEN $1::DATE AND $2::DATE
        WHERE e.is_active = TRUE
        ${filterSql}
-       GROUP BY e.id, e.employee_id, e.first_name, e.last_name, e.department, e.position
+       GROUP BY e.id, e.student_id, e.first_name, e.last_name, e.department, e.position
        ORDER BY total_checkins DESC, avg_hours DESC
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       params
@@ -546,8 +546,8 @@ router.get('/performance', async (req, res) => {
   }
 });
 
-// GET /api/reports/managed-employees - returns the list of employees the logged-in user can view
-router.get('/managed-employees', async (req, res) => {
+// GET /api/reports/managed-students - returns the list of students the logged-in user can view
+router.get('/managed-students', async (req, res) => {
   const role = req.user?.role;
   const userDbId = req.user?.id;
 
@@ -555,38 +555,38 @@ router.get('/managed-employees', async (req, res) => {
     let result;
 
     if (role === 'admin') {
-      // Admin sees all active employees (all roles)
+      // Admin sees all active students (all roles)
       result = await query(
-        `SELECT id, employee_id, first_name, last_name, department, role
-         FROM employees
+        `SELECT id, student_id, first_name, last_name, department, role
+         FROM students
          WHERE is_active = TRUE
          ORDER BY role, first_name, last_name`
       );
-    } else if (role === 'supervisor') {
-      // Supervisor sees only the employees assigned to them
+    } else if (role === 'teacher') {
+      // Teacher sees only the students assigned to them
       result = await query(
-        `SELECT e.id, e.employee_id, e.first_name, e.last_name, e.department, e.role
-         FROM employees e
+        `SELECT e.id, e.student_id, e.first_name, e.last_name, e.department, e.role
+         FROM students e
          WHERE e.id IN (
-           SELECT employee_id FROM supervisor_assignments
-           WHERE supervisor_id = $1 AND is_active = TRUE
+           SELECT student_id FROM teacher_assignments
+           WHERE teacher_id = $1 AND is_active = TRUE
          ) AND e.is_active = TRUE
          ORDER BY e.first_name, e.last_name`,
         [userDbId]
       );
     } else {
-      // Employees see only themselves
+      // Students see only themselves
       result = await query(
-        `SELECT id, employee_id, first_name, last_name, department, role
-         FROM employees WHERE id = $1 AND is_active = TRUE`,
+        `SELECT id, student_id, first_name, last_name, department, role
+         FROM students WHERE id = $1 AND is_active = TRUE`,
         [userDbId]
       );
     }
 
     res.json({ success: true, data: result.rows });
   } catch (error) {
-    logger.error('Managed employees fetch error', { error: error.message, role, userDbId });
-    res.status(500).json({ success: false, message: 'Failed to fetch managed employees' });
+    logger.error('Managed students fetch error', { error: error.message, role, userDbId });
+    res.status(500).json({ success: false, message: 'Failed to fetch managed students' });
   }
 });
 
@@ -605,15 +605,15 @@ router.get('/departments', async (req, res) => {
     const result = await query(
       `SELECT
          COALESCE(e.department, 'Unassigned') AS department,
-         COUNT(DISTINCT e.id)::int AS employees,
+         COUNT(DISTINCT e.id)::int AS students,
          COUNT(ar.id)::int AS total_checkins,
          ROUND(
-           (COUNT(DISTINCT ar.employee_id)::NUMERIC / NULLIF(COUNT(DISTINCT e.id), 0) * 100),
+           (COUNT(DISTINCT ar.student_id)::NUMERIC / NULLIF(COUNT(DISTINCT e.id), 0) * 100),
            2
          )::float AS attendance_rate
-       FROM employees e
-       LEFT JOIN attendance_records ar
-         ON e.id = ar.employee_id
+       FROM students e
+       LEFT JOIN student_attendance ar
+         ON e.id = ar.student_id
         AND ar.check_in_time::DATE BETWEEN $1::DATE AND $2::DATE
        WHERE e.is_active = TRUE
        GROUP BY COALESCE(e.department, 'Unassigned')

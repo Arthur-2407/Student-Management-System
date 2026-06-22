@@ -68,7 +68,7 @@ class DeviceTrustEngine {
         const result = await db.query(
           `SELECT fingerprint, ip_address, trust_score, trust_level
            FROM device_fingerprints
-           WHERE employee_id = $1 AND revoked_at IS NULL
+           WHERE student_id = $1 AND revoked_at IS NULL
            ORDER BY last_seen_at DESC
            LIMIT $2`,
           [userId, this._maxPerUser]
@@ -123,10 +123,10 @@ class DeviceTrustEngine {
       if (db) {
         await db.query(
           `INSERT INTO device_fingerprints
-             (employee_id, fingerprint, ip_address, user_agent, trust_score, trust_level,
+             (student_id, fingerprint, ip_address, user_agent, trust_score, trust_level,
               first_seen_at, last_seen_at, login_count)
            VALUES ($1, $2, $3::inet, $4, 50, 'medium', NOW(), NOW(), 1)
-           ON CONFLICT (employee_id, fingerprint)
+           ON CONFLICT (student_id, fingerprint)
            DO UPDATE SET
              last_seen_at = NOW(),
              ip_address   = EXCLUDED.ip_address,
@@ -174,7 +174,7 @@ class DeviceTrustEngine {
       const db = this._getDB();
       if (db) {
         const result = await db.query(
-          `SELECT COUNT(DISTINCT employee_id) as tracked_users,
+          `SELECT COUNT(DISTINCT student_id) as tracked_users,
                   COUNT(*) as total_devices
            FROM device_fingerprints
            WHERE revoked_at IS NULL`

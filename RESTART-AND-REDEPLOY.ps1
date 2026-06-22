@@ -101,11 +101,11 @@ if (-not $SkipBackup) {
     
     # Backup database if running
     Write-Info "Checking for running database..."
-    $dbContainer = docker ps --filter "name=attendance-db" --format "{{.Names}}" 2>$null
+    $dbContainer = docker ps --filter "name=student-db-prod" --format "{{.Names}}" 2>$null
     if ($dbContainer) {
         Write-Info "Backing up database..."
         $dbOutput = "$backupDir\database_backup_$timestamp.sql"
-        docker exec $dbContainer pg_dump -U postgres attendance_system > $dbOutput 2>$null
+        docker exec $dbContainer pg_dump -U postgres student_system > $dbOutput 2>$null
         if ($LASTEXITCODE -eq 0) {
             $dbSize = (Get-Item $dbOutput).Length / 1MB
             Write-Success "Database backed up ($([math]::Round($dbSize, 2)) MB)"
@@ -228,7 +228,7 @@ Write-Info "Checking PostgreSQL database..."
 while ($attempt -lt $maxAttempts) {
     $attempt++
     try {
-        $dbCheck = docker-compose exec -T postgres pg_isready -U postgres 2>&1
+        $dbCheck = docker-compose -f docker-compose.prod.yml exec -T student-db pg_isready -U postgres 2>&1
         if ($dbCheck -like "*accepting connections*") {
             Write-Success "PostgreSQL is healthy"
             break
@@ -249,7 +249,7 @@ $attempt = 0
 while ($attempt -lt $maxAttempts) {
     $attempt++
     try {
-        $redisCheck = docker-compose exec -T redis redis-cli ping 2>&1
+        $redisCheck = docker-compose -f docker-compose.prod.yml exec -T student-redis sh -c 'redis-cli -a $REDIS_PASSWORD ping' 2>&1
         if ($redisCheck -like "*PONG*") {
             Write-Success "Redis is healthy"
             break
@@ -271,8 +271,8 @@ $attempt = 0
 while ($attempt -lt $maxAttempts) {
     $attempt++
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:3001/health" -ErrorAction SilentlyContinue
-        if ($response.StatusCode -eq 200) {
+        $code = curl.exe -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3002/health
+        if ($code -eq "200") {
             Write-Success "Backend API is healthy"
             $apiHealthy = $true
             break
@@ -293,8 +293,8 @@ $attempt = 0
 while ($attempt -lt $maxAttempts) {
     $attempt++
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -ErrorAction SilentlyContinue
-        if ($response.StatusCode -eq 200) {
+        $code = curl.exe -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/face-ai/health
+        if ($code -eq "200") {
             Write-Success "Face AI Service is healthy"
             break
         }
@@ -334,9 +334,10 @@ Write-Success "All services have been successfully restarted and redeployed!"
 Write-Success "No code or data was removed or damaged."
 
 Write-Info "Service Access Points:"
-Write-Info "  - Backend API: http://localhost:3001"
-Write-Info "  - Face AI Service: http://localhost:8000"
-Write-Info "  - Frontend: http://localhost"
+Write-Info "  - Backend API: http://localhost:3002"
+Write-Info "  - Face AI Service: http://localhost:8080/face-ai/"
+Write-Info "  - Frontend (HTTP): http://localhost:8080"
+Write-Info "  - Frontend (HTTPS): https://localhost:8443"
 
 if (-not $SkipBackup) {
     Write-Info "Backup Location: $backupDir"

@@ -131,7 +131,7 @@ api.interceptors.response.use(
         }
  
         onRefreshSuccess(accessToken);
-        window.dispatchEvent(new CustomEvent('auth:token-refreshed', { detail: { accessToken, employee: response.data.employee } }));
+        window.dispatchEvent(new CustomEvent('auth:token-refreshed', { detail: { accessToken, student: response.data.student } }));
         return api(originalRequest);
       } catch (refreshError) {
         onRefreshFailure();

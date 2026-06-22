@@ -27,15 +27,15 @@ for row in cur.fetchall():
 # Count embeddings
 print("\n=== MULTI-EMBEDDING EVIDENCE ===")
 cur.execute("""
-SELECT employee_id, COUNT(*) as count
+SELECT student_id, COUNT(*) as count
 FROM face_embeddings
 WHERE is_active = TRUE
-GROUP BY employee_id
+GROUP BY student_id
 ORDER BY count DESC
 LIMIT 10
 """)
 
-print(f"{'Employee ID':<30} {'Active Embeddings':<20}")
+print(f"{'Student ID':<30} {'Active Embeddings':<20}")
 print("-" * 50)
 for row in cur.fetchall():
     print(f"{row[0]:<30} {row[1]:<20}")

@@ -26,7 +26,7 @@ const router = express.Router();
  * GET /api/onnx/status
  * Get current ONNX system status (model conversions, availability)
  */
-router.get('/status', requireRole('supervisor'), async (req, res) => {
+router.get('/status', requireRole('teacher'), async (req, res) => {
   try {
     logger.debug('[ONNXRoutes] GET /onnx/status');
     
@@ -46,7 +46,7 @@ router.get('/status', requireRole('supervisor'), async (req, res) => {
  * GET /api/onnx/metrics
  * Get ONNX inference performance metrics
  */
-router.get('/metrics', requireRole('supervisor'), async (req, res) => {
+router.get('/metrics', requireRole('teacher'), async (req, res) => {
   try {
     logger.debug('[ONNXRoutes] GET /onnx/metrics');
     
@@ -66,7 +66,7 @@ router.get('/metrics', requireRole('supervisor'), async (req, res) => {
  * GET /api/onnx/model-status/:modelName
  * Check status of a specific model conversion
  */
-router.get('/model-status/:modelName', requireRole('supervisor'), async (req, res) => {
+router.get('/model-status/:modelName', requireRole('teacher'), async (req, res) => {
   try {
     const { modelName } = req.params;
     logger.debug('[ONNXRoutes] GET /onnx/model-status', { model: modelName });

@@ -24,7 +24,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// POST /api/geofence/validate - Validate if employee is within geo-fence
+// POST /api/geofence/validate - Validate if student is within geo-fence
 // Requires authentication
 router.post('/validate', authenticateToken, async (req, res) => {
   try {
@@ -113,12 +113,12 @@ router.get('/config', authenticateToken, async (req, res) => {
   }
 });
 
-// PUT /api/geofence/config - Update geo-fence configuration (supervisor/admin only)
+// PUT /api/geofence/config - Update geo-fence configuration (teacher/admin only)
 router.put('/config', authenticateToken, async (req, res) => {
   try {
-    // V8: Enforce role-based access — only supervisors and admins can modify geofence config
-    if (req.user.role !== 'supervisor' && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Insufficient permissions — supervisor or admin role required' });
+    // V8: Enforce role-based access — only teachers and admins can modify geofence config
+    if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Insufficient permissions — teacher or admin role required' });
     }
 
     const { latitude, longitude, radius_meters } = req.body;

@@ -28,8 +28,8 @@ interface AttendanceRecord {
   checkout_distance_from_office?: number | null;
   check_in_image_url: string | null;
   check_out_image_url: string | null;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };

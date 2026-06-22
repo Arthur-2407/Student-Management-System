@@ -18,7 +18,7 @@ import { authApi } from '@api/authApi';
 // ────────────────────────────────────────────────────────────────
 interface PreLoginData {
   exists: boolean;
-  role: 'admin' | 'supervisor' | 'employee' | null;
+  role: 'admin' | 'teacher' | 'student' | null;
   has_password: boolean;
   has_face: boolean;
   required_method: 'face_and_password' | 'password_or_face' | 'password';
@@ -45,7 +45,7 @@ const LoginPage: React.FC = () => {
   const { showError, showSuccess } = useNotification();
 
   const [step, setStep] = useState<LoginStep>('id_entry');
-  const [employeeId, setEmployeeId] = useState('');
+  const [studentId, setStudentId] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [preLoginData, setPreLoginData] = useState<PreLoginData | null>(null);
@@ -75,7 +75,7 @@ const LoginPage: React.FC = () => {
         setRecoveryError('');
         try {
           const res = await api.post('/auth/recovery/reset', {
-            employeeId,
+            studentId,
             recoveryId: preLoginData?.recovery_request?.id,
             frames: recoveryFrames,
           });
@@ -95,7 +95,7 @@ const LoginPage: React.FC = () => {
       };
       submitFrames();
     }
-  }, [recoveryFrames, isRecoverySubmitting, recoverySuccess, employeeId, preLoginData?.recovery_request?.id, showSuccess]);
+  }, [recoveryFrames, isRecoverySubmitting, recoverySuccess, studentId, preLoginData?.recovery_request?.id, showSuccess]);
 
   // ── Bootstrap check + admin contact info (loaded once on mount) ──
   useEffect(() => {
@@ -121,16 +121,16 @@ const LoginPage: React.FC = () => {
     loadAdminContact();
   }, [navigate]);
 
-  // ── Step 1: Check Employee ID and determine login method ──
-  const handleCheckEmployeeId = useCallback(async (e: React.FormEvent) => {
+  // ── Step 1: Check Student ID and determine login method ──
+  const handleCheckStudentId = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!employeeId.trim()) { setIdError('Please enter your Employee ID'); return; }
+    if (!studentId.trim()) { setIdError('Please enter your Student ID'); return; }
     setIdError('');
     setStep('checking');
     setIsLoading(true);
 
     try {
-      const res = await api.post<PreLoginData & { success: boolean }>('/auth/pre-login-check', { employeeId });
+      const res = await api.post<PreLoginData & { success: boolean }>('/auth/pre-login-check', { studentId });
       const data = res.data;
       setPreLoginData(data);
 
@@ -140,7 +140,7 @@ const LoginPage: React.FC = () => {
       }
 
       if (!data.exists) {
-        // Employee doesn't exist — show password step (will fail gracefully at login)
+        // Student doesn't exist — show password step (will fail gracefully at login)
         setStep('password');
         return;
       }
@@ -160,10 +160,10 @@ const LoginPage: React.FC = () => {
 
       // Route to appropriate step based on required method
       if (data.required_method === 'face_and_password') {
-        // Admin or Supervisor: Need password first, then face
+        // Admin or Teacher: Need password first, then face
         setStep('password');
       } else {
-        // Employee: either method — show both options
+        // Student: either method — show both options
         setStep('password');
       }
     } catch (err: any) {
@@ -171,7 +171,7 @@ const LoginPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [employeeId]);
+  }, [studentId]);
 
   // ── Step 2: Password login ──
   const handlePasswordLogin = useCallback(async (e: React.FormEvent) => {
@@ -182,13 +182,13 @@ const LoginPage: React.FC = () => {
       const response = await api.post<{
         success: boolean;
         tokens: { accessToken: string; refreshToken: string };
-        employee: User;
+        student: User;
         message?: string;
         code?: string;
-      }>('/auth/login', { employeeId, password });
+      }>('/auth/login', { studentId, password });
 
       if (response.data.success) {
-        login(response.data.tokens, response.data.employee);
+        login(response.data.tokens, response.data.student);
         showSuccess('Login successful!');
         navigate('/dashboard');
       } else {
@@ -196,10 +196,10 @@ const LoginPage: React.FC = () => {
       }
     } catch (error: any) {
       if (error.response?.status === 403 && error.response?.data?.code === 'FACE_AUTHENTICATION_REQUIRED') {
-        // Admin/Supervisor: password was correct but face is also needed
+        // Admin/Teacher: password was correct but face is also needed
         showSuccess('Password verified. Face authentication required...');
         setTimeout(() => {
-          navigate('/face-login', { state: { employeeId, password, requirePassword: true, passwordVerified: true } });
+          navigate('/face-login', { state: { studentId, password, requirePassword: true, passwordVerified: true } });
         }, 1000);
       } else if (error.response?.status === 423) {
         setStep('locked');
@@ -210,18 +210,18 @@ const LoginPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [employeeId, password, login, navigate, showError, showSuccess]);
+  }, [studentId, password, login, navigate, showError, showSuccess]);
 
-  // ── Navigate to face login (for employees who prefer face-only) ──
+  // ── Navigate to face login (for students who prefer face-only) ──
   const goToFaceLogin = useCallback(() => {
-    navigate('/face-login', { state: { employeeId } });
-  }, [navigate, employeeId]);
+    navigate('/face-login', { state: { studentId } });
+  }, [navigate, studentId]);
 
   // ── Role badge ──
   const roleBadge = preLoginData?.role ? (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
       preLoginData.role === 'admin' ? 'bg-red-100 text-red-800' :
-      preLoginData.role === 'supervisor' ? 'bg-yellow-100 text-yellow-800' :
+      preLoginData.role === 'teacher' ? 'bg-yellow-100 text-yellow-800' :
       'bg-green-100 text-green-800'
     }`}>
       {preLoginData.role.charAt(0).toUpperCase() + preLoginData.role.slice(1)}
@@ -262,8 +262,8 @@ const LoginPage: React.FC = () => {
             >
               <FaBuilding className="mx-auto text-5xl text-white drop-shadow-lg" />
             </motion.div>
-            <h1 className="text-2xl font-bold text-white mt-4 tracking-tight">Enterprise Attendance</h1>
-            <p className="text-blue-200 mt-1 text-sm">Secure Employee Management Platform</p>
+            <h1 className="text-2xl font-bold text-white mt-4 tracking-tight">Student Management</h1>
+            <p className="text-blue-200 mt-1 text-sm">Secure Student Management Platform</p>
           </div>
 
           <div className="p-8 bg-white">
@@ -272,22 +272,22 @@ const LoginPage: React.FC = () => {
               {step === 'id_entry' && (
                 <motion.div key="id" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                   <h2 className="text-xl font-bold text-gray-800 mb-1">Welcome Back</h2>
-                  <p className="text-gray-500 text-sm mb-6">Enter your Employee ID to continue</p>
-                  <form onSubmit={handleCheckEmployeeId}>
+                  <p className="text-gray-500 text-sm mb-6">Enter your Student ID to continue</p>
+                  <form onSubmit={handleCheckStudentId}>
                     <div className="mb-5">
-                      <label htmlFor="employeeId" className="block text-sm font-medium text-gray-700 mb-1.5">Employee ID</label>
+                      <label htmlFor="studentId" className="block text-sm font-medium text-gray-700 mb-1.5">Student ID</label>
                       <div className="relative">
                         <FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
-                          id="employeeId"
+                          id="studentId"
                           type="text"
-                          value={employeeId}
+                          value={studentId}
                           onChange={(e) => {
                             const val = e.target.value;
                             if (val.trim().toLowerCase() === 'admin') {
-                              setEmployeeId('admin');
+                              setStudentId('admin');
                             } else {
-                              setEmployeeId(val);
+                              setStudentId(val);
                             }
                             setIdError('');
                           }}
@@ -326,7 +326,7 @@ const LoginPage: React.FC = () => {
               {step === 'checking' && (
                 <motion.div key="checking" className="text-center py-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <FaSpinner className="mx-auto text-3xl text-blue-500 animate-spin mb-3" />
-                  <p className="text-gray-600">Verifying employee ID...</p>
+                  <p className="text-gray-600">Verifying student ID...</p>
                 </motion.div>
               )}
 
@@ -364,7 +364,7 @@ const LoginPage: React.FC = () => {
                       )}
                       <p className="text-xs text-gray-500 text-center mb-4">Please contact your administrator to recover your credentials, or submit a recovery request below.</p>
                       <button
-                        onClick={() => navigate('/recovery-request', { state: { employeeId, missingCredentials: preLoginData?.missing_credentials } })}
+                        onClick={() => navigate('/recovery-request', { state: { studentId, missingCredentials: preLoginData?.missing_credentials } })}
                         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium text-sm transition-colors"
                       >
                         Request Credential Recovery
@@ -406,7 +406,7 @@ const LoginPage: React.FC = () => {
                       )}
                       <p className="text-xs text-gray-500 text-center mb-4">Please submit another recovery request or contact your administrator.</p>
                       <button
-                        onClick={() => navigate('/recovery-request', { state: { employeeId, missingCredentials: preLoginData?.missing_credentials } })}
+                        onClick={() => navigate('/recovery-request', { state: { studentId, missingCredentials: preLoginData?.missing_credentials } })}
                         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium text-sm transition-colors"
                       >
                         Request Credential Recovery Again
@@ -500,7 +500,7 @@ const LoginPage: React.FC = () => {
                       <FaExclamationTriangle className="mx-auto text-4xl text-amber-500 mb-3 block text-center w-full" />
                       <h3 className="text-lg font-bold text-gray-800 mb-2 text-center">Credentials Missing</h3>
                       <button
-                        onClick={() => navigate('/recovery-request', { state: { employeeId } })}
+                        onClick={() => navigate('/recovery-request', { state: { studentId } })}
                         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium text-sm transition-colors"
                       >
                         Request Credential Recovery
@@ -528,7 +528,7 @@ const LoginPage: React.FC = () => {
                     {roleBadge}
                   </div>
                   <p className="text-gray-500 text-sm mb-4">
-                    {employeeId && <span className="font-medium text-gray-700">{employeeId}</span>}
+                    {studentId && <span className="font-medium text-gray-700">{studentId}</span>}
                   </p>
 
                   {loginMethodInfo}
@@ -561,7 +561,7 @@ const LoginPage: React.FC = () => {
                     </button>
                   </form>
 
-                  {/* Employee can also use face-only */}
+                  {/* Student can also use face-only */}
                   {preLoginData?.required_method === 'password_or_face' && (
                     <div className="mt-4">
                       <div className="relative">

@@ -8,8 +8,8 @@ const RecoveryRequestPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Try to pre-fill the employeeId from location state
-  const stateEmployeeId = location.state?.employeeId || '';
+  // Try to pre-fill the studentId from location state
+  const stateStudentId = location.state?.studentId || '';
   const stateMissingCredentials: string[] = location.state?.missingCredentials || [];
 
   // Auto-detect the most appropriate recovery type from missingCredentials
@@ -22,7 +22,7 @@ const RecoveryRequestPage: React.FC = () => {
     return 'password_reset'; // default
   };
 
-  const [employeeId, setEmployeeId] = useState(stateEmployeeId);
+  const [studentId, setStudentId] = useState(stateStudentId);
   const [requestType, setRequestType] = useState(detectRequestType());
   const [reason, setReason] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -34,8 +34,8 @@ const RecoveryRequestPage: React.FC = () => {
     setErrorMessage('');
     setSuccessMessage('');
 
-    if (!employeeId.trim()) {
-      setErrorMessage('Please enter your Employee ID.');
+    if (!studentId.trim()) {
+      setErrorMessage('Please enter your Student ID.');
       return;
     }
 
@@ -53,7 +53,7 @@ const RecoveryRequestPage: React.FC = () => {
         recoveryId: number;
         expiresAt: string;
       }>('/auth/recovery/request', {
-        employeeId: employeeId.trim(),
+        studentId: studentId.trim(),
         requestType,
         reason: reason.trim(),
       });
@@ -116,18 +116,18 @@ const RecoveryRequestPage: React.FC = () => {
               )}
 
               <div>
-                <label htmlFor="employeeId" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-                  Employee ID
+                <label htmlFor="studentId" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Student ID
                 </label>
                 <div className="relative">
                   <FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                   <input
-                    id="employeeId"
+                    id="studentId"
                     type="text"
-                    value={employeeId}
-                    onChange={(e) => setEmployeeId(e.target.value)}
+                    value={studentId}
+                    onChange={(e) => setStudentId(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors"
-                    placeholder="Enter your Employee ID"
+                    placeholder="Enter your Student ID"
                     required
                   />
                 </div>
@@ -167,7 +167,7 @@ const RecoveryRequestPage: React.FC = () => {
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2 text-xs text-amber-800">
                 <FaInfoCircle className="mt-0.5 flex-shrink-0" />
                 <span>
-                  Admin approval is required to restore access. Please verify your identity with your supervisor after submitting.
+                  Admin approval is required to restore access. Please verify your identity with your teacher after submitting.
                 </span>
               </div>
 

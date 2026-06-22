@@ -1,8 +1,8 @@
 -- Migration 010: Clear Identical Seeded Face Embeddings & Add Data Integrity Constraints
 -- Purpose: 
---   1. Remove the identical sine-wave/bootstrap embeddings seeded for Admin and Supervisor
+--   1. Remove the identical sine-wave/bootstrap embeddings seeded for Admin and Teacher
 --      in migration 009 (both had the SAME vector, enabling cross-role identity collision).
---   2. Add a partial unique index to prevent multiple active embeddings per employee.
+--   2. Add a partial unique index to prevent multiple active embeddings per student.
 --   3. Reset face_enrolled flags for accounts with invalidated embeddings.
 -- Date: 2026-06-14
 
@@ -28,8 +28,9 @@ BEGIN
   WHERE
     is_active = TRUE
     AND (
-      -- Match the 009 migration sine-wave seed (starts with [0.5,)
+      -- Match the 009 migration sine-wave seed (starts with [0.5, or [0.6,)
       embedding_vector LIKE '[0.5,%'
+      OR embedding_vector LIKE '[0.6,%'
       -- Match empty embeddings stored as '[]'
       OR embedding_vector = '[]'
       -- Match short vectors (valid ArcFace is always 512 elements)
@@ -39,8 +40,8 @@ BEGIN
   GET DIAGNOSTICS v_deactivated_count = ROW_COUNT;
   RAISE NOTICE 'Deactivated % invalid/seeded face embeddings', v_deactivated_count;
 
-  -- Reset face_enrolled flags for employees whose only embeddings were deactivated
-  UPDATE employees e
+  -- Reset face_enrolled flags for students whose only embeddings were deactivated
+  UPDATE students e
   SET
     face_enrolled    = FALSE,
     face_enrolled_at = NULL,
@@ -49,22 +50,22 @@ BEGIN
     e.face_enrolled = TRUE
     AND NOT EXISTS (
       SELECT 1 FROM face_embeddings fe
-      WHERE fe.employee_id = e.id AND fe.is_active = TRUE
+      WHERE fe.student_id = e.id AND fe.is_active = TRUE
     );
 
   GET DIAGNOSTICS v_reset_count = ROW_COUNT;
-  RAISE NOTICE 'Reset face_enrolled=FALSE for % employees with no valid embeddings', v_reset_count;
+  RAISE NOTICE 'Reset face_enrolled=FALSE for % students with no valid embeddings', v_reset_count;
 END $$;
 
 -- ============================================================================
--- 2. ADD UNIQUE CONSTRAINT: only ONE active embedding per employee
--- This prevents the scenario where both Admin and Supervisor share the same
+-- 2. ADD UNIQUE CONSTRAINT: only ONE active embedding per student
+-- This prevents the scenario where both Admin and Teacher share the same
 -- active embedding, and also prevents duplicate active embeddings on re-enroll.
 -- Using a partial unique index (WHERE is_active = TRUE).
 -- ============================================================================
 DROP INDEX IF EXISTS idx_face_embeddings_unique_active;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_face_embeddings_unique_active
-ON face_embeddings (employee_id)
+ON face_embeddings (student_id)
 WHERE is_active = TRUE;
 
 -- ============================================================================
@@ -89,7 +90,7 @@ ALTER TABLE face_embeddings
 -- ============================================================================
 COMMENT ON TABLE face_embeddings IS
   'Stores ArcFace 512-dimensional face embeddings. '
-  'Migration 009 seeded a known-bad identical vector for admin and supervisor '
+  'Migration 009 seeded a known-bad identical vector for admin and teacher '
   '(deactivated by migration 010). All active embeddings must pass chk_embedding_not_empty.';
 
 COMMIT;

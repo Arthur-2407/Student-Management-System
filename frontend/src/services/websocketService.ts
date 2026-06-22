@@ -17,7 +17,7 @@ class WebSocketService {
   private _pendingListeners: Array<{ event: string; callback: (...args: any[]) => void }> = [];
   // STABILIZATION: Store connection params for reconnection
   private _lastToken: string | null = null;
-  private _lastEmployeeId: string | null = null;
+  private _lastStudentId: string | null = null;
   private _lastRole: string | null = null;
 
   connect(token: string) {
@@ -55,9 +55,9 @@ class WebSocketService {
    * Uses the socket 'connect' event listener instead of setTimeout polling
    * for reliable room-join timing.
    */
-  connectAndJoin(token: string, employeeId: string, role: string) {
+  connectAndJoin(token: string, studentId: string, role: string) {
     // STABILIZATION: Store params for reconnect
-    this._lastEmployeeId = employeeId;
+    this._lastStudentId = studentId;
     this._lastRole = role;
     this.connect(token);
 
@@ -66,7 +66,7 @@ class WebSocketService {
     // STABILIZATION: Use the 'connect' event instead of setTimeout polling
     // This guarantees we only join after the handshake is complete
     const doJoin = () => {
-      this.joinRoom(employeeId, role);
+      this.joinRoom(studentId, role);
     };
 
     if (this.socket.connected) {
@@ -81,10 +81,10 @@ class WebSocketService {
   /**
    * Emit the room-join events for this user.
    */
-  joinRoom(employeeId: string, role: string) {
-    this.emit('join', { employeeId });
-    if (role === 'supervisor' || role === 'admin') {
-      this.emit('join-supervisor', { employeeId });
+  joinRoom(studentId: string, role: string) {
+    this.emit('join', { studentId });
+    if (role === 'teacher' || role === 'admin') {
+      this.emit('join-teacher', { studentId });
     }
   }
 
@@ -206,8 +206,8 @@ class WebSocketService {
           this.socket = null;
         }
         // Re-connect and re-join rooms if we have the params
-        if (this._lastEmployeeId && this._lastRole) {
-          this.connectAndJoin(this._lastToken, this._lastEmployeeId, this._lastRole);
+        if (this._lastStudentId && this._lastRole) {
+          this.connectAndJoin(this._lastToken, this._lastStudentId, this._lastRole);
         } else {
           this.connect(this._lastToken);
         }
@@ -225,7 +225,7 @@ class WebSocketService {
     }
     this.reconnectAttempts = 0;
     this._lastToken = null;
-    this._lastEmployeeId = null;
+    this._lastStudentId = null;
     this._lastRole = null;
   }
 

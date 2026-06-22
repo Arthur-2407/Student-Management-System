@@ -125,7 +125,7 @@ async function getContainerLogs(containerName, lines = 50) {
 
 async function getErrorsFromLogs() {
   const errors = [];
-  const services = ['backend-api', 'attendance-frontend', 'attendance-db', 'attendance-redis', 'face-ai-service'];
+  const services = ['student-backend', 'student-frontend', 'student-db', 'student-redis', 'student-face-ai'];
 
   for (const service of services) {
     const logs = await getContainerLogs(service, 100);

@@ -1,6 +1,6 @@
 const express = require('express');
 const { query } = require('../../config/database');
-const { authorizeSupervisor } = require('../../middleware/authMiddleware');
+const { authorizeTeacher } = require('../../middleware/authMiddleware');
 const { logSecurityEvent } = require('../security-monitoring/securityLogger');
 const { logger } = require('../../config/logger');
 
@@ -33,18 +33,18 @@ function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * Resolves geo-fence result for a given employee and coordinates.
- * Checks employee_locations first; falls back to global check_geo_fence().
+ * Resolves geo-fence result for a given student and coordinates.
+ * Checks student_locations first; falls back to global check_geo_fence().
  * Returns { within_fence, distance, office_name }
  */
-async function resolveGeoFence(employeeId, latitude, longitude) {
-  // 1. Check for per-employee location assignment
+async function resolveGeoFence(studentId, latitude, longitude) {
+  // 1. Check for per-student location assignment
   const empLocResult = await query(
     `SELECT name, latitude, longitude, radius_meters
-     FROM employee_locations
-     WHERE employee_id = $1 AND is_active = TRUE
+     FROM student_locations
+     WHERE student_id = $1 AND is_active = TRUE
      LIMIT 1`,
-    [employeeId]
+    [studentId]
   );
 
   if (empLocResult.rows.length > 0) {
@@ -71,7 +71,7 @@ async function resolveGeoFence(employeeId, latitude, longitude) {
 router.post('/check-in', async (req, res) => {
   try {
     const { location, imageData, idempotencyKey } = req.body;
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
 
     if (
       !location
@@ -84,8 +84,8 @@ router.post('/check-in', async (req, res) => {
       });
     }
 
-    // Resolve geo-fence: per-employee location first, then global fallback
-    const geoFenceData = await resolveGeoFence(employeeId, location.latitude, location.longitude);
+    // Resolve geo-fence: per-student location first, then global fallback
+    const geoFenceData = await resolveGeoFence(studentId, location.latitude, location.longitude);
 
     if (!geoFenceData) {
       return res.status(400).json({
@@ -96,11 +96,11 @@ router.post('/check-in', async (req, res) => {
 
     const { within_fence, distance, office_name } = geoFenceData;
 
-    // Security check: Reject check-in if user is outside the assigned location radius, EXCEPT if employeeId is 'admin'
-    if (req.user?.employeeId !== 'admin' && !within_fence) {
+    // Security check: Reject check-in if user is outside the assigned location radius, EXCEPT if studentId is 'admin'
+    if (req.user?.studentId !== 'admin' && !within_fence) {
       try {
         await logSecurityEvent({
-          employeeId: req.user.employeeId,
+          studentId: req.user.studentId,
           eventType: 'GEOFENCE_VIOLATION',
           ipAddress: req.ip,
           deviceInfo: req.headers['user-agent'],
@@ -123,17 +123,17 @@ router.post('/check-in', async (req, res) => {
     }
 
     // Atomic INSERT ... ON CONFLICT DO NOTHING using the unique partial index
-    // (uix_attendance_one_open_per_employee_per_day).
+    // (uix_attendance_one_open_per_student_per_day).
     // This prevents double-check-in even with concurrent requests — the DB
     // enforces uniqueness atomically, so the SELECT+INSERT race condition is eliminated.
     const result = await query(
-      `INSERT INTO attendance_records
-         (employee_id, check_in_time, location, geo_fence_status, distance_from_office, check_in_image_url, idempotency_key)
+      `INSERT INTO student_attendance
+         (student_id, check_in_time, location, geo_fence_status, distance_from_office, check_in_image_url, idempotency_key)
        VALUES ($1, NOW(), POINT($2, $3), $4, $5, $6, $7)
        ON CONFLICT DO NOTHING
        RETURNING id, check_in_time`,
       [
-        employeeId,
+        studentId,
         location.latitude,
         location.longitude,
         within_fence,
@@ -154,7 +154,7 @@ router.post('/check-in', async (req, res) => {
     // Log geo-fence violation if applicable
     if (!within_fence) {
       await logSecurityEvent({
-        employeeId: req.user.employeeId,
+        studentId: req.user.studentId,
         eventType: 'GEOFENCE_VIOLATION',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -172,16 +172,16 @@ router.post('/check-in', async (req, res) => {
     // STABILIZATION: Emit WebSocket events for realtime attendance sync
     const io = req.app.get('io');
     if (io) {
-      io.notifyEmployee(req.user.employeeId, 'attendance_update', {
+      io.notifyStudent(req.user.studentId, 'attendance_update', {
         type: 'check-in',
         status: 'checked-in',
         record,
         lastCheckIn: record.check_in_time,
-        employeeId: req.user.employeeId,
+        studentId: req.user.studentId,
       });
-      io.notifySupervisors('attendance_update', {
+      io.notifyTeachers('attendance_update', {
         type: 'check-in',
-        employeeId: req.user.employeeId,
+        studentId: req.user.studentId,
         record,
       });
     }
@@ -211,14 +211,14 @@ router.post('/check-in', async (req, res) => {
 router.post('/check-out', async (req, res) => {
   try {
     const { location, imageData } = req.body;
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
 
     // Get today's check-in record (timezone-safe using PostgreSQL CURRENT_DATE)
     const checkinResult = await query(
-      `SELECT id, check_in_time FROM attendance_records 
-       WHERE employee_id = $1 AND check_in_time >= CURRENT_DATE AND check_in_time < CURRENT_DATE + INTERVAL '1 day'
+      `SELECT id, check_in_time FROM student_attendance 
+       WHERE student_id = $1 AND check_in_time >= CURRENT_DATE AND check_in_time < CURRENT_DATE + INTERVAL '1 day'
        AND check_out_time IS NULL`,
-      [employeeId]
+      [studentId]
     );
 
     if (checkinResult.rows.length === 0) {
@@ -231,7 +231,7 @@ router.post('/check-out', async (req, res) => {
     const checkinRecord = checkinResult.rows[0];
     const checkOutTime = new Date();
 
-    // Query active temporary timing for the checking-out employee on the check-in date
+    // Query active temporary timing for the checking-out student on the check-in date
     const checkInDate = new Date(checkinRecord.check_in_time);
     const year = checkInDate.getFullYear();
     const month = String(checkInDate.getMonth() + 1).padStart(2, '0');
@@ -241,13 +241,13 @@ router.post('/check-out', async (req, res) => {
     const tempShiftResult = await query(
       `SELECT work_start_time, work_end_time 
        FROM work_timings
-       WHERE employee_id = $1 
+       WHERE student_id = $1 
          AND is_temporary = TRUE 
          AND is_active = TRUE
          AND $2::date >= start_date 
          AND $2::date <= end_date
        LIMIT 1`,
-      [employeeId, checkInDateStr]
+      [studentId, checkInDateStr]
     );
 
     let shift = null;
@@ -258,11 +258,11 @@ router.post('/check-out', async (req, res) => {
       const permShiftResult = await query(
         `SELECT work_start_time, work_end_time 
          FROM work_timings
-         WHERE employee_id = $1 
+         WHERE student_id = $1 
            AND is_temporary = FALSE 
            AND is_active = TRUE
          LIMIT 1`,
-        [employeeId]
+        [studentId]
       );
       if (permShiftResult.rows.length > 0) {
         shift = permShiftResult.rows[0];
@@ -326,12 +326,12 @@ router.post('/check-out', async (req, res) => {
     const seconds = totalSeconds % 60;
     const workHours = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-    // Resolve geo-fence for check-out location (per-employee or global fallback)
+    // Resolve geo-fence for check-out location (per-student or global fallback)
     let checkOutWithinFence = null;
     let checkOutDistance = null;
     if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
       try {
-        const checkOutGeo = await resolveGeoFence(employeeId, location.latitude, location.longitude);
+        const checkOutGeo = await resolveGeoFence(studentId, location.latitude, location.longitude);
         if (checkOutGeo) {
           checkOutWithinFence = checkOutGeo.within_fence;
           checkOutDistance = checkOutGeo.distance;
@@ -343,7 +343,7 @@ router.post('/check-out', async (req, res) => {
 
     // Update record with check-out data including geo-fence result
     const result = await query(
-      `UPDATE attendance_records 
+      `UPDATE student_attendance 
        SET check_out_time = NOW(), 
            work_hours = $1,
            check_out_image_url = $2,
@@ -372,15 +372,15 @@ router.post('/check-out', async (req, res) => {
     // STABILIZATION: Emit WebSocket events for realtime attendance sync
     const io = req.app.get('io');
     if (io) {
-      io.notifyEmployee(req.user.employeeId, 'attendance_update', {
+      io.notifyStudent(req.user.studentId, 'attendance_update', {
         type: 'check-out',
         status: 'checked-out',
         record,
-        employeeId: req.user.employeeId,
+        studentId: req.user.studentId,
       });
-      io.notifySupervisors('attendance_update', {
+      io.notifyTeachers('attendance_update', {
         type: 'check-out',
-        employeeId: req.user.employeeId,
+        studentId: req.user.studentId,
         record,
       });
     }
@@ -403,17 +403,17 @@ router.post('/check-out', async (req, res) => {
 // Get today's attendance state
 router.get('/today', async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
 
     const result = await query(
       `SELECT *
-       FROM attendance_records
-       WHERE employee_id = $1
+       FROM student_attendance
+       WHERE student_id = $1
          AND check_in_time >= CURRENT_DATE
          AND check_in_time < CURRENT_DATE + INTERVAL '1 day'
        ORDER BY check_in_time DESC
        LIMIT 1`,
-      [employeeId]
+      [studentId]
     );
 
     const currentRecord = result.rows[0] || null;
@@ -439,22 +439,22 @@ router.get('/today', async (req, res) => {
   }
 });
 
-// Get current employee's work timings & location
+// Get current student's work timings & location
 router.get('/my-timing', async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
 
     // Check temporary timings first
     const tempShiftResult = await query(
       `SELECT work_start_time, work_end_time, is_temporary, start_date, end_date
        FROM work_timings
-       WHERE employee_id = $1 
+       WHERE student_id = $1 
          AND is_temporary = TRUE 
          AND is_active = TRUE
          AND NOW()::date >= start_date 
          AND NOW()::date <= end_date
        LIMIT 1`,
-      [employeeId]
+      [studentId]
     );
 
     let shift = null;
@@ -465,11 +465,11 @@ router.get('/my-timing', async (req, res) => {
       const permShiftResult = await query(
         `SELECT work_start_time, work_end_time, is_temporary, start_date, end_date
          FROM work_timings
-         WHERE employee_id = $1 
+         WHERE student_id = $1 
            AND is_temporary = FALSE 
            AND is_active = TRUE
          LIMIT 1`,
-         [employeeId]
+         [studentId]
       );
       if (permShiftResult.rows.length > 0) {
         shift = permShiftResult.rows[0];
@@ -479,10 +479,10 @@ router.get('/my-timing', async (req, res) => {
     // Query active custom location
     const locResult = await query(
       `SELECT name, latitude, longitude, radius_meters 
-       FROM employee_locations 
-       WHERE employee_id = $1 AND is_active = TRUE
+       FROM student_locations 
+       WHERE student_id = $1 AND is_active = TRUE
        LIMIT 1`,
-      [employeeId]
+      [studentId]
     );
 
     const workStartTime = shift ? shift.work_start_time : '09:00:00';
@@ -504,7 +504,7 @@ router.get('/my-timing', async (req, res) => {
       has_assigned_location: assignedLocation !== null
     });
   } catch (error) {
-    logger.error('Failed to get employee work timings', { error: error.message });
+    logger.error('Failed to get student work timings', { error: error.message });
     res.status(500).json({ error: 'Failed to fetch work timings' });
   }
 });
@@ -512,7 +512,7 @@ router.get('/my-timing', async (req, res) => {
 // Submit location or timing request to admin
 router.post('/request-location-timing', async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
     const {
       requestType,
       requestedLocationName,
@@ -537,12 +537,12 @@ router.post('/request-location-timing', async (req, res) => {
     }
 
     const empResult = await query(
-      'SELECT first_name, last_name, employee_id, department FROM employees WHERE id = $1',
-      [employeeId]
+      'SELECT first_name, last_name, student_id, department FROM students WHERE id = $1',
+      [studentId]
     );
     
     if (empResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return res.status(404).json({ error: 'Student not found' });
     }
     
     const emp = empResult.rows[0];
@@ -550,14 +550,14 @@ router.post('/request-location-timing', async (req, res) => {
     // Insert request
     const result = await query(
       `INSERT INTO location_timing_requests (
-         employee_id, request_type, 
+         student_id, request_type, 
          requested_location_name, requested_latitude, requested_longitude, requested_radius_meters,
          requested_work_start_time, requested_work_end_time, requested_is_temporary, 
          requested_start_date, requested_end_date, status
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
        RETURNING *`,
       [
-        employeeId,
+        studentId,
         requestType,
         requestType !== 'timing' ? requestedLocationName || 'Home/Custom Office' : null,
         requestType !== 'timing' ? (requestedLatitude ? parseFloat(requestedLatitude) : null) : null,
@@ -573,7 +573,7 @@ router.post('/request-location-timing', async (req, res) => {
 
     const newRequest = result.rows[0];
 
-    // Emit live WebSocket update to supervisors and admins
+    // Emit live WebSocket update to teachers and admins
     try {
       const io = req.app.get('io');
       if (io) {
@@ -582,7 +582,7 @@ router.post('/request-location-timing', async (req, res) => {
           ...newRequest,
           first_name: emp.first_name,
           last_name: emp.last_name,
-          employee_id_code: emp.employee_id,
+          student_id_code: emp.student_id,
           department: emp.department
         });
       }
@@ -604,35 +604,35 @@ router.post('/request-location-timing', async (req, res) => {
 // Get attendance history
 router.get('/history', async (req, res) => {
   try {
-    const { startDate, endDate, employeeId: targetEmployeeId, scope } = req.query;
-    const requestingEmployeeId = req.user.id;
+    const { startDate, endDate, studentId: targetStudentId, scope } = req.query;
+    const requestingStudentId = req.user.id;
     const isAdmin = req.user.role === 'admin';
-    const isSupervisor = req.user.role === 'supervisor';
-    const isEmployee = req.user.role === 'employee';
+    const isTeacher = req.user.role === 'teacher';
+    const isStudent = req.user.role === 'student';
 
-    // SCOPE VALIDATION: Supervisors can only see their assigned employees
-    // If targetEmployeeId is specified, verify supervisor assignment
-    if (targetEmployeeId && isSupervisor) {
+    // SCOPE VALIDATION: Teachers can only see their assigned students
+    // If targetStudentId is specified, verify teacher assignment
+    if (targetStudentId && isTeacher) {
       const empResult = await query(
-        `SELECT id FROM supervisor_assignments 
-         WHERE supervisor_id = $1 AND employee_id IN (
-           SELECT id FROM employees WHERE employee_id = $2
+        `SELECT id FROM teacher_assignments 
+         WHERE teacher_id = $1 AND student_id IN (
+           SELECT id FROM students WHERE student_id = $2
          ) AND is_active = TRUE`,
-        [req.user.id, targetEmployeeId]
+        [req.user.id, targetStudentId]
       );
 
       if (empResult.rows.length === 0) {
         return res.status(403).json({
-          error: 'You are not assigned to supervise this employee',
+          error: 'You are not assigned to supervise this student',
           code: 'FORBIDDEN'
         });
       }
     }
 
     let queryText = `
-      SELECT ar.*, e.employee_id, e.first_name, e.last_name, e.department, e.role
-      FROM attendance_records ar
-      JOIN employees e ON ar.employee_id = e.id
+      SELECT ar.*, e.student_id, e.first_name, e.last_name, e.department, e.role
+      FROM student_attendance ar
+      JOIN students e ON ar.student_id = e.id
       WHERE 1=1
     `;
     
@@ -659,19 +659,19 @@ router.get('/history', async (req, res) => {
     // ROLE-BASED SCOPE
     if (scope === 'self') {
       paramCount++;
-      queryText += ` AND ar.employee_id = $${paramCount}`;
-      params.push(requestingEmployeeId);
+      queryText += ` AND ar.student_id = $${paramCount}`;
+      params.push(requestingStudentId);
     } else if (scope === 'team') {
       paramCount++;
-      queryText += ` AND ar.employee_id IN (
-        SELECT id FROM employees WHERE supervisor_id = $${paramCount} AND is_active = TRUE AND role = $${paramCount + 1}
+      queryText += ` AND ar.student_id IN (
+        SELECT id FROM students WHERE teacher_id = $${paramCount} AND is_active = TRUE AND role = $${paramCount + 1}
         UNION
-        SELECT sa.employee_id FROM supervisor_assignments sa
-        JOIN employees emp ON sa.employee_id = emp.id
-        WHERE sa.supervisor_id = $${paramCount} AND sa.is_active = TRUE AND emp.role = $${paramCount + 1}
+        SELECT sa.student_id FROM teacher_assignments sa
+        JOIN students emp ON sa.student_id = emp.id
+        WHERE sa.teacher_id = $${paramCount} AND sa.is_active = TRUE AND emp.role = $${paramCount + 1}
       )`;
-      params.push(requestingEmployeeId);
-      params.push(req.user.role === 'admin' ? 'supervisor' : 'employee');
+      params.push(requestingStudentId);
+      params.push(req.user.role === 'admin' ? 'teacher' : 'student');
       paramCount++;
     } else {
       if (isAdmin) {
@@ -679,29 +679,29 @@ router.get('/history', async (req, res) => {
           // Admins see all records (no additional filter)
         } else {
           paramCount++;
-          queryText += ` AND ar.employee_id = $${paramCount}`;
-          params.push(requestingEmployeeId);
+          queryText += ` AND ar.student_id = $${paramCount}`;
+          params.push(requestingStudentId);
         }
-      } else if (isSupervisor) {
-        if (targetEmployeeId) {
-          // Already validated above - supervisor is assigned to this employee
+      } else if (isTeacher) {
+        if (targetStudentId) {
+          // Already validated above - teacher is assigned to this student
           paramCount++;
-          queryText += ` AND e.employee_id = $${paramCount}`;
-          params.push(targetEmployeeId);
+          queryText += ` AND e.student_id = $${paramCount}`;
+          params.push(targetStudentId);
         } else {
-          // Show only their assigned employees
+          // Show only their assigned students
           paramCount++;
-          queryText += ` AND ar.employee_id IN (
-            SELECT employee_id FROM supervisor_assignments
-            WHERE supervisor_id = $${paramCount} AND is_active = TRUE
+          queryText += ` AND ar.student_id IN (
+            SELECT student_id FROM teacher_assignments
+            WHERE teacher_id = $${paramCount} AND is_active = TRUE
           )`;
           params.push(req.user.id);
         }
-      } else if (isEmployee) {
-        // Regular employees only see their own records
+      } else if (isStudent) {
+        // Regular students only see their own records
         paramCount++;
-        queryText += ` AND ar.employee_id = $${paramCount}`;
-        params.push(requestingEmployeeId);
+        queryText += ` AND ar.student_id = $${paramCount}`;
+        params.push(requestingStudentId);
       }
     }
 
@@ -731,8 +731,8 @@ router.get('/history', async (req, res) => {
 
     // Get total count for pagination
     let countQuery = `
-      SELECT COUNT(*) FROM attendance_records ar
-      JOIN employees e ON ar.employee_id = e.id
+      SELECT COUNT(*) FROM student_attendance ar
+      JOIN students e ON ar.student_id = e.id
       WHERE 1=1
     `;
     let countParams = [];
@@ -758,19 +758,19 @@ router.get('/history', async (req, res) => {
     // Same scope validation
     if (scope === 'self') {
       countParamCount++;
-      countQuery += ` AND ar.employee_id = $${countParamCount}`;
-      countParams.push(requestingEmployeeId);
+      countQuery += ` AND ar.student_id = $${countParamCount}`;
+      countParams.push(requestingStudentId);
     } else if (scope === 'team') {
       countParamCount++;
-      countQuery += ` AND ar.employee_id IN (
-        SELECT id FROM employees WHERE supervisor_id = $${countParamCount} AND is_active = TRUE AND role = $${countParamCount + 1}
+      countQuery += ` AND ar.student_id IN (
+        SELECT id FROM students WHERE teacher_id = $${countParamCount} AND is_active = TRUE AND role = $${countParamCount + 1}
         UNION
-        SELECT sa.employee_id FROM supervisor_assignments sa
-        JOIN employees emp ON sa.employee_id = emp.id
-        WHERE sa.supervisor_id = $${countParamCount} AND sa.is_active = TRUE AND emp.role = $${countParamCount + 1}
+        SELECT sa.student_id FROM teacher_assignments sa
+        JOIN students emp ON sa.student_id = emp.id
+        WHERE sa.teacher_id = $${countParamCount} AND sa.is_active = TRUE AND emp.role = $${countParamCount + 1}
       )`;
-      countParams.push(requestingEmployeeId);
-      countParams.push(req.user.role === 'admin' ? 'supervisor' : 'employee');
+      countParams.push(requestingStudentId);
+      countParams.push(req.user.role === 'admin' ? 'teacher' : 'student');
       countParamCount++;
     } else {
       if (isAdmin) {
@@ -778,26 +778,26 @@ router.get('/history', async (req, res) => {
           // Admins see all
         } else {
           countParamCount++;
-          countQuery += ` AND ar.employee_id = $${countParamCount}`;
-          countParams.push(requestingEmployeeId);
+          countQuery += ` AND ar.student_id = $${countParamCount}`;
+          countParams.push(requestingStudentId);
         }
-      } else if (isSupervisor) {
-        if (targetEmployeeId) {
+      } else if (isTeacher) {
+        if (targetStudentId) {
           countParamCount++;
-          countQuery += ` AND e.employee_id = $${countParamCount}`;
-          countParams.push(targetEmployeeId);
+          countQuery += ` AND e.student_id = $${countParamCount}`;
+          countParams.push(targetStudentId);
         } else {
           countParamCount++;
-          countQuery += ` AND ar.employee_id IN (
-            SELECT employee_id FROM supervisor_assignments
-            WHERE supervisor_id = $${countParamCount} AND is_active = TRUE
+          countQuery += ` AND ar.student_id IN (
+            SELECT student_id FROM teacher_assignments
+            WHERE teacher_id = $${countParamCount} AND is_active = TRUE
           )`;
           countParams.push(req.user.id);
         }
-      } else if (isEmployee) {
+      } else if (isStudent) {
         countParamCount++;
-        countQuery += ` AND ar.employee_id = $${countParamCount}`;
-        countParams.push(requestingEmployeeId);
+        countQuery += ` AND ar.student_id = $${countParamCount}`;
+        countParams.push(requestingStudentId);
       }
     }
 
@@ -830,7 +830,7 @@ router.get('/history', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     const { period = 'month' } = req.query;
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
 
     let dateFilter = '';
     switch (period) {
@@ -849,17 +849,17 @@ router.get('/stats', async (req, res) => {
 
     // Total check-ins
     const totalResult = await query(
-      `SELECT COUNT(*) as total FROM attendance_records 
-       WHERE employee_id = $1 AND ${dateFilter}`,
-      [employeeId]
+      `SELECT COUNT(*) as total FROM student_attendance 
+       WHERE student_id = $1 AND ${dateFilter}`,
+      [studentId]
     );
 
     // Average work hours
     const avgHoursResult = await query(
       `SELECT AVG(EXTRACT(EPOCH FROM work_hours)) as avg_seconds 
-       FROM attendance_records 
-       WHERE employee_id = $1 AND work_hours IS NOT NULL AND ${dateFilter}`,
-      [employeeId]
+       FROM student_attendance 
+       WHERE student_id = $1 AND work_hours IS NOT NULL AND ${dateFilter}`,
+      [studentId]
     );
 
     // Geo-fence compliance
@@ -867,18 +867,18 @@ router.get('/stats', async (req, res) => {
       `SELECT 
          COUNT(*) as total,
          SUM(CASE WHEN geo_fence_status = TRUE THEN 1 ELSE 0 END) as within_fence
-       FROM attendance_records 
-       WHERE employee_id = $1 AND ${dateFilter}`,
-      [employeeId]
+       FROM student_attendance 
+       WHERE student_id = $1 AND ${dateFilter}`,
+      [studentId]
     );
 
     // Late arrivals (after 9:30 AM)
     const lateArrivalsResult = await query(
       `SELECT COUNT(*) as late_count
-       FROM attendance_records 
-       WHERE employee_id = $1 AND ${dateFilter}
+       FROM student_attendance 
+       WHERE student_id = $1 AND ${dateFilter}
          AND check_in_time::time >= TIME '09:30'`,
-      [employeeId]
+      [studentId]
     );
 
     const stats = {

@@ -26,8 +26,8 @@ interface LeaveRequest {
   approval_date: string | null;
   rejection_reason: string | null;
   created_at: string;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };

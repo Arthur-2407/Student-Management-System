@@ -321,7 +321,7 @@ def face_verify():
         
         # Parse request
         data = request.get_json()
-        if not data or 'image' not in data or 'employee_id' not in data:
+        if not data or 'image' not in data or 'student_id' not in data:
             return jsonify({
                 'error': 'Missing required fields',
                 'code': 'MISSING_FIELDS'
@@ -400,12 +400,12 @@ def face_verify():
             })
         
         # TODO: Compare with stored embedding from database
-        # stored_embedding = db.get_embedding(data['employee_id'])
+        # stored_embedding = db.get_embedding(data['student_id'])
         # match = embedder.match_embedding(embedding, stored_embedding, threshold=0.6)
         
         return jsonify({
             'authenticated': True,
-            'employee_id': data['employee_id'],
+            'student_id': data['student_id'],
             'quality_passed': quality.get('passed', True),
             'spoof_detected': not spoof_result.get('is_real', True),
             'liveness_passed': data.get('frames') is None or liveness_result.get('is_live', False),
@@ -445,9 +445,9 @@ def face_register():
         
         # Parse request
         data = request.get_json()
-        if not data or 'employee_id' not in data or 'images' not in data:
+        if not data or 'student_id' not in data or 'images' not in data:
             return jsonify({
-                'error': 'Missing required fields: employee_id, images',
+                'error': 'Missing required fields: student_id, images',
                 'code': 'MISSING_FIELDS'
             }), 400
         
@@ -463,7 +463,7 @@ def face_register():
         # Process each image
         embeddings = {}
         results = {
-            'employee_id': data['employee_id'],
+            'student_id': data['student_id'],
             'enrollments': []
         }
         
@@ -527,7 +527,7 @@ def face_register():
         results['successful_enrollments'] = sum(1 for e in results['enrollments'] if e['success'])
         
         # TODO: Store encrypted embeddings in database
-        # db.store_embeddings(data['employee_id'], encrypted)
+        # db.store_embeddings(data['student_id'], encrypted)
         
         return jsonify(results)
     

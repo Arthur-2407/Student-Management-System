@@ -59,7 +59,7 @@ async function ConnectionGuard() {
   
   // Database ping
   try {
-    const dbCheck = execSync('docker exec attendance-db-prod pg_isready -U postgres', { encoding: 'utf8' });
+    const dbCheck = execSync('docker exec student-db-prod pg_isready -U postgres', { encoding: 'utf8' });
     results.db = dbCheck.includes('accepting connections');
   } catch (err) {
     console.error('❌ DB ping failed:', err.message);
@@ -79,11 +79,11 @@ async function ConnectionGuard() {
 
   // Redis ping
   try {
-    const redisCheck = execSync(`docker exec attendance-redis-prod redis-cli -a "${redisPassword}" ping`, { encoding: 'utf8' });
+    const redisCheck = execSync(`docker exec student-redis-prod redis-cli -a "${redisPassword}" ping`, { encoding: 'utf8' });
     results.redis = redisCheck.includes('PONG');
   } catch (err) {
     try {
-      const redisCheckOpt = execSync('docker exec attendance-redis-prod redis-cli ping', { encoding: 'utf8' });
+      const redisCheckOpt = execSync('docker exec student-redis-prod redis-cli ping', { encoding: 'utf8' });
       results.redis = redisCheckOpt.includes('PONG');
     } catch (err2) {
       console.error('❌ Redis ping failed:', err2.message);
@@ -101,15 +101,15 @@ async function ServiceGuard() {
   const status = { nginx: false, backend: false, faceAi: false };
 
   // Nginx health
-  const nginxRes = await probeEndpoint('http://localhost/health');
+  const nginxRes = await probeEndpoint('http://localhost:8080/health');
   status.nginx = nginxRes.status === 'up' && nginxRes.code === 200;
 
   // Backend direct endpoint through Nginx
-  const backendRes = await probeEndpoint('http://localhost/health');
+  const backendRes = await probeEndpoint('http://localhost:8080/health');
   status.backend = backendRes.status === 'up' && backendRes.code === 200 && backendRes.body?.services?.database === 'connected';
 
   // Face-AI through Nginx proxy
-  const faceAiRes = await probeEndpoint('http://localhost/face-ai/health');
+  const faceAiRes = await probeEndpoint('http://localhost:8080/face-ai/health');
   status.faceAi = faceAiRes.status === 'up' && faceAiRes.code === 200 && faceAiRes.body?.status === 'healthy';
 
   console.log(`  - Nginx: ${status.nginx ? '🟢 Up' : '🔴 Down'}`);
@@ -127,7 +127,7 @@ async function IntegrityGuard() {
   // 1. Verify schema tables and foreign keys
   try {
     const tableCheck = execSync(
-      'docker exec attendance-db-prod psql -U postgres -d attendance_system -t -c "SELECT count(*) FROM information_schema.tables WHERE table_schema=\'public\' AND table_name IN (\'users\', \'employees\', \'face_embeddings\', \'security_events\', \'audit_logs\');"',
+      'docker exec student-db-prod psql -U postgres -d student_system -t -c "SELECT count(*) FROM information_schema.tables WHERE table_schema=\'public\' AND table_name IN (\'users\', \'students\', \'face_embeddings\', \'security_events\', \'audit_logs\');"',
       { encoding: 'utf8' }
     ).trim();
     const tableCount = parseInt(tableCheck);
@@ -144,7 +144,7 @@ async function IntegrityGuard() {
   // 2. Check for trigger recursion
   try {
     const recursionCheck = execSync(
-      'docker exec attendance-db-prod psql -U postgres -d attendance_system -t -c "SELECT count(*) FROM pg_trigger WHERE tgname LIKE \'%recursion%\' OR tgname LIKE \'%loop%\';"',
+      'docker exec student-db-prod psql -U postgres -d student_system -t -c "SELECT count(*) FROM pg_trigger WHERE tgname LIKE \'%recursion%\' OR tgname LIKE \'%loop%\';"',
       { encoding: 'utf8' }
     ).trim();
     console.log(`  - Trigger loop check: Found ${recursionCheck} potential recursive triggers.`);
@@ -162,7 +162,7 @@ async function EnrollmentGuard() {
   // Verify embedding status in DB
   try {
     const embedStatus = execSync(
-      'docker exec attendance-db-prod psql -U postgres -d attendance_system -t -c "SELECT COUNT(*) FROM face_embeddings WHERE is_active=true;"',
+      'docker exec student-db-prod psql -U postgres -d student_system -t -c "SELECT COUNT(*) FROM face_embeddings WHERE is_active=true;"',
       { encoding: 'utf8' }
     ).trim();
     console.log(`  - Enrollment validation: ${embedStatus} active embeddings registered in DB.`);
@@ -211,7 +211,7 @@ async function RepairGuard() {
 
   try {
     console.log('  - Checking backend lint/syntax (node check)...');
-    execSync('node --check backend-api/src/dev-server.js', { stdio: 'ignore' });
+    execSync('node --check student-backend/src/dev-server.js', { stdio: 'ignore' });
     backendCompiles = true;
     console.log('    ✅ Backend syntax verification passed.');
   } catch (err) {

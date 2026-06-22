@@ -3,15 +3,15 @@ import { AxiosResponse } from 'axios';
 
 export interface SecurityEvent {
   id: number;
-  employee_id: number | null;
+  student_id: number | null;
   event_type: string;
   timestamp: string;
   ip_address: string;
   device_info: string;
   details: string;
   severity: string;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };
@@ -19,7 +19,7 @@ export interface SecurityEvent {
 
 export interface LoginLog {
   id: number;
-  employee_id: number;
+  student_id: number;
   success: boolean;
   spoof_detected: boolean;
   spoof_confidence: number | null;
@@ -33,8 +33,8 @@ export interface LoginLog {
   } | null;
   error_details: string | null;
   timestamp: string;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };
@@ -51,12 +51,12 @@ export interface SystemLog {
 
 export interface SpoofAttemptRecord {
   id: number;
-  employee_id: number;
+  student_id: number;
   spoof_confidence: number;
   detection_type: string;
   timestamp: string;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };

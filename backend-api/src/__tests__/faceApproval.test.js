@@ -54,15 +54,15 @@ jest.mock('../middleware/authMiddleware', () => ({
   authenticateToken: (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader === 'Bearer admin-token') {
-      req.user = { id: 1, employeeId: 'admin', role: 'admin', department: 'IT' };
+      req.user = { id: 1, studentId: 'admin', role: 'admin', department: 'IT' };
       return next();
     }
-    if (authHeader === 'Bearer supervisor-token') {
-      req.user = { id: 2, employeeId: 'supervisor', role: 'supervisor', department: 'HR' };
+    if (authHeader === 'Bearer teacher-token') {
+      req.user = { id: 2, studentId: 'teacher', role: 'teacher', department: 'HR' };
       return next();
     }
-    if (authHeader === 'Bearer employee-token') {
-      req.user = { id: 3, employeeId: 'EMP003', role: 'employee', department: 'HR' };
+    if (authHeader === 'Bearer student-token') {
+      req.user = { id: 3, studentId: 'EMP003', role: 'student', department: 'HR' };
       return next();
     }
     return res.status(401).json({ error: 'Unauthorized' });
@@ -74,7 +74,7 @@ jest.mock('../middleware/authMiddleware', () => ({
     if (!allowedRoles.includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     next();
   },
-  authorizeSupervisor: () => (req, res, next) => next(),
+  authorizeTeacher: () => (req, res, next) => next(),
 }));
 
 // Mock http.get to bypass warmup service health checks
@@ -104,10 +104,10 @@ describe('Face Approval Workflow API', () => {
   });
 
   describe('POST /api/face-change-requests', () => {
-    test('Employee submits a face change request for themselves successfully', async () => {
-      // 1. SELECT query to check target employee
+    test('Student submits a face change request for themselves successfully', async () => {
+      // 1. SELECT query to check target student
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 3, employee_id: 'EMP003', role: 'employee', face_enrolled: false }]
+        rows: [{ id: 3, student_id: 'EMP003', role: 'student', face_enrolled: false }]
       });
       // 2. SELECT query to get previous embedding
       mockQuery.mockResolvedValueOnce({
@@ -132,9 +132,9 @@ describe('Face Approval Workflow API', () => {
 
       const response = await request(app)
         .post('/api/face-change-requests')
-        .set('Authorization', 'Bearer employee-token')
+        .set('Authorization', 'Bearer student-token')
         .send({
-          employeeId: 'EMP003',
+          studentId: 'EMP003',
           requestType: 'ADD',
           frames: ['frame1_base64_data_here']
         });
@@ -142,20 +142,20 @@ describe('Face Approval Workflow API', () => {
       expect(response.statusCode).toBe(201);
       expect(response.body.success).toBe(true);
       expect(response.body.requestId).toBe(101);
-      expect(response.body.assignedApproverRole).toBe('supervisor');
+      expect(response.body.assignedApproverRole).toBe('teacher');
     });
 
-    test('Employee cannot request face change for another employee', async () => {
-      // SELECT query checks target employee
+    test('Student cannot request face change for another student', async () => {
+      // SELECT query checks target student
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 4, employee_id: 'EMP004', role: 'employee', face_enrolled: false }]
+        rows: [{ id: 4, student_id: 'EMP004', role: 'student', face_enrolled: false }]
       });
 
       const response = await request(app)
         .post('/api/face-change-requests')
-        .set('Authorization', 'Bearer employee-token')
+        .set('Authorization', 'Bearer student-token')
         .send({
-          employeeId: 'EMP004',
+          studentId: 'EMP004',
           requestType: 'ADD',
           frames: ['frame1']
         });
@@ -165,15 +165,15 @@ describe('Face Approval Workflow API', () => {
     });
 
     test('Admin registers face instantly bypassing approval', async () => {
-      // 1. SELECT target employee
+      // 1. SELECT target student
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 3, employee_id: 'EMP003', role: 'employee', face_enrolled: false }]
+        rows: [{ id: 3, student_id: 'EMP003', role: 'student', face_enrolled: false }]
       });
       // 2. SELECT previous embedding
       mockQuery.mockResolvedValueOnce({
         rows: []
       });
-      // 3. BEGIN transaction, UPDATE old embeddings, INSERT new embedding, UPDATE employees...
+      // 3. BEGIN transaction, UPDATE old embeddings, INSERT new embedding, UPDATE students...
       mockQuery.mockResolvedValue({
         rows: [{ id: 201 }]
       });
@@ -182,7 +182,7 @@ describe('Face Approval Workflow API', () => {
         .post('/api/face-change-requests')
         .set('Authorization', 'Bearer admin-token')
         .send({
-          employeeId: 'EMP003',
+          studentId: 'EMP003',
           requestType: 'ADD',
           frames: ['frame1']
         });
@@ -197,7 +197,7 @@ describe('Face Approval Workflow API', () => {
     test('Admin retrieves all pending requests', async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [
-          { id: 10, request_type: 'ADD', employee_id: 'EMP003', first_name: 'John', last_name: 'Doe' }
+          { id: 10, request_type: 'ADD', student_id: 'EMP003', first_name: 'John', last_name: 'Doe' }
         ]
       });
 
@@ -212,17 +212,17 @@ describe('Face Approval Workflow API', () => {
   });
 
   describe('POST /api/face-change-requests/:id/approve', () => {
-    test('Supervisor approves team member pending request successfully', async () => {
+    test('Teacher approves team member pending request successfully', async () => {
       // 1. SELECT request details
       mockQuery.mockResolvedValueOnce({
         rows: [{
           id: 10,
-          employee_id: 3,
+          student_id: 3,
           request_type: 'ADD',
           new_face_embedding: '[]',
           status: 'PENDING',
-          assigned_approver_role: 'supervisor',
-          target_employee_id: 'EMP003'
+          assigned_approver_role: 'teacher',
+          target_student_id: 'EMP003'
         }]
       });
       // 2. Check supervision helper query
@@ -236,38 +236,38 @@ describe('Face Approval Workflow API', () => {
 
       const response = await request(app)
         .post('/api/face-change-requests/10/approve')
-        .set('Authorization', 'Bearer supervisor-token')
+        .set('Authorization', 'Bearer teacher-token')
         .send({ notes: 'Verified face visually' });
 
       expect(response.statusCode).toBe(200);
       expect(response.body.success).toBe(true);
     });
 
-    test('Regular employee cannot approve requests', async () => {
+    test('Regular student cannot approve requests', async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [{
           id: 10,
-          employee_id: 3,
+          student_id: 3,
           request_type: 'ADD',
           new_face_embedding: '[]',
           status: 'PENDING',
-          assigned_approver_role: 'supervisor',
-          target_employee_id: 'EMP003'
+          assigned_approver_role: 'teacher',
+          target_student_id: 'EMP003'
         }]
       });
 
       const response = await request(app)
         .post('/api/face-change-requests/10/approve')
-        .set('Authorization', 'Bearer employee-token');
+        .set('Authorization', 'Bearer student-token');
 
       expect(response.statusCode).toBe(403);
     });
   });
 
-  describe('DELETE /api/face-management/admin-delete/:employeeId', () => {
-    test('Admin deletes employee face profile directly', async () => {
+  describe('DELETE /api/face-management/admin-delete/:studentId', () => {
+    test('Admin deletes student face profile directly', async () => {
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 3, employee_id: 'EMP003', face_enrolled: true }]
+        rows: [{ id: 3, student_id: 'EMP003', face_enrolled: true }]
       });
       mockQuery.mockResolvedValueOnce({
         rows: [{ id: 5 }]
@@ -284,10 +284,10 @@ describe('Face Approval Workflow API', () => {
       expect(response.body.success).toBe(true);
     });
 
-    test('Supervisor is denied direct face deletion', async () => {
+    test('Teacher is denied direct face deletion', async () => {
       const response = await request(app)
         .delete('/api/face-management/admin-delete/EMP003')
-        .set('Authorization', 'Bearer supervisor-token');
+        .set('Authorization', 'Bearer teacher-token');
 
       expect(response.statusCode).toBe(403);
     });

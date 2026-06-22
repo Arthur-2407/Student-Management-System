@@ -1,16 +1,16 @@
 BEGIN;
 
--- Update sync_audit_logs_compliance to check if employee exists before restoring it
+-- Update sync_audit_logs_compliance to check if student exists before restoring it
 CREATE OR REPLACE FUNCTION sync_audit_logs_compliance()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.user_id IS NOT NULL AND NEW.actor_employee_id IS NULL THEN
-    IF EXISTS (SELECT 1 FROM employees WHERE id = NEW.user_id) THEN
-      NEW.actor_employee_id := NEW.user_id;
+  IF NEW.user_id IS NOT NULL AND NEW.actor_student_id IS NULL THEN
+    IF EXISTS (SELECT 1 FROM students WHERE id = NEW.user_id) THEN
+      NEW.actor_student_id := NEW.user_id;
     END IF;
-  ELSIF NEW.actor_employee_id IS NOT NULL AND NEW.user_id IS NULL THEN
-    IF EXISTS (SELECT 1 FROM employees WHERE id = NEW.actor_employee_id) THEN
-      NEW.user_id := NEW.actor_employee_id;
+  ELSIF NEW.actor_student_id IS NOT NULL AND NEW.user_id IS NULL THEN
+    IF EXISTS (SELECT 1 FROM students WHERE id = NEW.actor_student_id) THEN
+      NEW.user_id := NEW.actor_student_id;
     END IF;
   END IF;
 
@@ -24,18 +24,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Update sync_notifications_compliance to check if employee exists before restoring it
+-- Update sync_notifications_compliance to check if student exists before restoring it
 CREATE OR REPLACE FUNCTION sync_notifications_compliance()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Sync recipient_id and employee_id
-  IF NEW.recipient_id IS NOT NULL AND NEW.employee_id IS NULL THEN
-    IF EXISTS (SELECT 1 FROM employees WHERE id = NEW.recipient_id) THEN
-      NEW.employee_id := NEW.recipient_id;
+  -- Sync recipient_id and student_id
+  IF NEW.recipient_id IS NOT NULL AND NEW.student_id IS NULL THEN
+    IF EXISTS (SELECT 1 FROM students WHERE id = NEW.recipient_id) THEN
+      NEW.student_id := NEW.recipient_id;
     END IF;
-  ELSIF NEW.employee_id IS NOT NULL AND NEW.recipient_id IS NULL THEN
-    IF EXISTS (SELECT 1 FROM employees WHERE id = NEW.employee_id) THEN
-      NEW.recipient_id := NEW.employee_id;
+  ELSIF NEW.student_id IS NOT NULL AND NEW.recipient_id IS NULL THEN
+    IF EXISTS (SELECT 1 FROM students WHERE id = NEW.student_id) THEN
+      NEW.recipient_id := NEW.student_id;
     END IF;
   END IF;
 

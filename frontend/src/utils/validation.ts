@@ -1,12 +1,12 @@
 // Utility functions for form validation
 
-export const validateEmployeeId = (employeeId: string): string | null => {
-  if (!employeeId) {
-    return 'Employee ID is required';
+export const validateStudentId = (studentId: string): string | null => {
+  if (!studentId) {
+    return 'Student ID is required';
   }
   
-  if (employeeId.length < 3) {
-    return 'Employee ID must be at least 3 characters';
+  if (studentId.length < 3) {
+    return 'Student ID must be at least 3 characters';
   }
   
   return null;

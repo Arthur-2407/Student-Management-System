@@ -330,9 +330,9 @@ def face_verify():
     try:
         data = request.get_json()
         
-        if not data or 'image' not in data or 'employee_id' not in data:
+        if not data or 'image' not in data or 'student_id' not in data:
             return jsonify({
-                'error': 'Missing required fields: image, employee_id',
+                'error': 'Missing required fields: image, student_id',
                 'code': 'MISSING_FIELDS',
                 'authenticated': False
             }), 400
@@ -400,9 +400,9 @@ def face_register():
     try:
         data = request.get_json()
         
-        if not data or 'image' not in data or 'employee_id' not in data:
+        if not data or 'image' not in data or 'student_id' not in data:
             return jsonify({
-                'error': 'Missing required fields: image, employee_id',
+                'error': 'Missing required fields: image, student_id',
                 'code': 'MISSING_FIELDS'
             }), 400
         
@@ -420,7 +420,7 @@ def face_register():
             logger.warning('[DEV] Using mock face registration - DEVELOPMENT ONLY')
             return jsonify({
                 'registered': False,
-                'employee_id': data['employee_id'],
+                'student_id': data['student_id'],
                 'face_id': None,
                 'quality_score': 0,
                 'errors': ['Mock face registration in development mode - real implementation required for production'],
@@ -526,14 +526,14 @@ def api_face_login():
         
         data = request.get_json() or {}
         frames = data.get('frames') or []
-        employee_id = data.get('employee_id') or data.get('employeeId')
+        student_id = data.get('student_id') or data.get('studentId')
         challenge_type = data.get('challenge_type') or data.get('challengeType')
 
-        if not frames or not employee_id:
+        if not frames or not student_id:
             return jsonify({
                 'success': False,
                 'authenticated': False,
-                'error': 'Missing required fields: frames, employee_id',
+                'error': 'Missing required fields: frames, student_id',
                 'code': 'MISSING_FIELDS'
             }), 400
 
@@ -550,7 +550,7 @@ def api_face_login():
 
         # In development/mock mode
         if FACE_RECOGNITION_MODE == 'mock':
-            logger.warning(f'[DEV] Using mock face login for employee {employee_id}')
+            logger.warning(f'[DEV] Using mock face login for student {student_id}')
             return jsonify({
                 'success': False,
                 'authenticated': False,
@@ -565,7 +565,7 @@ def api_face_login():
                 'deepfake_score': 0,
                 'risk_level': 'REJECT',
                 'unified_risk_score': 0.0,
-                'employee_id': employee_id,
+                'student_id': student_id,
                 'errors': ['Mock face authentication in development mode - real implementation required for production'],
                 'warning': 'MOCK MODE: This is not real face recognition'
             })
@@ -600,7 +600,7 @@ def api_face_login():
                 'all_frames_passed': False
             })
 
-        logger.info(f'[face-login] Processing {len(decoded_frames)} frames for employee {employee_id}')
+        logger.info(f'[face-login] Processing {len(decoded_frames)} frames for student {student_id}')
 
         # ────────────────────────────────────────────────────────────────
         # STAGE 2: FACE DETECTION & QUALITY CHECKS
@@ -661,7 +661,7 @@ def api_face_login():
         
         if spoof_result.get('spoof_detected', False):
             logger.warning(
-                f'[face-login] SPOOF DETECTED for {employee_id} | confidence={spoof_result.get("spoof_confidence", 0):.4f} | type={spoof_result.get("detection_type", "UNKNOWN")}'
+                f'[face-login] SPOOF DETECTED for {student_id} | confidence={spoof_result.get("spoof_confidence", 0):.4f} | type={spoof_result.get("detection_type", "UNKNOWN")}'
             )
             return jsonify({
                 'success': True,
@@ -671,7 +671,7 @@ def api_face_login():
                 'detection_type': spoof_result.get('detection_type', 'UNKNOWN'),
                 'triggered_methods': spoof_result.get('triggered_methods', []),
                 'individual_scores': spoof_result.get('individual_scores', {}),
-                'employee_id': employee_id,
+                'student_id': student_id,
                 'frame_count': len(decoded_frames),
                 'all_frames_passed': False,
                 'risk_level': 'REJECT',
@@ -700,14 +700,14 @@ def api_face_login():
         liveness_passed = liveness_result.get('confidence', 0) > 0.55
         
         if not liveness_passed:
-            logger.warning(f'[face-login] LIVENESS FAILED for {employee_id} | reasons={liveness_result.get("reasons", [])}')
+            logger.warning(f'[face-login] LIVENESS FAILED for {student_id} | reasons={liveness_result.get("reasons", [])}')
             return jsonify({
                 'success': True,
                 'authenticated': False,
                 'liveness_passed': False,
                 'liveness_confidence': round(float(liveness_result.get('confidence', 0)), 4),
                 'liveness_reasons': liveness_result.get('reasons', []),
-                'employee_id': employee_id,
+                'student_id': student_id,
                 'frame_count': len(decoded_frames),
                 'all_frames_passed': False,
                 'risk_level': 'REJECT',
@@ -730,14 +730,14 @@ def api_face_login():
         )
 
         if deepfake_result.get('deepfake_suspected', False):
-            logger.warning(f'[face-login] DEEPFAKE SUSPECTED for {employee_id} | confidence={deepfake_result.get("deepfake_confidence", 0):.4f}')
+            logger.warning(f'[face-login] DEEPFAKE SUSPECTED for {student_id} | confidence={deepfake_result.get("deepfake_confidence", 0):.4f}')
             return jsonify({
                 'success': True,
                 'authenticated': False,
                 'deepfake_suspected': True,
                 'deepfake_score': round(float(deepfake_result.get('deepfake_confidence', 0)), 4),
                 'anomalies_detected': deepfake_result.get('anomalies', []),
-                'employee_id': employee_id,
+                'student_id': student_id,
                 'frame_count': len(decoded_frames),
                 'all_frames_passed': False,
                 'risk_level': 'REJECT',
@@ -808,9 +808,9 @@ def api_face_login():
                 'success': False,
                 'authenticated': False,
                 'face_matched': False,
-                'error': 'No enrollment found for this employee',
+                'error': 'No enrollment found for this student',
                 'code': 'NO_ENROLLMENT',
-                'employee_id': employee_id
+                'student_id': student_id
             })
 
         SIMILARITY_THRESHOLD = 0.6
@@ -862,14 +862,14 @@ def api_face_login():
         face_matched = max_similarity >= SIMILARITY_THRESHOLD
 
         if not face_matched:
-            logger.warning(f'[face-login] Face mismatch for {employee_id}: similarity={max_similarity:.4f}')
+            logger.warning(f'[face-login] Face mismatch for {student_id}: similarity={max_similarity:.4f}')
             return jsonify({
                 'success': True,
                 'authenticated': False,
                 'face_matched': False,
                 'similarity': round(float(max_similarity), 4),
                 'threshold': SIMILARITY_THRESHOLD,
-                'employee_id': employee_id,
+                'student_id': student_id,
                 'frame_count': len(decoded_frames),
                 'all_frames_passed': False,
                 'risk_level': 'REJECT',
@@ -906,7 +906,7 @@ def api_face_login():
         # ────────────────────────────────────────────────────────────────
         if risk_score.get('risk_level', 'REJECT') != 'ACCEPT':
             logger.warning(
-                f'[face-login] AUTHENTICATION REJECTED for {employee_id} | risk_level={risk_score.get("risk_level")} | score={risk_score.get("unified_score", 0):.4f}'
+                f'[face-login] AUTHENTICATION REJECTED for {student_id} | risk_level={risk_score.get("risk_level")} | score={risk_score.get("unified_score", 0):.4f}'
             )
             return jsonify({
                 'success': True,
@@ -918,7 +918,7 @@ def api_face_login():
                 'deepfake_score': round(float(deepfake_result.get('deepfake_confidence', 0)), 4),
                 'unified_risk_score': round(risk_score.get('unified_score', 0), 4),
                 'risk_level': risk_score.get('risk_level', 'REJECT'),
-                'employee_id': employee_id,
+                'student_id': student_id,
                 'frame_count': len(decoded_frames),
                 'all_frames_passed': False,
                 'reason': risk_score.get('decision_reason', 'Risk score below acceptance threshold'),
@@ -927,7 +927,7 @@ def api_face_login():
 
         # ✓ AUTHENTICATION ACCEPTED
         logger.info(
-            f'[face-login] ✓ AUTHENTICATION ACCEPTED for {employee_id} | '
+            f'[face-login] ✓ AUTHENTICATION ACCEPTED for {student_id} | '
             f'similarity={max_similarity:.4f} | risk_score={risk_score.get("unified_score", 0):.4f}'
         )
 
@@ -949,7 +949,7 @@ def api_face_login():
             'challenge_passed': True,
             'all_frames_passed': True,
             'frame_count': len(decoded_frames),
-            'employee_id': employee_id,
+            'student_id': student_id,
             'timestamp': datetime.now().isoformat(),
             'audit_metadata': {
                 'frames_analyzed': len(decoded_frames),
@@ -984,12 +984,12 @@ def api_register_face():
     try:
         data = request.get_json() or {}
         frames = data.get('frames') or []
-        employee_id = data.get('employee_id') or data.get('employeeId')
+        student_id = data.get('student_id') or data.get('studentId')
 
-        if not frames or not employee_id:
+        if not frames or not student_id:
             return jsonify({
                 'success': False,
-                'error': 'Missing required fields: frames, employee_id',
+                'error': 'Missing required fields: frames, student_id',
                 'code': 'MISSING_FIELDS'
             }), 400
 
@@ -1005,12 +1005,12 @@ def api_register_face():
 
         # In development/mock mode
         if FACE_RECOGNITION_MODE == 'mock':
-            logger.warning(f'[DEV] Using mock face registration for employee {employee_id}')
+            logger.warning(f'[DEV] Using mock face registration for student {student_id}')
             return jsonify({
                 'success': False,
                 'registered': False,
                 'message': 'Mock face registration in development mode - real implementation required for production',
-                'employee_id': employee_id,
+                'student_id': student_id,
                 'quality_score': 0,
                 'timestamp': datetime.now().isoformat(),
                 'warning': 'MOCK MODE: This is not real face recognition'
@@ -1023,7 +1023,7 @@ def api_register_face():
                 'success': False,
                 'error': 'ML models not available',
                 'code': 'ML_UNAVAILABLE',
-                'employee_id': employee_id
+                'student_id': student_id
             }), 503
 
         embeddings_dict = {}
@@ -1093,7 +1093,7 @@ def api_register_face():
             return jsonify({
                 'success': False,
                 'registered': False,
-                'employee_id': employee_id,
+                'student_id': student_id,
                 'error': 'No valid embeddings generated',
                 'enrollment_results': enrollment_results,
                 'timestamp': datetime.now().isoformat()
@@ -1103,7 +1103,7 @@ def api_register_face():
         return jsonify({
             'success': True,
             'registered': True,
-            'employee_id': employee_id,
+            'student_id': student_id,
             'face_embedding': list(embeddings_dict.values())[0] if isinstance(list(embeddings_dict.values())[0], list) else embeddings_dict[list(embeddings_dict.keys())[0]],
             'model_version': '2.0-arcface',
             'quality_score': np.mean([r.get('quality_score', 0) for r in enrollment_results if r['success']]),

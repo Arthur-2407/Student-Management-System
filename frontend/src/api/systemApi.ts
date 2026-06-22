@@ -35,9 +35,9 @@ export const systemApi = {
   /** Get permissions for current user (for UI gating) */
   getPermissions: () => api.get<{ permissions: SystemPermissions }>('/system/permissions'),
 
-  /** Get job queue stats (supervisor+) */
+  /** Get job queue stats (teacher+) */
   getQueueStats: () => api.get<{ queue: QueueStats }>('/system/queue'),
 
-  /** Get tracing stats (supervisor+) */
+  /** Get tracing stats (teacher+) */
   getTracingStats: () => api.get<{ tracing: TracingStats }>('/system/traces'),
 };

@@ -72,10 +72,10 @@ copy face-ai-service\.env "%backupDir%\face-ai-service.env" >nul 2>&1
 echo [SUCCESS] Environment files backed up
 
 echo [*] Checking for running database...
-docker ps --filter "name=attendance-db" --format "{{.Names}}" 2>nul | findstr . >nul
+docker ps --filter "name=student-db-prod" --format "{{.Names}}" 2>nul | findstr . >nul
 if %errorlevel% equ 0 (
     echo [*] Backing up database...
-    docker exec attendance-db pg_dump -U postgres attendance_system > "%backupDir%\database_backup_%timestamp%.sql" 2>nul
+    docker exec student-db-prod pg_dump -U postgres student_system > "%backupDir%\database_backup_%timestamp%.sql" 2>nul
     if %errorlevel% equ 0 (
         echo [SUCCESS] Database backed up
     ) else (
@@ -174,7 +174,7 @@ echo [*] Running detailed health checks...
 
 REM PostgreSQL Health Check
 echo [*] Checking PostgreSQL database...
-docker-compose exec -T postgres pg_isready -U postgres >nul 2>&1
+docker-compose -f docker-compose.prod.yml exec -T student-db pg_isready -U postgres >nul 2>&1
 if %errorlevel% equ 0 (
     echo [SUCCESS] PostgreSQL is healthy
 ) else (
@@ -183,7 +183,7 @@ if %errorlevel% equ 0 (
 
 REM Redis Health Check
 echo [*] Checking Redis cache...
-docker-compose exec -T redis redis-cli ping >nul 2>&1
+docker-compose -f docker-compose.prod.yml exec -T student-redis sh -c "redis-cli -a $REDIS_PASSWORD ping" >nul 2>&1
 if %errorlevel% equ 0 (
     echo [SUCCESS] Redis is healthy
 ) else (
@@ -192,7 +192,7 @@ if %errorlevel% equ 0 (
 
 REM Backend API Health Check
 echo [*] Checking Backend API...
-curl -f http://localhost:3001/health >nul 2>&1
+curl -f http://127.0.0.1:3002/health >nul 2>&1
 if %errorlevel% equ 0 (
     echo [SUCCESS] Backend API is healthy
 ) else (
@@ -201,7 +201,7 @@ if %errorlevel% equ 0 (
 
 REM Face AI Service Health Check
 echo [*] Checking Face AI Service...
-curl -f http://localhost:8000/health >nul 2>&1
+curl -f http://127.0.0.1:8080/face-ai/health >nul 2>&1
 if %errorlevel% equ 0 (
     echo [SUCCESS] Face AI Service is healthy
 ) else (
@@ -228,9 +228,10 @@ echo [SUCCESS] No code or data was removed or damaged.
 
 echo.
 echo Service Access Points:
-echo   * Backend API: http://localhost:3001
-echo   * Face AI Service: http://localhost:8000
-echo   * Frontend: http://localhost
+echo   * Backend API: http://localhost:3002
+echo   * Face AI Service: http://localhost:8080/face-ai/
+echo   * Frontend (HTTP): http://localhost:8080
+echo   * Frontend (HTTPS): https://localhost:8443
 
 echo.
 echo Backup Location: %backupDir%

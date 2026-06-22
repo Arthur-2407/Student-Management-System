@@ -1,7 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 
-console.log('🚀 Starting Employee Attendance System...\n');
+console.log('🚀 Starting Student Attendance System...\n');
 
 // Function to start a service and log output
 function startService(name, command, cwd, color = '\x1b[36m') {

@@ -30,12 +30,12 @@ import { websocketService } from '@services/websocketService';
 
 interface SecurityEvent {
   id: number;
-  employee_id: number | null;
+  student_id: number | null;
   event_type: string;
   timestamp: string;
   severity: string;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };
@@ -43,12 +43,12 @@ interface SecurityEvent {
 
 interface LoginLog {
   id: number;
-  employee_id: number;
+  student_id: number;
   success: boolean;
   spoof_detected: boolean;
   timestamp: string;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };
@@ -56,22 +56,22 @@ interface LoginLog {
 
 interface TeamAttendance {
   id: number;
-  employee_id: number;
+  student_id: number;
   check_in_time: string;
   check_out_time: string | null;
   geo_fence_status: boolean;
   distance_from_office?: number | null;
   checkout_geo_fence_status?: boolean | null;
   checkout_distance_from_office?: number | null;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
     department: string;
   };
 }
 
-const SupervisorDashboard: React.FC = () => {
+const TeacherDashboard: React.FC = () => {
   const { showError, showSuccess } = useNotification();
   
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
@@ -185,7 +185,7 @@ const SupervisorDashboard: React.FC = () => {
     }
   };
 
-  // STABILIZATION: Fetch supervisor data with AbortController and resilient parallel fetching
+  // STABILIZATION: Fetch teacher data with AbortController and resilient parallel fetching
   const fetchData = useCallback(async (signal?: AbortSignal, skipLoading = false) => {
     try {
       if (!skipLoading) setLoading(true);
@@ -223,18 +223,18 @@ const SupervisorDashboard: React.FC = () => {
         setTeamAttendance(
           (attendanceResult.value.data.records || []).map((record: any) => ({
             id: record.id,
-            employee_id: record.employee_id,
+            student_id: record.student_id,
             check_in_time: record.check_in_time,
             check_out_time: record.check_out_time,
             geo_fence_status: record.geo_fence_status,
             distance_from_office: record.distance_from_office,
             checkout_geo_fence_status: record.checkout_geo_fence_status,
             checkout_distance_from_office: record.checkout_distance_from_office,
-            employee: {
-              employee_id: record.employee?.employee_id || record.employee_id || '',
-              first_name: record.employee?.first_name || record.first_name || '',
-              last_name: record.employee?.last_name || record.last_name || '',
-              department: record.employee?.department || record.department || '',
+            student: {
+              student_id: record.student?.student_id || record.student_id || '',
+              first_name: record.student?.first_name || record.first_name || '',
+              last_name: record.student?.last_name || record.last_name || '',
+              department: record.student?.department || record.department || '',
             },
           }))
         );
@@ -261,8 +261,8 @@ const SupervisorDashboard: React.FC = () => {
       }
     } catch (error: any) {
       if (error?.name === 'CanceledError') return;
-      console.error('Supervisor data fetch error:', error);
-      showError('Failed to load supervisor dashboard data');
+      console.error('Teacher data fetch error:', error);
+      showError('Failed to load teacher dashboard data');
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -286,7 +286,7 @@ const SupervisorDashboard: React.FC = () => {
   // Listen for realtime updates via WebSocket
   useEffect(() => {
     const handleRealtimeUpdate = (data: any) => {
-      console.log('[SupervisorDashboard] WebSocket event received, re-fetching data...', data);
+      console.log('[TeacherDashboard] WebSocket event received, re-fetching data...', data);
       // Skip showing loading spinner to avoid UI jarring
       fetchData(undefined, true);
     };
@@ -359,7 +359,7 @@ const SupervisorDashboard: React.FC = () => {
   const departmentAttendanceData = (() => {
     const deptMap: Record<string, { present: number; absent: number }> = {};
     teamAttendance.forEach(a => {
-      const dept = a.employee?.department || 'Unknown';
+      const dept = a.student?.department || 'Unknown';
       if (!deptMap[dept]) deptMap[dept] = { present: 0, absent: 0 };
       if (a.check_out_time === null) {
         deptMap[dept].present += 1;
@@ -380,7 +380,7 @@ const SupervisorDashboard: React.FC = () => {
       {/* Header */}
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Supervisor Dashboard</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
           <p className="text-gray-600 mt-1">Monitor your team's attendance and security events</p>
         </div>
       </header>
@@ -548,7 +548,7 @@ const SupervisorDashboard: React.FC = () => {
                   <div className="mb-4 md:mb-0">
                     <div className="flex items-center space-x-3">
                       <span className="font-semibold text-gray-900">{request.first_name} {request.last_name}</span>
-                      <span className="text-xs text-gray-500">({request.employee_id})</span>
+                      <span className="text-xs text-gray-500">({request.student_id})</span>
                       <span className={`px-2 py-0.5 text-xs rounded-full font-bold ${
                         request.request_type === 'ADD' 
                           ? 'bg-green-100 text-green-800' 
@@ -562,9 +562,9 @@ const SupervisorDashboard: React.FC = () => {
                     <div className="text-sm text-gray-500 mt-1">
                       Department: {request.department} &bull; Requested on {new Date(request.created_at).toLocaleDateString()}
                     </div>
-                    {request.requester_employee_id && request.requester_employee_id !== request.employee_id && (
+                    {request.requester_student_id && request.requester_student_id !== request.student_id && (
                       <div className="text-xs text-indigo-600 mt-1">
-                        Requested by: {request.requester_first_name} {request.requester_last_name} ({request.requester_employee_id})
+                        Requested by: {request.requester_first_name} {request.requester_last_name} ({request.requester_student_id})
                       </div>
                     )}
                   </div>
@@ -648,9 +648,9 @@ const SupervisorDashboard: React.FC = () => {
                   <div className="mb-4 md:mb-0">
                     <div className="flex items-center space-x-3">
                       <span className="font-semibold text-gray-900">
-                        {request.employee?.first_name} {request.employee?.last_name}
+                        {request.student?.first_name} {request.student?.last_name}
                       </span>
-                      <span className="text-xs text-gray-500">({request.employee?.employee_id})</span>
+                      <span className="text-xs text-gray-500">({request.student?.student_id})</span>
                       <span className="px-2 py-0.5 text-xs rounded-full font-bold bg-yellow-100 text-yellow-800 uppercase">
                         {request.leave_type}
                       </span>
@@ -768,7 +768,7 @@ const SupervisorDashboard: React.FC = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Employee
+                      Student
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Event Type
@@ -791,13 +791,13 @@ const SupervisorDashboard: React.FC = () => {
                       className="hover:bg-gray-50"
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {event.employee ? (
+                        {event.student ? (
                           <div>
                             <div className="font-medium">
-                              {event.employee.first_name} {event.employee.last_name}
+                              {event.student.first_name} {event.student.last_name}
                             </div>
                             <div className="text-gray-500 text-xs">
-                              {event.employee.employee_id}
+                              {event.student.student_id}
                             </div>
                           </div>
                         ) : (
@@ -853,7 +853,7 @@ const SupervisorDashboard: React.FC = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Employee
+                      Student
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Department
@@ -880,13 +880,13 @@ const SupervisorDashboard: React.FC = () => {
                       className="transition-colors border-l-4 border-transparent hover:border-blue-500"
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {attendance.employee ? (
+                        {attendance.student ? (
                           <div>
                             <div className="font-semibold text-gray-900">
-                              {attendance.employee.first_name} {attendance.employee.last_name}
+                              {attendance.student.first_name} {attendance.student.last_name}
                             </div>
                             <div className="text-gray-500 text-xs font-mono mt-0.5">
-                              {attendance.employee.employee_id}
+                              {attendance.student.student_id}
                             </div>
                           </div>
                         ) : (
@@ -894,7 +894,7 @@ const SupervisorDashboard: React.FC = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">
-                        {attendance.employee?.department || '-'}
+                        {attendance.student?.department || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <div className="flex flex-col space-y-1">
@@ -1003,7 +1003,7 @@ const SupervisorDashboard: React.FC = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Employee ID
+                      Student ID
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Name
@@ -1026,7 +1026,7 @@ const SupervisorDashboard: React.FC = () => {
                   {teamMembers.map((member) => (
                     <tr key={member.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {member.employee_id}
+                        {member.student_id}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {member.first_name} {member.last_name}
@@ -1068,7 +1068,7 @@ const SupervisorDashboard: React.FC = () => {
           <div className="bg-white rounded-2xl max-w-5xl w-full p-6 shadow-2xl relative max-h-[80vh] flex flex-col animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center pb-4 border-b border-gray-200">
               <h3 className="text-2xl font-bold text-gray-800">
-                Employees Present Today ({presentTodayRecords.length})
+                Students Present Today ({presentTodayRecords.length})
               </h3>
               <button
                 onClick={() => setShowPresentModal(false)}
@@ -1080,13 +1080,13 @@ const SupervisorDashboard: React.FC = () => {
             
             <div className="overflow-y-auto my-4 flex-1">
               {presentTodayRecords.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No employees are currently present.</p>
+                <p className="text-gray-500 text-center py-8">No students are currently present.</p>
               ) : (
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Employee ID
+                        Student ID
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Name
@@ -1110,20 +1110,20 @@ const SupervisorDashboard: React.FC = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {presentTodayRecords.map((attendance) => {
-                      const member = teamMembers.find(m => m.employee_id === attendance.employee?.employee_id);
+                      const member = teamMembers.find(m => m.student_id === attendance.student?.student_id);
                       return (
                         <tr key={attendance.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {attendance.employee?.employee_id}
+                            {attendance.student?.student_id}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {attendance.employee?.first_name} {attendance.employee?.last_name}
+                            {attendance.student?.first_name} {attendance.student?.last_name}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {member?.email || '—'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {attendance.employee?.department || '—'}
+                            {attendance.student?.department || '—'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {member?.position || '—'}
@@ -1187,7 +1187,7 @@ const SupervisorDashboard: React.FC = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Employee ID
+                        Student ID
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Name
@@ -1216,10 +1216,10 @@ const SupervisorDashboard: React.FC = () => {
                     {leaveRequests.map((request) => (
                       <tr key={request.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {request.employee?.employee_id}
+                          {request.student?.student_id}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {request.employee?.first_name} {request.employee?.last_name}
+                          {request.student?.first_name} {request.student?.last_name}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 uppercase">
                           {request.leave_type}
@@ -1316,4 +1316,4 @@ const SupervisorDashboard: React.FC = () => {
   );
 };
 
-export default SupervisorDashboard;
+export default TeacherDashboard;

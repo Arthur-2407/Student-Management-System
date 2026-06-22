@@ -2,17 +2,17 @@
 import React from 'react';
 export const mockUserData = {
   id: 1,
-  employeeId: 'EMP001',
+  studentId: 'EMP001',
   firstName: 'John',
   lastName: 'Doe',
   email: 'john.doe@company.com',
-  role: 'employee',
+  role: 'student',
   department: 'Engineering',
 };
 
 export const mockAdminData = {
   id: 2,
-  employeeId: 'ADM001',
+  studentId: 'ADM001',
   firstName: 'Admin',
   lastName: 'User',
   email: 'admin@company.com',
@@ -20,20 +20,20 @@ export const mockAdminData = {
   department: 'Administration',
 };
 
-export const mockSupervisorData = {
+export const mockTeacherData = {
   id: 3,
-  employeeId: 'SUP001',
+  studentId: 'SUP001',
   firstName: 'Jane',
   lastName: 'Smith',
   email: 'jane.smith@company.com',
-  role: 'supervisor',
+  role: 'teacher',
   department: 'Engineering',
 };
 
 export const mockAttendanceRecords = [
   {
     id: 1,
-    employeeId: 1,
+    studentId: 1,
     checkInTime: new Date().toISOString(),
     checkOutTime: null,
     workHours: null,
@@ -43,7 +43,7 @@ export const mockAttendanceRecords = [
   },
   {
     id: 2,
-    employeeId: 1,
+    studentId: 1,
     checkInTime: new Date(Date.now() - 86400000).toISOString(),
     checkOutTime: new Date(Date.now() - 86400000 + 28800000).toISOString(),
     workHours: '08:00:00',
@@ -56,7 +56,7 @@ export const mockAttendanceRecords = [
 export const mockLeaveRequests = [
   {
     id: 1,
-    employeeId: 1,
+    studentId: 1,
     leaveType: 'vacation',
     startDate: new Date().toISOString(),
     endDate: new Date(Date.now() + 86400000 * 5).toISOString(),
@@ -66,7 +66,7 @@ export const mockLeaveRequests = [
   },
   {
     id: 2,
-    employeeId: 1,
+    studentId: 1,
     leaveType: 'sick',
     startDate: new Date(Date.now() - 86400000 * 10).toISOString(),
     endDate: new Date(Date.now() - 86400000 * 8).toISOString(),
@@ -79,7 +79,7 @@ export const mockLeaveRequests = [
 export const mockSecurityEvents = [
   {
     id: 1,
-    employeeId: 1,
+    studentId: 1,
     eventType: 'SPOOF_ATTEMPT',
     timestamp: new Date().toISOString(),
     ipAddress: '192.168.1.100',
@@ -89,7 +89,7 @@ export const mockSecurityEvents = [
   },
   {
     id: 2,
-    employeeId: 2,
+    studentId: 2,
     eventType: 'GEOFENCE_VIOLATION',
     timestamp: new Date(Date.now() - 3600000).toISOString(),
     ipAddress: '192.168.1.101',
@@ -128,7 +128,7 @@ export const setupMockApi = () => {
         json: () => Promise.resolve({ 
           success: true, 
           tokens: { accessToken: 'mock-token', refreshToken: 'mock-refresh' },
-          employee: mockUserData,
+          student: mockUserData,
         }),
       });
     }

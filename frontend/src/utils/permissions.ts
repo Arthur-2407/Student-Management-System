@@ -1,6 +1,6 @@
 // Utility functions for handling permissions and roles
 
-export type Role = 'employee' | 'supervisor' | 'admin';
+export type Role = 'student' | 'teacher' | 'admin';
 
 export interface Permission {
   resource: string;
@@ -8,24 +8,24 @@ export interface Permission {
 }
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  employee: [
+  student: [
     { resource: 'attendance', actions: ['read', 'create'] },
     { resource: 'leave', actions: ['read', 'create'] },
     { resource: 'reports', actions: ['read'] },
   ],
-  supervisor: [
+  teacher: [
     { resource: 'attendance', actions: ['read', 'create', 'update', 'delete'] },
     { resource: 'leave', actions: ['read', 'create', 'update'] },
     { resource: 'reports', actions: ['read', 'create'] },
     { resource: 'team', actions: ['read'] },
-    { resource: 'supervisor-dashboard', actions: ['read'] },
+    { resource: 'teacher-dashboard', actions: ['read'] },
   ],
   admin: [
     { resource: 'attendance', actions: ['read', 'create', 'update', 'delete'] },
     { resource: 'leave', actions: ['read', 'create', 'update', 'delete'] },
     { resource: 'reports', actions: ['read', 'create', 'update', 'delete'] },
     { resource: 'team', actions: ['read', 'create', 'update', 'delete'] },
-    { resource: 'supervisor-dashboard', actions: ['read'] },
+    { resource: 'teacher-dashboard', actions: ['read'] },
     { resource: 'security-dashboard', actions: ['read'] },
     { resource: 'admin', actions: ['read', 'create', 'update', 'delete'] },
   ],
@@ -68,7 +68,7 @@ export const canAccessRoute = (
     '/attendance': { resource: 'attendance', action: 'read' },
     '/leave': { resource: 'leave', action: 'read' },
     '/reports': { resource: 'reports', action: 'read' },
-    '/supervisor': { resource: 'supervisor-dashboard', action: 'read' },
+    '/teacher': { resource: 'teacher-dashboard', action: 'read' },
     '/security': { resource: 'security-dashboard', action: 'read' },
   };
   
@@ -82,7 +82,7 @@ export const canAccessRoute = (
 };
 
 export const getAccessibleRoutes = (userRole: Role): string[] => {
-  const allRoutes = ['/dashboard', '/attendance', '/leave', '/reports', '/supervisor', '/security'];
+  const allRoutes = ['/dashboard', '/attendance', '/leave', '/reports', '/teacher', '/security'];
   
   return allRoutes.filter(route => canAccessRoute(userRole, route));
 };

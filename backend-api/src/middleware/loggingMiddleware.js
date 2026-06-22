@@ -25,7 +25,7 @@ function logRequest(req, res, next) {
       ip:            req.ip,
       userAgent:     req.headers['user-agent'],
       userId:        req.user?.id    ?? null,
-      employeeId:    req.user?.employeeId ?? null,
+      studentId:    req.user?.studentId ?? null,
       traceId:       req.span?.traceId ?? null,
       spanId:        req.span?.spanId ?? null,
     };

@@ -15,10 +15,10 @@ const relationshipMap = {
   timestamp: new Date().toISOString(),
   graphs: {
     dependency: {
-      'nginx': ['frontend', 'backend-api'],
-      'frontend': ['backend-api'],
-      'backend-api': ['postgres', 'redis', 'face-ai-service'],
-      'face-ai-service': ['redis']
+      'nginx': ['frontend', 'student-backend'],
+      'frontend': ['student-backend'],
+      'student-backend': ['postgres', 'redis', 'student-face-ai'],
+      'student-face-ai': ['redis']
     },
     routing: {
       '/setup/admin-face': 'BootstrapSetupPage.tsx ──▶ /api/auth/bootstrap/status & /api/auth/bootstrap/setup',
@@ -27,11 +27,11 @@ const relationshipMap = {
       '/dashboard': 'DashboardPage.tsx ──▶ /api/attendance/today',
       '/attendance': 'AttendancePage.tsx ──▶ /api/attendance/check-in & /api/attendance/check-out',
       '/leave': 'LeavePage.tsx ──▶ /api/leave/request',
-      '/admin': 'AdminPage.tsx ──▶ /api/admin/employees'
+      '/admin': 'AdminPage.tsx ──▶ /api/admin/students'
     },
     communication: {
-      'Express Nginx Proxy': 'HTTP 80/443 ──▶ Nginx ──▶ frontend:80, backend-api:3001, face-ai-service:8000',
-      'API call to Face-AI': 'backend-api:3001 ──▶ POST /api/register-face & POST /api/face-login ──▶ face-ai-service:8000'
+      'Express Nginx Proxy': 'HTTP 80/443 ──▶ Nginx ──▶ frontend:80, student-backend:3001, student-face-ai:8000',
+      'API call to Face-AI': 'student-backend:3001 ──▶ POST /api/register-face & POST /api/face-login ──▶ student-face-ai:8000'
     }
   }
 };
@@ -42,19 +42,19 @@ const featureMap = {
     'Admin Bootstrap': {
       component: 'BootstrapSetupPage',
       apis: ['GET /api/auth/bootstrap/status', 'POST /api/auth/bootstrap/setup'],
-      tables: ['employees', 'face_embeddings', 'admin_configuration'],
+      tables: ['students', 'face_embeddings', 'admin_configuration'],
       recoveryUrl: '/setup/admin-face?recovery=true'
     },
     'MFA Face Login': {
       component: 'FaceLogin',
       apis: ['POST /api/auth/pre-login-check', 'POST /api/auth/login', 'POST /api/auth/face-login'],
-      tables: ['employees', 'face_embeddings', 'login_logs'],
+      tables: ['students', 'face_embeddings', 'login_logs'],
       recoveryUrl: '/recovery-request'
     },
     'Check-in / Check-out': {
       component: 'AttendancePage',
       apis: ['POST /api/attendance/check-in', 'POST /api/attendance/check-out'],
-      tables: ['attendance_records'],
+      tables: ['student_attendance'],
       recoveryUrl: null
     }
   }

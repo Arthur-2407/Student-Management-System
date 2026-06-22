@@ -14,7 +14,7 @@ const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..');
 const FRONTEND_DIST = path.join(ROOT, 'frontend', 'dist');
-const BACKEND_SRC = path.join(ROOT, 'backend-api', 'src');
+const BACKEND_SRC = path.join(ROOT, 'student-backend', 'src');
 
 const BUDGETS = {
   maxTotalBundleSizeKB: 2048,

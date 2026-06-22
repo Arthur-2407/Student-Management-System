@@ -248,7 +248,7 @@ const DashboardPage: React.FC = () => {
       setIsFaceSubmitting(true);
       const requestType = faceEnrolled ? 'UPDATE' : 'ADD';
       const response = await faceManagementApi.submitRequest({
-        employeeId: user.employeeId,
+        studentId: user.studentId,
         requestType,
         frames: faceFrames.map(f => f.data),
       });
@@ -300,7 +300,7 @@ const DashboardPage: React.FC = () => {
         }
       });
 
-    const eventsPromise = (user?.role === 'admin' || user?.role === 'supervisor')
+    const eventsPromise = (user?.role === 'admin' || user?.role === 'teacher')
       ? securityApi.getSecurityEvents(5)
           .then((resp) => {
             if (!signal.aborted) {
@@ -357,7 +357,7 @@ const DashboardPage: React.FC = () => {
         }
       });
 
-    // Fetch employee timings
+    // Fetch student timings
     const timingPromise = attendanceApi.getMyTiming()
       .then((resp) => {
         if (!signal.aborted) {
@@ -752,16 +752,16 @@ const DashboardPage: React.FC = () => {
           <p className="text-gray-600 mt-1">Welcome back, {(user as any)?.firstName ?? ''} {(user as any)?.lastName ?? ''}</p>
           {user && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-sm text-gray-500">
-              <span><strong>ID:</strong> {user.employeeId}</span>
+              <span><strong>ID:</strong> {user.studentId}</span>
               <span className="text-gray-300">•</span>
               <span><strong>Department:</strong> {user.department}</span>
               {user.role !== 'admin' && (
                 <>
                   <span className="text-gray-300">•</span>
                   <span>
-                    <strong>Supervisor:</strong>{' '}
-                    {(user as any).supervisorName ? (
-                      <span className="text-blue-600 font-medium">{(user as any).supervisorName}</span>
+                    <strong>Teacher:</strong>{' '}
+                    {(user as any).teacherName ? (
+                      <span className="text-blue-600 font-medium">{(user as any).teacherName}</span>
                     ) : (
                       <span className="text-amber-500 italic">Unassigned</span>
                     )}

@@ -17,8 +17,8 @@ const { query } = require('../config/database');
 
 const ROLE_HIERARCHY = {
   admin: 3,
-  supervisor: 2,
-  employee: 1,
+  teacher: 2,
+  student: 1,
 };
 
 /**
@@ -60,30 +60,30 @@ function requireRole(minimumRole) {
  * Default permission roles as a baseline/fallback
  */
 const DEFAULT_PERMISSIONS = {
-  'view:dashboard':      ['employee', 'supervisor', 'admin'],
-  'view:attendance':     ['employee', 'supervisor', 'admin'],
-  'attendance.view.own':    ['employee', 'supervisor', 'admin'],
-  'attendance.view.team':   ['supervisor', 'admin'],
+  'view:dashboard':      ['student', 'teacher', 'admin'],
+  'view:attendance':     ['student', 'teacher', 'admin'],
+  'attendance.view.own':    ['student', 'teacher', 'admin'],
+  'attendance.view.team':   ['teacher', 'admin'],
   'attendance.view.global': ['admin'],
-  'manage:attendance':   ['supervisor', 'admin'],
-  'leave.create':               ['employee', 'supervisor', 'admin'],
-  'view:leave':                 ['employee', 'supervisor', 'admin'],
-  'leave.approve.employee':     ['supervisor', 'admin'],
-  'leave.approve.supervisor':   ['admin'],
-  'manage:leave':               ['supervisor', 'admin'],
-  'face.update.request':        ['employee', 'supervisor', 'admin'],
-  'face.update.approve':        ['supervisor', 'admin'],
-  'password.reset.request':     ['employee', 'supervisor', 'admin'],
-  'password.reset.approve':     ['supervisor', 'admin'],
-  'view:reports':        ['employee', 'supervisor', 'admin'],
-  'view:security':       ['supervisor', 'admin'],
+  'manage:attendance':   ['teacher', 'admin'],
+  'leave.create':               ['student', 'teacher', 'admin'],
+  'view:leave':                 ['student', 'teacher', 'admin'],
+  'leave.approve.student':     ['teacher', 'admin'],
+  'leave.approve.teacher':   ['admin'],
+  'manage:leave':               ['teacher', 'admin'],
+  'face.update.request':        ['student', 'teacher', 'admin'],
+  'face.update.approve':        ['teacher', 'admin'],
+  'password.reset.request':     ['student', 'teacher', 'admin'],
+  'password.reset.approve':     ['teacher', 'admin'],
+  'view:reports':        ['student', 'teacher', 'admin'],
+  'view:security':       ['teacher', 'admin'],
   'manage:security':     ['admin'],
-  'view:telemetry':      ['supervisor', 'admin'],
+  'view:telemetry':      ['teacher', 'admin'],
   'manage:system':       ['admin'],
   'manage:users':        ['admin'],
   'system.configure':    ['admin'],
-  'view:system-status':  ['supervisor', 'admin'],
-  'manage:mfa':          ['employee', 'supervisor', 'admin'],
+  'view:system-status':  ['teacher', 'admin'],
+  'manage:mfa':          ['student', 'teacher', 'admin'],
 };
 
 // Map fallback compatibility (PERMISSIONS is used/exported in other modules)

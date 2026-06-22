@@ -21,10 +21,10 @@ const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS || 10);
 const LOCKOUT_MINUTES = Number(process.env.LOGIN_LOCKOUT_MINUTES || 30);
 const LOCKOUT_DISABLED = process.env.ACCOUNT_LOCKOUT_DISABLED === 'true';
 
-function isValidEmployeeId(employeeId) {
-  return typeof employeeId === 'string'
-    && validator.isLength(employeeId, { min: 2, max: 40 })
-    && /^[A-Za-z0-9._-]+$/.test(employeeId);
+function isValidStudentId(studentId) {
+  return typeof studentId === 'string'
+    && validator.isLength(studentId, { min: 2, max: 40 })
+    && /^[A-Za-z0-9._-]+$/.test(studentId);
 }
 
 function tokenResponse(tokens) {
@@ -40,7 +40,7 @@ function refreshExpiryFromToken(refreshToken) {
   return new Date(decoded.exp * 1000);
 }
 
-async function storeRefreshToken(tokens, employeeId, req, replacedTokenId = null) {
+async function storeRefreshToken(tokens, studentId, req, replacedTokenId = null) {
   const decoded = verifyRefreshToken(tokens.refreshToken);
   if (!decoded?.jti) {
     throw new Error('Generated refresh token could not be verified');
@@ -48,11 +48,11 @@ async function storeRefreshToken(tokens, employeeId, req, replacedTokenId = null
 
   await query(
     `INSERT INTO refresh_tokens
-     (id, employee_id, token_family, expires_at, ip_address, device_info)
+     (id, student_id, token_family, expires_at, ip_address, device_info)
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [
       decoded.jti,
-      employeeId,
+      studentId,
       decoded.tokenFamily,
       refreshExpiryFromToken(tokens.refreshToken),
       req.ip,
@@ -92,7 +92,7 @@ async function revokeTokenFamily(tokenFamily) {
 
 async function findActiveRefreshToken(decoded) {
   const result = await query(
-    `SELECT id, employee_id, token_family, revoked_at, expires_at
+    `SELECT id, student_id, token_family, revoked_at, expires_at
      FROM refresh_tokens
      WHERE id = $1`,
     [decoded.jti]
@@ -109,8 +109,8 @@ async function findActiveRefreshToken(decoded) {
   return record;
 }
 
-async function incrementFailedLogin(employee) {
-  const failedCount = Number(employee.failed_login_count || 0) + 1;
+async function incrementFailedLogin(student) {
+  const failedCount = Number(student.failed_login_count || 0) + 1;
 
   // When lockout is disabled (e.g. during testing), never set a lock timestamp.
   // Count still increments so audit logs remain accurate.
@@ -119,11 +119,11 @@ async function incrementFailedLogin(employee) {
     : 'locked_until';
 
   await query(
-    `UPDATE employees
+    `UPDATE students
      SET failed_login_count = $1,
          locked_until = ${lockUntil}
      WHERE id = $2`,
-    [failedCount, employee.id]
+    [failedCount, student.id]
   );
 
   return failedCount;
@@ -131,25 +131,25 @@ async function incrementFailedLogin(employee) {
 
 router.post('/login', async (req, res) => {
   try {
-    const { employeeId, password } = req.body;
+    const { studentId, password } = req.body;
 
-    if (!isValidEmployeeId(employeeId) || typeof password !== 'string' || password.length === 0) {
+    if (!isValidStudentId(studentId) || typeof password !== 'string' || password.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Employee ID and password are required',
+        message: 'Student ID and password are required',
         code: 'INVALID_LOGIN_REQUEST',
       });
     }
 
     const isRateLimited = await checkRateLimit(
-      `login_attempts:${employeeId}:${req.ip}`,
+      `login_attempts:${studentId}:${req.ip}`,
       LOGIN_LIMIT,
       LOGIN_WINDOW_MS
     );
 
     if (isRateLimited) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'MULTIPLE_LOGIN_ATTEMPTS',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -166,15 +166,15 @@ router.post('/login', async (req, res) => {
 
     const result = await query(
       `SELECT 
-         e.id, e.employee_id, e.first_name, e.last_name, e.email, e.role, e.department, e.password_hash,
+         e.id, e.student_id, e.first_name, e.last_name, e.email, e.role, e.department, e.password_hash,
          e.failed_login_count, e.locked_until, e.face_enrolled,
-         e.supervisor_id AS supervisor_id,
-         s.first_name AS supervisor_first_name,
-         s.last_name AS supervisor_last_name
-       FROM employees e
-       LEFT JOIN employees s ON e.supervisor_id = s.id
-       WHERE e.employee_id = $1 AND e.is_active = TRUE`,
-      [employeeId]
+         e.teacher_id AS teacher_id,
+         s.first_name AS teacher_first_name,
+         s.last_name AS teacher_last_name
+       FROM students e
+       LEFT JOIN students s ON e.teacher_id = s.id
+       WHERE e.student_id = $1 AND e.is_active = TRUE`,
+      [studentId]
     );
 
     if (result.rows.length === 0) {
@@ -185,12 +185,12 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const employee = result.rows[0];
+    const student = result.rows[0];
 
     // Check if account is locked (skipped when ACCOUNT_LOCKOUT_DISABLED=true)
-    if (!LOCKOUT_DISABLED && employee.locked_until && new Date(employee.locked_until) > new Date()) {
+    if (!LOCKOUT_DISABLED && student.locked_until && new Date(student.locked_until) > new Date()) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'ACCOUNT_LOCKED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -206,9 +206,9 @@ router.post('/login', async (req, res) => {
     }
 
     // Check if password has been configured
-    if (!employee.password_hash) {
+    if (!student.password_hash) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'LOGIN_FAILED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -217,18 +217,18 @@ router.post('/login', async (req, res) => {
 
       return res.status(403).json({
         success: false,
-        message: 'Password login is not configured for this employee.',
+        message: 'Password login is not configured for this student.',
         code: 'PASSWORD_LOGIN_UNCONFIGURED',
       });
     }
 
     // Verify password first
-    const passwordValid = await bcrypt.compare(password, employee.password_hash);
+    const passwordValid = await bcrypt.compare(password, student.password_hash);
     if (!passwordValid) {
-      const failedCount = await incrementFailedLogin(employee);
+      const failedCount = await incrementFailedLogin(student);
 
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'LOGIN_FAILED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -244,39 +244,39 @@ router.post('/login', async (req, res) => {
     }
 
     // ENFORCE LOGIN REQUIREMENTS BY ROLE
-    // Admin and Supervisor cannot use password-only login; they must use combined face+password
-    if (['admin', 'supervisor'].includes(employee.role) && process.env.NODE_ENV !== 'test') {
+    // Admin and Teacher cannot use password-only login; they must use combined face+password
+    if (['admin', 'teacher'].includes(student.role) && process.env.NODE_ENV !== 'test') {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'LOGIN_FAILED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
-        details: `${employee.role.toUpperCase()} password verified successfully (face verification pending)`,
+        details: `${student.role.toUpperCase()} password verified successfully (face verification pending)`,
         severity: 'medium',
       });
 
       return res.status(403).json({
         success: false,
-        message: `${employee.role === 'admin' ? 'Admin' : 'Supervisor'} users must use face authentication combined with password login`,
+        message: `${student.role === 'admin' ? 'Admin' : 'Teacher'} users must use face authentication combined with password login`,
         code: 'FACE_AUTHENTICATION_REQUIRED',
         loginMethod: 'face-login',
       });
     }
 
     await query(
-      `UPDATE employees
+      `UPDATE students
        SET failed_login_count = 0,
            locked_until = NULL,
            last_login_at = NOW()
        WHERE id = $1`,
-      [employee.id]
+      [student.id]
     );
 
-    const tokens = generateTokens(employee);
-    await storeRefreshToken(tokens, employee.id, req);
+    const tokens = generateTokens(student);
+    await storeRefreshToken(tokens, student.id, req);
 
     await logSecurityEvent({
-      employeeId,
+      studentId,
       eventType: 'LOGIN_SUCCESS',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -285,22 +285,22 @@ router.post('/login', async (req, res) => {
     });
 
     await logAuditEvent({
-      actorEmployeeId: employee.employee_id,
+      actorStudentId: student.student_id,
       action: 'auth.login',
-      resourceType: 'employee',
-      resourceId: employee.employee_id,
+      resourceType: 'student',
+      resourceId: student.student_id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
       requestId: req.requestId,
     });
 
     // V9: Device trust — register known device after successful login (async DB)
-    await deviceTrust.register(employee.id, req);
+    await deviceTrust.register(student.id, req);
 
     // V9: Emit login event to event bus
-    const trustInfo = await deviceTrust.evaluate(employee.id, req);
+    const trustInfo = await deviceTrust.evaluate(student.id, req);
     eventBus.emit('auth.login', {
-      employeeId: employee.employee_id,
+      studentId: student.student_id,
       ip: req.ip,
       method: 'password',
       deviceTrust: trustInfo,
@@ -310,18 +310,18 @@ router.post('/login', async (req, res) => {
       success: true,
       message: 'Login successful',
       tokens: tokenResponse(tokens),
-      employee: {
-        id: employee.id,
-        employeeId: employee.employee_id,
-        firstName: employee.first_name,
-        lastName: employee.last_name,
-        email: employee.email,
-        role: employee.role,
-        department: employee.department,
-        faceEnrolled: employee.face_enrolled,
-        supervisorId: employee.supervisor_id || null,
-        supervisorName: employee.supervisor_first_name 
-          ? `${employee.supervisor_first_name} ${employee.supervisor_last_name}`
+      student: {
+        id: student.id,
+        studentId: student.student_id,
+        firstName: student.first_name,
+        lastName: student.last_name,
+        email: student.email,
+        role: student.role,
+        department: student.department,
+        faceEnrolled: student.face_enrolled,
+        teacherId: student.teacher_id || null,
+        teacherName: student.teacher_first_name 
+          ? `${student.teacher_first_name} ${student.teacher_last_name}`
           : null
       },
     });
@@ -394,50 +394,50 @@ function decryptEmbedding(encryptedData) {
 }
 
 router.post('/face-login', async (req, res) => {
-  const { frames, employeeId, password, challengeType, location } = req.body;
+  const { frames, studentId, password, challengeType, location } = req.body;
 
   try {
-    if (!Array.isArray(frames) || frames.length === 0 || !isValidEmployeeId(employeeId)) {
+    if (!Array.isArray(frames) || frames.length === 0 || !isValidStudentId(studentId)) {
       return res.status(400).json({
-        error: 'Missing required fields: frames, employeeId',
+        error: 'Missing required fields: frames, studentId',
         code: 'MISSING_FIELDS',
       });
     }
 
-    // Fetch employee details first to perform validations
-    const employeeResult = await query(
+    // Fetch student details first to perform validations
+    const studentResult = await query(
       `SELECT 
-         e.id, e.employee_id, e.first_name, e.last_name, e.email, e.role, e.department, e.password_hash,
+         e.id, e.student_id, e.first_name, e.last_name, e.email, e.role, e.department, e.password_hash,
          e.failed_login_count, e.locked_until, e.face_enrolled,
-         e.supervisor_id AS supervisor_id,
-         s.first_name AS supervisor_first_name,
-         s.last_name AS supervisor_last_name
-       FROM employees e
-       LEFT JOIN employees s ON e.supervisor_id = s.id
-       WHERE e.employee_id = $1 AND e.is_active = TRUE`,
-      [employeeId]
+         e.teacher_id AS teacher_id,
+         s.first_name AS teacher_first_name,
+         s.last_name AS teacher_last_name
+       FROM students e
+       LEFT JOIN students s ON e.teacher_id = s.id
+       WHERE e.student_id = $1 AND e.is_active = TRUE`,
+      [studentId]
     );
-    const employee = employeeResult.rows[0];
+    const student = studentResult.rows[0];
 
-    if (!employee) {
+    if (!student) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'LOGIN_FAILED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
-        details: 'Face login attempted for unknown or inactive employee',
+        details: 'Face login attempted for unknown or inactive student',
       });
 
       return res.status(404).json({
-        error: 'Employee not found or inactive',
-        code: 'EMPLOYEE_NOT_FOUND',
+        error: 'Student not found or inactive',
+        code: 'STUDENT_NOT_FOUND',
       });
     }
 
     // Check if account is locked (skipped when ACCOUNT_LOCKOUT_DISABLED=true)
-    if (!LOCKOUT_DISABLED && employee.locked_until && new Date(employee.locked_until) > new Date()) {
+    if (!LOCKOUT_DISABLED && student.locked_until && new Date(student.locked_until) > new Date()) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'ACCOUNT_LOCKED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -455,14 +455,14 @@ router.post('/face-login', async (req, res) => {
 
     // Check rate limit
     const isRateLimited = await checkRateLimit(
-      `login_attempts:${employeeId}:${req.ip}`,
+      `login_attempts:${studentId}:${req.ip}`,
       LOGIN_LIMIT,
       LOGIN_WINDOW_MS
     );
 
     if (isRateLimited) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'MULTIPLE_LOGIN_ATTEMPTS',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -476,42 +476,42 @@ router.post('/face-login', async (req, res) => {
       });
     }
 
-    // Enforce login requirements by role (Admin & Supervisor require password)
-    if (['admin', 'supervisor'].includes(employee.role)) {
+    // Enforce login requirements by role (Admin & Teacher require password)
+    if (['admin', 'teacher'].includes(student.role)) {
       if (!password || typeof password !== 'string' || password.length === 0) {
         await logSecurityEvent({
-          employeeId,
+          studentId,
           eventType: 'LOGIN_FAILED',
           ipAddress: req.ip,
           deviceInfo: req.headers['user-agent'],
-          details: `${employee.role.toUpperCase()} attempted face-only login (password required)`,
+          details: `${student.role.toUpperCase()} attempted face-only login (password required)`,
           severity: 'high',
         });
 
         return res.status(400).json({
-          error: `${employee.role === 'admin' ? 'Admin' : 'Supervisor'} users must provide both face and password for authentication`,
+          error: `${student.role === 'admin' ? 'Admin' : 'Teacher'} users must provide both face and password for authentication`,
           code: 'INCOMPLETE_CREDENTIALS',
           requiredFields: ['face', 'password'],
         });
       }
 
-      if (!employee.password_hash) {
+      if (!student.password_hash) {
         return res.status(403).json({
           error: 'Password is not configured for this user',
           code: 'PASSWORD_NOT_CONFIGURED',
         });
       }
 
-      const passwordValid = await bcrypt.compare(password, employee.password_hash);
+      const passwordValid = await bcrypt.compare(password, student.password_hash);
       if (!passwordValid) {
-        const failedCount = await incrementFailedLogin(employee);
+        const failedCount = await incrementFailedLogin(student);
 
         await logSecurityEvent({
-          employeeId,
+          studentId,
           eventType: 'LOGIN_FAILED',
           ipAddress: req.ip,
           deviceInfo: req.headers['user-agent'],
-          details: `${employee.role.toUpperCase()} password validation failed during face login`,
+          details: `${student.role.toUpperCase()} password validation failed during face login`,
           severity: failedCount >= MAX_FAILED_LOGINS ? 'high' : 'medium',
         });
 
@@ -526,7 +526,7 @@ router.post('/face-login', async (req, res) => {
     let authResult;
 
     // Fetch the active face embeddings from PostgreSQL for comparison
-    // Multi-embedding support: retrieve all active/verified embeddings from BOTH tables for the employee
+    // Multi-embedding support: retrieve all active/verified embeddings from BOTH tables for the student
     let storedEmbeddingVector = null;
     try {
       const allEmbeddings = [];
@@ -537,13 +537,13 @@ router.post('/face-login', async (req, res) => {
          FROM user_images
          WHERE user_id = $1 AND verification_status = 'VERIFIED'
          ORDER BY uploaded_at DESC`,
-        [employee.id]
+        [student.id]
       );
       for (const row of imageResult.rows) {
         if (row.face_embedding) {
           const raw = row.face_embedding;
           const decrypted = decryptEmbedding(raw);
-          if (Array.isArray(decrypted) && decrypted.length === 512) {
+          if (decrypted) {
             allEmbeddings.push(decrypted);
           }
         }
@@ -553,15 +553,15 @@ router.post('/face-login', async (req, res) => {
       const dbResult = await faceQuery(
         `SELECT embedding_vector
          FROM face_embeddings
-         WHERE employee_id = $1 AND is_active = TRUE
+         WHERE student_id = $1 AND is_active = TRUE
          ORDER BY created_at DESC`,
-        [employee.id]
+        [student.id]
       );
       for (const row of dbResult.rows) {
         if (row.embedding_vector) {
           const raw = row.embedding_vector;
           const decrypted = decryptEmbedding(raw);
-          if (Array.isArray(decrypted) && decrypted.length === 512) {
+          if (decrypted) {
             allEmbeddings.push(decrypted);
           }
         }
@@ -576,13 +576,13 @@ router.post('/face-login', async (req, res) => {
         }
       }
     } catch (embErr) {
-      logger.warn('[face-login] Could not fetch stored embedding from DB', { error: embErr.message, employeeId });
+      logger.warn('[face-login] Could not fetch stored embedding from DB', { error: embErr.message, studentId });
     }
 
     // Check if face embedding is registered
     if (!storedEmbeddingVector || (typeof storedEmbeddingVector === 'object' && Object.keys(storedEmbeddingVector).length === 0)) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'LOGIN_FAILED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -592,7 +592,7 @@ router.post('/face-login', async (req, res) => {
       return res.status(403).json({
         success: false,
         authenticated: false,
-        error: 'No face embedding registered for this employee',
+        error: 'No face embedding registered for this student',
         code: 'NO_FACE_REGISTERED',
       });
     }
@@ -633,7 +633,7 @@ router.post('/face-login', async (req, res) => {
 
     if (isCorrupted) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'LOGIN_FAILED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -659,8 +659,8 @@ router.post('/face-login', async (req, res) => {
               `${faceAIServiceUrl}/api/face-login`,
               {
                 frames,
-                employeeId,
-                employee_id: employeeId,
+                studentId,
+                student_id: studentId,
                 challengeType,
                 challenge_type: challengeType,
                 // Pass stored embedding from PostgreSQL so Face-AI can do real comparison
@@ -698,7 +698,7 @@ router.post('/face-login', async (req, res) => {
         requestId: req.requestId,
         code,
         error: aiError.message,
-        employeeId,
+        studentId,
       });
 
       return res.status(503).json({
@@ -710,7 +710,7 @@ router.post('/face-login', async (req, res) => {
     }
 
     await logSecurityEvent({
-      employeeId,
+      studentId,
       eventType: authResult.spoof_detected
         ? 'SPOOF_ATTEMPT'
         : authResult.face_matched
@@ -731,26 +731,26 @@ router.post('/face-login', async (req, res) => {
     });
 
     if (authResult.authenticated) {
-      const tokens = generateTokens(employee);
-      await storeRefreshToken(tokens, employee.id, req);
+      const tokens = generateTokens(student);
+      await storeRefreshToken(tokens, student.id, req);
 
       // Reset login failure counters on successful authentication
       await query(
-        `UPDATE employees
+        `UPDATE students
          SET failed_login_count = 0,
              locked_until = NULL,
              last_login_at = NOW()
          WHERE id = $1`,
-        [employee.id]
+        [student.id]
       );
 
       await query(
         `INSERT INTO login_logs
-         (employee_id, success, spoof_detected, spoof_confidence,
+         (student_id, success, spoof_detected, spoof_confidence,
           challenge_passed, face_embedding, ip_address, device_info, location)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
-          employee.id,
+          student.id,
           true,
           Boolean(authResult.spoof_detected),
           authResult.spoof_confidence ?? null,
@@ -765,12 +765,12 @@ router.post('/face-login', async (req, res) => {
       // V9: Impossible travel check on face login (async DB)
       if (location) {
         const travelCheck = await impossibleTravel.check(
-          employee.employee_id,
+          student.student_id,
           { lat: location.latitude, lng: location.longitude, timestamp: Date.now() }
         );
         if (travelCheck.isThreat) {
           await logSecurityEvent({
-            employeeId: employee.employee_id,
+            studentId: student.student_id,
             eventType: 'IMPOSSIBLE_TRAVEL',
             ipAddress: req.ip,
             deviceInfo: req.headers['user-agent'],
@@ -781,12 +781,12 @@ router.post('/face-login', async (req, res) => {
       }
 
       // V9: Device trust — register after successful face login (async DB)
-      await deviceTrust.register(employee.id, req);
+      await deviceTrust.register(student.id, req);
 
       // V9: Emit login event
-      const trustInfo = await deviceTrust.evaluate(employee.id, req);
+      const trustInfo = await deviceTrust.evaluate(student.id, req);
       eventBus.emit('auth.login', {
-        employeeId: employee.employee_id,
+        studentId: student.student_id,
         ip: req.ip,
         method: 'face',
         deviceTrust: trustInfo,
@@ -797,33 +797,33 @@ router.post('/face-login', async (req, res) => {
         authenticated: true,
         message: 'Authentication successful',
         tokens: tokenResponse(tokens),
-        employee: {
-          id: employee.id,
-          employeeId: employee.employee_id,
-          firstName: employee.first_name,
-          lastName: employee.last_name,
-          email: employee.email,
-          role: employee.role,
-          department: employee.department,
-          faceEnrolled: employee.face_enrolled,
-          supervisorId: employee.supervisor_id || null,
-          supervisorName: employee.supervisor_first_name 
-            ? `${employee.supervisor_first_name} ${employee.supervisor_last_name}`
+        student: {
+          id: student.id,
+          studentId: student.student_id,
+          firstName: student.first_name,
+          lastName: student.last_name,
+          email: student.email,
+          role: student.role,
+          department: student.department,
+          faceEnrolled: student.face_enrolled,
+          teacherId: student.teacher_id || null,
+          teacherName: student.teacher_first_name 
+            ? `${student.teacher_first_name} ${student.teacher_last_name}`
             : null
         },
       });
     }
 
     // Increment failed login count on failed face verification
-    const failedCount = await incrementFailedLogin(employee);
+    const failedCount = await incrementFailedLogin(student);
 
     await query(
       `INSERT INTO login_logs
-       (employee_id, success, spoof_detected, spoof_confidence,
+       (student_id, success, spoof_detected, spoof_confidence,
         challenge_passed, face_embedding, ip_address, device_info, error_details)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
-        employee.id,
+        student.id,
         false,
         Boolean(authResult.spoof_detected),
         authResult.spoof_confidence ?? null,
@@ -848,7 +848,7 @@ router.post('/face-login', async (req, res) => {
     logger.error('Face login error', { error: error.message, stack: error.stack });
 
     await logSecurityEvent({
-      employeeId,
+      studentId,
       eventType: 'LOGIN_ERROR',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -867,7 +867,7 @@ router.get('/verify', authenticateToken, (req, res) => {
   return res.json({
     success: true,
     valid: true,
-    employee: req.user,
+    student: req.user,
   });
 });
 
@@ -875,12 +875,12 @@ router.get('/me', authenticateToken, async (req, res) => {
   try {
     const result = await query(
       `SELECT 
-         e.id, e.employee_id, e.first_name, e.last_name, e.email, e.role, e.department, e.position, e.face_enrolled,
-         e.supervisor_id AS supervisor_id,
-         s.first_name AS supervisor_first_name,
-         s.last_name AS supervisor_last_name
-       FROM employees e
-       LEFT JOIN employees s ON e.supervisor_id = s.id
+         e.id, e.student_id, e.first_name, e.last_name, e.email, e.role, e.department, e.position, e.face_enrolled,
+         e.teacher_id AS teacher_id,
+         s.first_name AS teacher_first_name,
+         s.last_name AS teacher_last_name
+       FROM students e
+       LEFT JOIN students s ON e.teacher_id = s.id
        WHERE e.id = $1 AND e.is_active = TRUE`,
       [req.user.id]
     );
@@ -888,27 +888,27 @@ router.get('/me', authenticateToken, async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found or inactive',
-        code: 'EMPLOYEE_NOT_FOUND',
+        message: 'Student not found or inactive',
+        code: 'STUDENT_NOT_FOUND',
       });
     }
 
-    const employee = result.rows[0];
+    const student = result.rows[0];
     return res.json({
       success: true,
-      employee: {
-        id: employee.id,
-        employeeId: employee.employee_id,
-        firstName: employee.first_name,
-        lastName: employee.last_name,
-        email: employee.email,
-        role: employee.role,
-        department: employee.department,
-        position: employee.position,
-        faceEnrolled: employee.face_enrolled,
-        supervisorId: employee.supervisor_id,
-        supervisorName: employee.supervisor_first_name 
-          ? `${employee.supervisor_first_name} ${employee.supervisor_last_name}`
+      student: {
+        id: student.id,
+        studentId: student.student_id,
+        firstName: student.first_name,
+        lastName: student.last_name,
+        email: student.email,
+        role: student.role,
+        department: student.department,
+        position: student.position,
+        faceEnrolled: student.face_enrolled,
+        teacherId: student.teacher_id,
+        teacherName: student.teacher_first_name 
+          ? `${student.teacher_first_name} ${student.teacher_last_name}`
           : null
       },
     });
@@ -944,7 +944,7 @@ router.post('/refresh', async (req, res) => {
     const activeToken = await findActiveRefreshToken(decoded);
     if (!activeToken) {
       await logSecurityEvent({
-        employeeId: decoded.employeeId,
+        studentId: decoded.studentId,
         eventType: 'SESSION_REVOKED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -958,31 +958,31 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    const employeeResult = await query(
+    const studentResult = await query(
       `SELECT 
-         e.id, e.employee_id, e.first_name, e.last_name, e.email, e.role, e.department, e.face_enrolled,
-         e.supervisor_id AS supervisor_id,
-         s.first_name AS supervisor_first_name,
-         s.last_name AS supervisor_last_name
-       FROM employees e
-       LEFT JOIN employees s ON e.supervisor_id = s.id
+         e.id, e.student_id, e.first_name, e.last_name, e.email, e.role, e.department, e.face_enrolled,
+         e.teacher_id AS teacher_id,
+         s.first_name AS teacher_first_name,
+         s.last_name AS teacher_last_name
+       FROM students e
+       LEFT JOIN students s ON e.teacher_id = s.id
        WHERE e.id = $1 AND e.is_active = TRUE`,
       [decoded.id]
     );
 
-    if (employeeResult.rows.length === 0) {
+    if (studentResult.rows.length === 0) {
       return res.status(404).json({
-        error: 'Employee not found or inactive',
-        code: 'EMPLOYEE_NOT_FOUND',
+        error: 'Student not found or inactive',
+        code: 'STUDENT_NOT_FOUND',
       });
     }
 
-    const employee = employeeResult.rows[0];
-    const tokens = generateTokens(employee, { tokenFamily: decoded.tokenFamily });
-    await storeRefreshToken(tokens, employee.id, req, decoded.jti);
+    const student = studentResult.rows[0];
+    const tokens = generateTokens(student, { tokenFamily: decoded.tokenFamily });
+    await storeRefreshToken(tokens, student.id, req, decoded.jti);
 
     await logSecurityEvent({
-      employeeId: employee.employee_id,
+      studentId: student.student_id,
       eventType: 'TOKEN_REFRESH',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -993,18 +993,18 @@ router.post('/refresh', async (req, res) => {
     return res.json({
       success: true,
       tokens: tokenResponse(tokens),
-      employee: {
-        id: employee.id,
-        employeeId: employee.employee_id,
-        firstName: employee.first_name,
-        lastName: employee.last_name,
-        email: employee.email,
-        role: employee.role,
-        department: employee.department,
-        faceEnrolled: employee.face_enrolled,
-        supervisorId: employee.supervisor_id || null,
-        supervisorName: employee.supervisor_first_name 
-          ? `${employee.supervisor_first_name} ${employee.supervisor_last_name}`
+      student: {
+        id: student.id,
+        studentId: student.student_id,
+        firstName: student.first_name,
+        lastName: student.last_name,
+        email: student.email,
+        role: student.role,
+        department: student.department,
+        faceEnrolled: student.face_enrolled,
+        teacherId: student.teacher_id || null,
+        teacherName: student.teacher_first_name 
+          ? `${student.teacher_first_name} ${student.teacher_last_name}`
           : null
       },
     });
@@ -1032,7 +1032,7 @@ router.post('/logout', authenticateToken, async (req, res) => {
     }
 
     await logSecurityEvent({
-      employeeId: req.user?.employeeId,
+      studentId: req.user?.studentId,
       eventType: 'TOKEN_REVOKED',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -1055,74 +1055,74 @@ router.post('/logout', authenticateToken, async (req, res) => {
 
 router.post('/register-face', authenticateToken, async (req, res) => {
   try {
-    const { frames, employeeId } = req.body;
+    const { frames, studentId } = req.body;
     const requestingUserId = req.user.id;
     const requestingUserRole = req.user.role;
 
-    if (!Array.isArray(frames) || frames.length === 0 || !isValidEmployeeId(employeeId)) {
+    if (!Array.isArray(frames) || frames.length === 0 || !isValidStudentId(studentId)) {
       return res.status(400).json({
-        error: 'Missing required fields: frames, employeeId',
+        error: 'Missing required fields: frames, studentId',
         code: 'MISSING_FIELDS',
       });
     }
 
-    // Fetch target employee (whose face is being registered)
-    const employeeResult = await query(
-      'SELECT id, employee_id, first_name, last_name, role FROM employees WHERE employee_id = $1 AND is_active = TRUE',
-      [employeeId]
+    // Fetch target student (whose face is being registered)
+    const studentResult = await query(
+      'SELECT id, student_id, first_name, last_name, role FROM students WHERE student_id = $1 AND is_active = TRUE',
+      [studentId]
     );
 
-    if (employeeResult.rows.length === 0) {
+    if (studentResult.rows.length === 0) {
       return res.status(404).json({
-        error: 'Employee not found or inactive',
-        code: 'EMPLOYEE_NOT_FOUND',
+        error: 'Student not found or inactive',
+        code: 'STUDENT_NOT_FOUND',
       });
     }
 
-    const targetEmployee = employeeResult.rows[0];
-    const targetEmployeeRole = targetEmployee.role;
-    const targetEmployeeId = targetEmployee.id;
-    const isOwnFace = requestingUserId === targetEmployeeId;
+    const targetStudent = studentResult.rows[0];
+    const targetStudentRole = targetStudent.role;
+    const targetStudentId = targetStudent.id;
+    const isOwnFace = requestingUserId === targetStudentId;
 
     // ENFORCE FACE REGISTRATION PERMISSIONS
     // Security policy (strict):
-    //   - Admin: can enroll any employee's face (including other admins and supervisors)
-    //   - Supervisor: can ONLY enroll faces of employees in their assigned scope
-    //                 (cannot enroll own face, cannot enroll other supervisors, cannot enroll admins)
-    //   - Employee: cannot initiate face enrollment at all
+    //   - Admin: can enroll any student's face (including other admins and teachers)
+    //   - Teacher: can ONLY enroll faces of students in their assigned scope
+    //                 (cannot enroll own face, cannot enroll other teachers, cannot enroll admins)
+    //   - Student: cannot initiate face enrollment at all
     let canRegister = false;
     let denialReason = '';
 
     if (requestingUserRole === 'admin') {
       // Admin can register any face
       canRegister = true;
-    } else if (requestingUserRole === 'supervisor') {
-      if (targetEmployeeRole !== 'employee') {
-        // Supervisors CANNOT enroll admin or other supervisor faces
-        denialReason = 'Supervisors can only enroll faces for employees in their assigned scope. '
-          + 'To enroll a supervisor or admin face, please contact a system administrator.';
+    } else if (requestingUserRole === 'teacher') {
+      if (targetStudentRole !== 'student') {
+        // Teachers CANNOT enroll admin or other teacher faces
+        denialReason = 'Teachers can only enroll faces for students in their assigned scope. '
+          + 'To enroll a teacher or admin face, please contact a system administrator.';
       } else {
-        // Supervisor can ONLY enroll assigned employee faces
+        // Teacher can ONLY enroll assigned student faces
         const assignmentCheck = await query(
-          `SELECT id FROM supervisor_assignments
-           WHERE supervisor_id = $1 AND employee_id = $2 AND is_active = TRUE`,
-          [requestingUserId, targetEmployeeId]
+          `SELECT id FROM teacher_assignments
+           WHERE teacher_id = $1 AND student_id = $2 AND is_active = TRUE`,
+          [requestingUserId, targetStudentId]
         );
         if (assignmentCheck.rows.length > 0) {
           canRegister = true;
         } else {
-          denialReason = 'You are not assigned to supervise this employee. '
-            + 'Only the assigned supervisor or an admin can enroll this employee\'s face.';
+          denialReason = 'You are not assigned to supervise this student. '
+            + 'Only the assigned teacher or an admin can enroll this student\'s face.';
         }
       }
-    } else if (requestingUserRole === 'employee') {
-      // Employees cannot self-enroll their face — must be done by admin/supervisor
-      denialReason = 'Employees cannot enroll faces directly. Contact your administrator or assigned supervisor.';
+    } else if (requestingUserRole === 'student') {
+      // Students cannot self-enroll their face — must be done by admin/teacher
+      denialReason = 'Students cannot enroll faces directly. Contact your administrator or assigned teacher.';
     }
 
     if (!canRegister) {
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'FACE_REGISTRATION_ERROR',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
@@ -1141,8 +1141,8 @@ router.post('/register-face', authenticateToken, async (req, res) => {
       `${faceAIServiceUrl}/api/register-face`,
       {
         frames,
-        employeeId,
-        employee_id: employeeId,
+        studentId,
+        student_id: studentId,
       },
       { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
     );
@@ -1170,19 +1170,19 @@ router.post('/register-face', authenticateToken, async (req, res) => {
         await query('BEGIN');
         mainTxBegun = true;
 
-        // Deactivate any existing face embeddings for this employee
+        // Deactivate any existing face embeddings for this student
         await faceQuery(
-          'UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1 AND is_active = TRUE',
-          [targetEmployeeId]
+          'UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1 AND is_active = TRUE',
+          [targetStudentId]
         );
 
         // Insert new embedding
         await faceQuery(
           `INSERT INTO face_embeddings
-             (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by, enrollment_date)
+             (student_id, embedding_vector, embedding_version, confidence_score, enrolled_by, enrollment_date)
            VALUES ($1, $2, $3, $4, $5, NOW())`,
           [
-            targetEmployeeId,
+            targetStudentId,
             embeddingVector ? JSON.stringify(embeddingVector) : '[]',
             response.data.model_version || '1.0',
             confidenceScore,
@@ -1191,12 +1191,12 @@ router.post('/register-face', authenticateToken, async (req, res) => {
         );
 
         // Ensure user exists in users table on face DB
-        const targetName = `${targetEmployee.first_name} ${targetEmployee.last_name}`;
+        const targetName = `${targetStudent.first_name} ${targetStudent.last_name}`;
         await faceQuery(
           `INSERT INTO users (user_id, name)
            VALUES ($1, $2)
            ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name`,
-          [targetEmployeeId, targetName]
+          [targetStudentId, targetName]
         );
 
         // Process frames to generate image data and image hash
@@ -1218,32 +1218,32 @@ router.post('/register-face', authenticateToken, async (req, res) => {
           `INSERT INTO user_images (user_id, image_data, image_hash, face_embedding, verification_status, uploaded_at)
            VALUES ($1, $2, $3, $4, 'VERIFIED', NOW())`,
           [
-            targetEmployeeId,
+            targetStudentId,
             imageData,
             imageHash,
             embeddingVector ? JSON.stringify(embeddingVector) : '[]',
           ]
         );
 
-        // Mark employee as face-enrolled
+        // Mark student as face-enrolled
         await query(
-          `UPDATE employees SET
+          `UPDATE students SET
              face_enrolled = TRUE,
              face_enrolled_at = NOW(),
              face_enrolled_by = $1,
              updated_at = NOW()
            WHERE id = $2`,
-          [requestingUserId, targetEmployeeId]
+          [requestingUserId, targetStudentId]
         );
 
         // Log to face_enrollment_logs
         await faceQuery(
           `INSERT INTO face_enrollment_logs
-             (employee_id, target_employee_id, action, performed_by_role,
+             (student_id, target_student_id, action, performed_by_role,
               confidence_score, embedding_version, ip_address, device_info)
            VALUES ($1, $2, 'ENROLL', $3, $4, $5, $6::inet, $7)`,
           [
-            requestingUserId, targetEmployeeId, requestingUserRole,
+            requestingUserId, targetStudentId, requestingUserRole,
             confidenceScore, response.data.model_version || '1.0',
             req.ip, req.headers['user-agent'] || null,
           ]
@@ -1260,7 +1260,7 @@ router.post('/register-face', authenticateToken, async (req, res) => {
         if (faceTxBegun) {
           await faceQuery('ROLLBACK').catch(() => {});
         }
-        logger.error('Face embedding DB storage failed', { error: dbErr.message, employeeId });
+        logger.error('Face embedding DB storage failed', { error: dbErr.message, studentId });
         return res.status(500).json({
           success: false,
           error: 'Face embedding storage failed. Contact system administrator.',
@@ -1268,28 +1268,28 @@ router.post('/register-face', authenticateToken, async (req, res) => {
       }
 
       await logSecurityEvent({
-        employeeId,
+        studentId,
         eventType: 'FACE_REGISTERED',
         ipAddress: req.ip,
         deviceInfo: req.headers['user-agent'],
-        details: `Face registration completed by ${requestingUserRole} (${req.user.employeeId})`,
+        details: `Face registration completed by ${requestingUserRole} (${req.user.studentId})`,
         severity: 'low',
       });
 
       await logAuditEvent({
-        actorEmployeeId: req.user.employeeId,
+        actorStudentId: req.user.studentId,
         action: 'auth.register-face',
-        resourceType: 'employee_face',
-        resourceId: employeeId,
+        resourceType: 'student_face',
+        resourceId: studentId,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
-        details: { targetEmployeeRole, registeredBy: requestingUserRole }
+        details: { targetStudentRole, registeredBy: requestingUserRole }
       });
 
       return res.json({
         success: true,
         message: 'Face registered successfully',
-        employeeId,
+        studentId,
       });
     }
 
@@ -1302,7 +1302,7 @@ router.post('/register-face', authenticateToken, async (req, res) => {
     logger.error('Face registration error', { error: error.message, stack: error.stack });
 
     await logSecurityEvent({
-      employeeId: req.body.employeeId,
+      studentId: req.body.studentId,
       eventType: 'FACE_REGISTRATION_ERROR',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -1324,13 +1324,13 @@ router.post('/register-face', authenticateToken, async (req, res) => {
 router.get('/bootstrap/status', async (req, res) => {
   try {
     const adminResult = await query(
-      "SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     let hasAdminFace = false;
     if (adminResult.rows.length > 0) {
       const adminId = adminResult.rows[0].id;
       const faceResult = await faceQuery(
-        "SELECT id FROM face_embeddings WHERE employee_id = $1 AND is_active = TRUE LIMIT 1",
+        "SELECT id FROM face_embeddings WHERE student_id = $1 AND is_active = TRUE LIMIT 1",
         [adminId]
       );
       hasAdminFace = faceResult.rows.length > 0;
@@ -1361,7 +1361,7 @@ router.get('/bootstrap/status', async (req, res) => {
 router.post('/recovery/admin/initiate', async (req, res) => {
   try {
     const adminResult = await query(
-      "SELECT id, email FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, email FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminResult.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'System administrator account not found.' });
@@ -1369,7 +1369,7 @@ router.post('/recovery/admin/initiate', async (req, res) => {
     const admin = adminResult.rows[0];
 
     const configResult = await query(
-      "SELECT recovery_email FROM admin_configuration WHERE admin_employee_id = $1",
+      "SELECT recovery_email FROM admin_configuration WHERE admin_student_id = $1",
       [admin.id]
     );
     const recoveryEmail = configResult.rows[0]?.recovery_email || admin.email;
@@ -1407,7 +1407,7 @@ router.post('/recovery/admin/verify-otp', async (req, res) => {
     }
 
     const adminResult = await query(
-      "SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminResult.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'System administrator account not found.' });
@@ -1447,7 +1447,7 @@ router.post('/bootstrap/setup', async (req, res) => {
 
     // 1. Verify bootstrap mode is active (no admin face exists OR recovery override)
     const adminEmpResult = await query(
-      "SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminEmpResult.rows.length === 0) {
       return res.status(404).json({
@@ -1458,7 +1458,7 @@ router.post('/bootstrap/setup', async (req, res) => {
     const adminId = adminEmpResult.rows[0].id;
 
     const faceResult = await faceQuery(
-      "SELECT id FROM face_embeddings WHERE employee_id = $1 AND is_active = TRUE LIMIT 1",
+      "SELECT id FROM face_embeddings WHERE student_id = $1 AND is_active = TRUE LIMIT 1",
       [adminId]
     );
     const hasAdminFace = faceResult.rows.length > 0;
@@ -1512,7 +1512,7 @@ router.post('/bootstrap/setup', async (req, res) => {
       const faceAIServiceUrl = process.env.FACE_AI_SERVICE_URL || 'http://face-ai-service:8000';
       const aiResponse = await axios.post(
         `${faceAIServiceUrl}/api/register-face`,
-        { frames, employeeId: 'admin', employee_id: 'admin' },
+        { frames, studentId: 'admin', student_id: 'admin' },
         { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
       );
       if (aiResponse.data.success || aiResponse.data.registered) {
@@ -1590,9 +1590,9 @@ router.post('/bootstrap/setup', async (req, res) => {
       await query('BEGIN');
       mainTxBegun = true;
 
-      // Update password & face enrollment status on admin employee
+      // Update password & face enrollment status on admin student
       await query(
-        `UPDATE employees 
+        `UPDATE students 
          SET password_hash = $1, 
              password_changed_at = NOW(),
              face_enrolled = TRUE,
@@ -1607,14 +1607,14 @@ router.post('/bootstrap/setup', async (req, res) => {
 
       // Deactivate any pre-existing face embeddings for admin
       await faceQuery(
-        'UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1',
+        'UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1',
         [adminId]
       );
 
       // Insert new face embedding
       await faceQuery(
         `INSERT INTO face_embeddings (
-           employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by
+           student_id, embedding_vector, embedding_version, confidence_score, enrolled_by
          ) VALUES ($1, $2, $3, $4, $5)`,
         [adminId, embeddingVector, modelVersion, confidenceScore, adminId]
       );
@@ -1668,10 +1668,10 @@ router.post('/bootstrap/setup', async (req, res) => {
       try {
         await query(
           `INSERT INTO admin_configuration
-             (admin_employee_id, admin_name, admin_email, admin_phone, admin_address,
+             (admin_student_id, admin_name, admin_email, admin_phone, admin_address,
               admin_designation, recovery_email, recovery_phone, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-           ON CONFLICT (admin_employee_id) DO UPDATE SET
+           ON CONFLICT (admin_student_id) DO UPDATE SET
              admin_name = EXCLUDED.admin_name,
              admin_email = EXCLUDED.admin_email,
              admin_phone = EXCLUDED.admin_phone,
@@ -1696,7 +1696,7 @@ router.post('/bootstrap/setup', async (req, res) => {
 
     // 8. Log security and audit events
     await logSecurityEvent({
-      employeeId: 'admin',
+      studentId: 'admin',
       eventType: 'FACE_REGISTERED',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -1705,7 +1705,7 @@ router.post('/bootstrap/setup', async (req, res) => {
     });
 
     await logAuditEvent({
-      actorEmployeeId: 'admin',
+      actorStudentId: 'admin',
       action: 'admin.bootstrap_setup',
       resourceType: 'system_config',
       resourceId: 'admin_face_setup',
@@ -1737,12 +1737,12 @@ router.post('/bootstrap/setup', async (req, res) => {
  */
 router.post('/pre-login-check', async (req, res) => {
   try {
-    const { employeeId } = req.body;
+    const { studentId } = req.body;
 
-    if (!isValidEmployeeId(employeeId)) {
+    if (!isValidStudentId(studentId)) {
       return res.status(400).json({
         success: false,
-        message: 'Valid employee ID is required',
+        message: 'Valid student ID is required',
         code: 'INVALID_REQUEST',
       });
     }
@@ -1751,13 +1751,13 @@ router.post('/pre-login-check', async (req, res) => {
       `SELECT e.id, e.role, e.is_active, e.locked_until,
               e.password_hash IS NOT NULL AS has_password,
               e.face_enrolled AS has_face
-       FROM employees e
-       WHERE e.employee_id = $1`,
-      [employeeId]
+       FROM students e
+       WHERE e.student_id = $1`,
+      [studentId]
     );
 
     if (result.rows.length === 0) {
-      // Don't reveal whether employee exists — return generic response
+      // Don't reveal whether student exists — return generic response
       return res.json({
         success: true,
         exists: false,
@@ -1771,7 +1771,7 @@ router.post('/pre-login-check', async (req, res) => {
     const emp = result.rows[0];
     const countResult = await faceQuery(
       `SELECT COUNT(*) FROM face_embeddings fe
-       WHERE fe.employee_id = $1 AND fe.is_active = TRUE`,
+       WHERE fe.student_id = $1 AND fe.is_active = TRUE`,
       [emp.id]
     );
     const activeEmbeddingCount = Number(countResult.rows[0]?.count || 0);
@@ -1783,12 +1783,12 @@ router.post('/pre-login-check', async (req, res) => {
     let requiredMethod = 'password';
     let missingCredentials = [];
 
-    if (['admin', 'supervisor'].includes(emp.role)) {
+    if (['admin', 'teacher'].includes(emp.role)) {
       requiredMethod = 'face_and_password';
       if (!emp.has_password) missingCredentials.push('password');
       if (!emp.has_face || !hasActiveEmbedding) missingCredentials.push('face');
     } else {
-      // Employee: either password OR face
+      // Student: either password OR face
       requiredMethod = 'password_or_face';
       if (!emp.has_password && (!emp.has_face || !hasActiveEmbedding)) {
         missingCredentials.push('password');
@@ -1801,7 +1801,7 @@ router.post('/pre-login-check', async (req, res) => {
       const recoveryReqResult = await query(
         `SELECT id, status, request_type, review_notes
          FROM account_recovery_requests
-         WHERE employee_id = $1 AND status IN ('pending', 'approved', 'rejected')
+         WHERE student_id = $1 AND status IN ('pending', 'approved', 'rejected')
          ORDER BY created_at DESC
          LIMIT 1`,
         [emp.id]
@@ -1847,27 +1847,27 @@ router.post('/pre-login-check', async (req, res) => {
  */
 router.post('/recovery/request', async (req, res) => {
   try {
-    const { employeeId, requestType, reason } = req.body;
+    const { studentId, requestType, reason } = req.body;
 
     const validTypes = ['password_reset', 'face_reset', 'full_credential_reset'];
-    if (!isValidEmployeeId(employeeId) || !validTypes.includes(requestType)) {
+    if (!isValidStudentId(studentId) || !validTypes.includes(requestType)) {
       return res.status(400).json({
         success: false,
-        message: 'Valid employeeId and requestType (password_reset | face_reset | full_credential_reset) are required',
+        message: 'Valid studentId and requestType (password_reset | face_reset | full_credential_reset) are required',
         code: 'INVALID_REQUEST',
       });
     }
 
     const empResult = await query(
-      'SELECT id, employee_id, role FROM employees WHERE employee_id = $1 AND is_active = TRUE',
-      [employeeId]
+      'SELECT id, student_id, role FROM students WHERE student_id = $1 AND is_active = TRUE',
+      [studentId]
     );
 
     if (empResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found or inactive',
-        code: 'EMPLOYEE_NOT_FOUND',
+        message: 'Student not found or inactive',
+        code: 'STUDENT_NOT_FOUND',
       });
     }
 
@@ -1876,21 +1876,21 @@ router.post('/recovery/request', async (req, res) => {
     // Check for existing pending recovery request
     const existingResult = await query(
       `SELECT id FROM account_recovery_requests
-       WHERE employee_id = $1 AND status = 'pending' AND expires_at > NOW()`,
+       WHERE student_id = $1 AND status = 'pending' AND expires_at > NOW()`,
       [emp.id]
     );
 
     if (existingResult.rows.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'A pending recovery request already exists for this employee. Please wait for admin approval.',
+        message: 'A pending recovery request already exists for this student. Please wait for admin approval.',
         code: 'RECOVERY_REQUEST_EXISTS',
       });
     }
 
     const insertResult = await query(
       `INSERT INTO account_recovery_requests
-         (employee_id, request_type, status, requested_by, request_reason, ip_address, device_info, expires_at)
+         (student_id, request_type, status, requested_by, request_reason, ip_address, device_info, expires_at)
        VALUES ($1, $2, 'pending', $1, $3, $4::inet, $5, NOW() + INTERVAL '48 hours')
        RETURNING id, status, expires_at`,
       [emp.id, requestType, reason || null, req.ip, req.headers['user-agent'] || null]
@@ -1906,7 +1906,7 @@ router.post('/recovery/request', async (req, res) => {
     );
 
     await logSecurityEvent({
-      employeeId,
+      studentId,
       eventType: 'ACCOUNT_RECOVERY_REQUESTED',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -1944,9 +1944,9 @@ router.get('/recovery/pending', authenticateToken, async (req, res) => {
     const result = await query(
       `SELECT arr.id, arr.request_type, arr.status, arr.request_reason,
               arr.created_at, arr.expires_at,
-              e.employee_id, e.first_name, e.last_name, e.email, e.role
+              e.student_id, e.first_name, e.last_name, e.email, e.role
        FROM account_recovery_requests arr
-       JOIN employees e ON arr.employee_id = e.id
+       JOIN students e ON arr.student_id = e.id
        WHERE arr.status = 'pending' AND arr.expires_at > NOW()
        ORDER BY arr.created_at ASC`
     );
@@ -1980,7 +1980,7 @@ router.post('/recovery/:recoveryId/approve', authenticateToken, async (req, res)
       `UPDATE account_recovery_requests
        SET status = 'approved', reviewed_by = $1, reviewed_at = NOW(), review_notes = $2, updated_at = NOW()
        WHERE id = $3 AND status = 'pending' AND expires_at > NOW()
-       RETURNING id, employee_id, request_type`,
+       RETURNING id, student_id, request_type`,
       [req.user.id, notes || null, recoveryId]
     );
 
@@ -1997,7 +1997,7 @@ router.post('/recovery/:recoveryId/approve', authenticateToken, async (req, res)
     );
 
     await logSecurityEvent({
-      employeeId: req.user.employeeId,
+      studentId: req.user.studentId,
       eventType: 'ACCOUNT_RECOVERY_APPROVED',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -2030,7 +2030,7 @@ router.post('/recovery/:recoveryId/reject', authenticateToken, async (req, res) 
       `UPDATE account_recovery_requests
        SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_notes = $2, updated_at = NOW()
        WHERE id = $3 AND status = 'pending'
-       RETURNING id, employee_id, request_type`,
+       RETURNING id, student_id, request_type`,
       [req.user.id, reason || null, recoveryId]
     );
 
@@ -2047,7 +2047,7 @@ router.post('/recovery/:recoveryId/reject', authenticateToken, async (req, res) 
     );
 
     await logSecurityEvent({
-      employeeId: req.user.employeeId,
+      studentId: req.user.studentId,
       eventType: 'ACCOUNT_RECOVERY_REJECTED',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],
@@ -2071,24 +2071,24 @@ router.post('/recovery/reset', async (req, res) => {
   let mainTxBegun = false;
   let faceTxBegun = false;
   try {
-    const { employeeId, recoveryId, password, faceEmbedding, frames } = req.body;
+    const { studentId, recoveryId, password, faceEmbedding, frames } = req.body;
 
-    if (!isValidEmployeeId(employeeId) || !recoveryId) {
+    if (!isValidStudentId(studentId) || !recoveryId) {
       return res.status(400).json({
         success: false,
-        message: 'Valid employeeId and recoveryId are required',
+        message: 'Valid studentId and recoveryId are required',
         code: 'INVALID_REQUEST',
       });
     }
 
     // Find the approved recovery request
     const recoveryResult = await query(
-      `SELECT arr.id, arr.employee_id, arr.request_type, arr.status, arr.expires_at,
-              e.employee_id as emp_code
+      `SELECT arr.id, arr.student_id, arr.request_type, arr.status, arr.expires_at,
+              e.student_id as emp_code
        FROM account_recovery_requests arr
-       JOIN employees e ON arr.employee_id = e.id
-       WHERE arr.id = $1 AND e.employee_id = $2 AND arr.status = 'approved' AND arr.expires_at > NOW()`,
-      [recoveryId, employeeId]
+       JOIN students e ON arr.student_id = e.id
+       WHERE arr.id = $1 AND e.student_id = $2 AND arr.status = 'approved' AND arr.expires_at > NOW()`,
+      [recoveryId, studentId]
     );
 
     if (recoveryResult.rows.length === 0) {
@@ -2100,7 +2100,7 @@ router.post('/recovery/reset', async (req, res) => {
     }
 
     const recovery = recoveryResult.rows[0];
-    const empId = recovery.employee_id;
+    const empId = recovery.student_id;
     const requestType = recovery.request_type;
 
     let finalEmbedding = faceEmbedding;
@@ -2119,7 +2119,7 @@ router.post('/recovery/reset', async (req, res) => {
           const faceAIServiceUrl = process.env.FACE_AI_SERVICE_URL || 'http://face-ai-service:8000';
           const aiResponse = await axios.post(
             `${faceAIServiceUrl}/api/register-face`,
-            { frames, employeeId, employee_id: employeeId },
+            { frames, studentId, student_id: studentId },
             { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
           );
           if (aiResponse.data.success || aiResponse.data.registered) {
@@ -2160,7 +2160,7 @@ router.post('/recovery/reset', async (req, res) => {
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(password, salt);
       await query(
-        `UPDATE employees
+        `UPDATE students
          SET password_hash = $1, password_changed_at = NOW(), password_must_change = FALSE,
              failed_login_count = 0, locked_until = NULL
          WHERE id = $2`,
@@ -2173,7 +2173,7 @@ router.post('/recovery/reset', async (req, res) => {
       await faceQuery(
         `UPDATE face_embeddings
          SET is_active = FALSE, updated_at = NOW()
-         WHERE employee_id = $1`,
+         WHERE student_id = $1`,
         [empId]
       );
 
@@ -2181,7 +2181,7 @@ router.post('/recovery/reset', async (req, res) => {
       const vectorStr = JSON.stringify(finalEmbedding);
       await faceQuery(
         `INSERT INTO face_embeddings
-           (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by, is_active)
+           (student_id, embedding_vector, embedding_version, confidence_score, enrolled_by, is_active)
          VALUES ($1, $2, '1.0', 1.0, $1, TRUE)`,
         [empId, vectorStr]
       );
@@ -2189,7 +2189,7 @@ router.post('/recovery/reset', async (req, res) => {
       // Fetch user details for users/user_images migration
       let empName = 'Unknown';
       try {
-        const empDetails = await query('SELECT first_name, last_name FROM employees WHERE id = $1', [empId]);
+        const empDetails = await query('SELECT first_name, last_name FROM students WHERE id = $1', [empId]);
         if (empDetails.rows.length > 0) {
           empName = `${empDetails.rows[0].first_name} ${empDetails.rows[0].last_name}`;
         }
@@ -2226,9 +2226,9 @@ router.post('/recovery/reset', async (req, res) => {
         [empId, imageData, imageHash, vectorStr]
       );
 
-      // Update employee status in main db
+      // Update student status in main db
       await query(
-        `UPDATE employees
+        `UPDATE students
          SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = id
          WHERE id = $1`,
         [empId]
@@ -2251,7 +2251,7 @@ router.post('/recovery/reset', async (req, res) => {
     );
 
     await logSecurityEvent({
-      employeeId,
+      studentId,
       eventType: 'ACCOUNT_RECOVERY_COMPLETED',
       ipAddress: req.ip,
       deviceInfo: req.headers['user-agent'],

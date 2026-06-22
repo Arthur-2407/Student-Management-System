@@ -11,13 +11,13 @@ function boundedLimit(value, fallback = 50, max = 200) {
   return Math.min(parsed, max);
 }
 
-// GET /api/security/events - Get security events (supervisor only)
-router.get('/events', authorizeRole('admin', 'supervisor'), async (req, res) => {
+// GET /api/security/events - Get security events (teacher only)
+router.get('/events', authorizeRole('admin', 'teacher'), async (req, res) => {
   try {
-    const { employeeId, eventType, startDate, endDate, severity, limit = 50 } = req.query;
+    const { studentId, eventType, startDate, endDate, severity, limit = 50 } = req.query;
 
     const events = await getSecurityEvents({
-      employeeId,
+      studentId,
       eventType,
       startDate,
       endDate,
@@ -33,7 +33,7 @@ router.get('/events', authorizeRole('admin', 'supervisor'), async (req, res) => 
 });
 
 // GET /api/security/stats - Get security statistics
-router.get('/stats', authorizeRole('admin', 'supervisor'), async (req, res) => {
+router.get('/stats', authorizeRole('admin', 'teacher'), async (req, res) => {
   try {
     const { range = '24h' } = req.query;
     const stats = await getSecurityStats(range);
@@ -45,16 +45,16 @@ router.get('/stats', authorizeRole('admin', 'supervisor'), async (req, res) => {
 });
 
 // POST /api/security/log - Log a security event
-router.post('/log', authorizeRole('admin', 'supervisor'), async (req, res) => {
+router.post('/log', authorizeRole('admin', 'teacher'), async (req, res) => {
   try {
-    const { employeeId, eventType, ipAddress, deviceInfo, details, severity } = req.body;
+    const { studentId, eventType, ipAddress, deviceInfo, details, severity } = req.body;
 
     if (!eventType) {
       return res.status(400).json({ success: false, message: 'eventType is required' });
     }
 
     await logSecurityEvent({
-      employeeId,
+      studentId,
       eventType,
       ipAddress: ipAddress || req.ip,
       deviceInfo: deviceInfo || req.headers['user-agent'],
@@ -69,18 +69,18 @@ router.post('/log', authorizeRole('admin', 'supervisor'), async (req, res) => {
   }
 });
 
-router.get('/login-logs', authorizeRole('admin', 'supervisor'), async (req, res) => {
+router.get('/login-logs', authorizeRole('admin', 'teacher'), async (req, res) => {
   try {
     const limit = boundedLimit(req.query.limit);
     const result = await query(
       `SELECT ll.*,
               json_build_object(
-                'employee_id', e.employee_id,
+                'student_id', e.student_id,
                 'first_name', e.first_name,
                 'last_name', e.last_name
-              ) AS employee
+              ) AS student
        FROM login_logs ll
-       JOIN employees e ON e.id = ll.employee_id
+       JOIN students e ON e.id = ll.student_id
        ORDER BY ll.timestamp DESC
        LIMIT $1`,
       [limit]
@@ -111,22 +111,22 @@ router.get('/system-logs', authorizeRole('admin'), async (req, res) => {
   }
 });
 
-router.get('/spoof-attempts', authorizeRole('admin', 'supervisor'), async (req, res) => {
+router.get('/spoof-attempts', authorizeRole('admin', 'teacher'), async (req, res) => {
   try {
     const limit = boundedLimit(req.query.limit);
     const result = await query(
       `SELECT ll.id,
-              ll.employee_id,
+              ll.student_id,
               ll.spoof_confidence,
               'FACE_AUTH' AS detection_type,
               ll.timestamp,
               json_build_object(
-                'employee_id', e.employee_id,
+                'student_id', e.student_id,
                 'first_name', e.first_name,
                 'last_name', e.last_name
-              ) AS employee
+              ) AS student
        FROM login_logs ll
-       JOIN employees e ON e.id = ll.employee_id
+       JOIN students e ON e.id = ll.student_id
        WHERE ll.spoof_detected = TRUE
        ORDER BY ll.timestamp DESC
        LIMIT $1`,
@@ -140,13 +140,13 @@ router.get('/spoof-attempts', authorizeRole('admin', 'supervisor'), async (req, 
   }
 });
 
-router.get('/geofence-violations', authorizeRole('admin', 'supervisor'), async (req, res) => {
+router.get('/geofence-violations', authorizeRole('admin', 'teacher'), async (req, res) => {
   try {
     const limit = boundedLimit(req.query.limit);
     const result = await query(
-      `SELECT se.*, e.employee_id AS employee_code, e.first_name, e.last_name
+      `SELECT se.*, e.student_id AS student_code, e.first_name, e.last_name
        FROM security_events se
-       LEFT JOIN employees e ON e.id = se.employee_id
+       LEFT JOIN students e ON e.id = se.student_id
        WHERE se.event_type = 'GEOFENCE_VIOLATION'
        ORDER BY se.timestamp DESC
        LIMIT $1`,

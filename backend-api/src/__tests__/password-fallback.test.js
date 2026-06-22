@@ -35,7 +35,7 @@ jest.mock('../migrations/runMigrations', () => ({
 
 jest.mock('../middleware/authMiddleware', () => ({
   authenticateToken: (req, res, next) => {
-    req.user = { id: 1, employeeId: 'admin', role: 'admin', department: 'IT' };
+    req.user = { id: 1, studentId: 'admin', role: 'admin', department: 'IT' };
     return next();
   },
   generateTokens: jest.fn().mockReturnValue({ accessToken: 'access', refreshToken: 'refresh' }),
@@ -44,7 +44,7 @@ jest.mock('../middleware/authMiddleware', () => ({
     next();
   },
   requireRole: () => (req, res, next) => {
-    req.user = { id: 1, employeeId: 'admin', role: 'admin', department: 'IT' };
+    req.user = { id: 1, studentId: 'admin', role: 'admin', department: 'IT' };
     next();
   },
   requirePermission: () => (req, res, next) => next(),
@@ -65,7 +65,7 @@ const request = require('supertest');
 const { app, io } = require('../server');
 const bcrypt = require('bcryptjs');
 
-describe('Employee Initial Password Fallback Logic', () => {
+describe('Student Initial Password Fallback Logic', () => {
   afterAll(async () => {
     if (io) {
       await new Promise(resolve => io.close(resolve));
@@ -77,32 +77,32 @@ describe('Employee Initial Password Fallback Logic', () => {
     mockQuery.mockResolvedValue({ rows: [] });
   });
 
-  test('Creates employee with custom password if provided', async () => {
-    // Mock check if employee exists (0 rows returned = doesn't exist)
+  test('Creates student with custom password if provided', async () => {
+    // Mock check if student exists (0 rows returned = doesn't exist)
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    // Mock insert employee returning details
+    // Mock insert student returning details
     mockQuery.mockResolvedValueOnce({
       rows: [{
         id: 10,
-        employee_id: 'EMP005',
+        student_id: 'EMP005',
         first_name: 'John',
         last_name: 'Doe',
         email: 'john@test.company',
-        role: 'employee'
+        role: 'student'
       }]
     });
 
     const response = await request(app)
-      .post('/api/admin/employees')
+      .post('/api/admin/students')
       .send({
-        employeeId: 'EMP005',
+        studentId: 'EMP005',
         firstName: 'John',
         lastName: 'Doe',
         email: 'john@test.company',
         department: 'Engineering',
         position: 'Developer',
-        role: 'employee',
+        role: 'student',
         hireDate: '2026-06-17',
         password: 'hello'
       });
@@ -120,32 +120,32 @@ describe('Employee Initial Password Fallback Logic', () => {
     expect(match).toBe(true);
   });
 
-  test('Creates employee using employeeId as password if password is left blank', async () => {
-    // Mock check if employee exists (0 rows returned = doesn't exist)
+  test('Creates student using studentId as password if password is left blank', async () => {
+    // Mock check if student exists (0 rows returned = doesn't exist)
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    // Mock insert employee returning details
+    // Mock insert student returning details
     mockQuery.mockResolvedValueOnce({
       rows: [{
         id: 11,
-        employee_id: 'EMP006',
+        student_id: 'EMP006',
         first_name: 'Jane',
         last_name: 'Doe',
         email: 'jane@test.company',
-        role: 'employee'
+        role: 'student'
       }]
     });
 
     const response = await request(app)
-      .post('/api/admin/employees')
+      .post('/api/admin/students')
       .send({
-        employeeId: 'EMP006',
+        studentId: 'EMP006',
         firstName: 'Jane',
         lastName: 'Doe',
         email: 'jane@test.company',
         department: 'Engineering',
         position: 'Developer',
-        role: 'employee',
+        role: 'student',
         hireDate: '2026-06-17',
         password: '' // empty string
       });
@@ -158,24 +158,24 @@ describe('Employee Initial Password Fallback Logic', () => {
     const insertParams = insertCall[1];
     const passwordHash = insertParams[10];
 
-    // Verify password hash is matching 'EMP006' (the employeeId)
+    // Verify password hash is matching 'EMP006' (the studentId)
     const match = await bcrypt.compare('EMP006', passwordHash);
     expect(match).toBe(true);
   });
 
-  describe('Employee Password Update Logic', () => {
-    test('Allows changing password for a normal employee', async () => {
-      // Mock select target employee
+  describe('Student Password Update Logic', () => {
+    test('Allows changing password for a normal student', async () => {
+      // Mock select target student
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 12, employee_id: 'EMP007' }]
+        rows: [{ id: 12, student_id: 'EMP007' }]
       });
-      // Mock update employee in DB
+      // Mock update student in DB
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 12, employee_id: 'EMP007', first_name: 'Bob', last_name: 'Builder' }]
+        rows: [{ id: 12, student_id: 'EMP007', first_name: 'Bob', last_name: 'Builder' }]
       });
 
       const response = await request(app)
-        .put('/api/admin/employees/EMP007')
+        .put('/api/admin/students/EMP007')
         .send({
           password: 'new-secure-password'
         });
@@ -194,14 +194,14 @@ describe('Employee Initial Password Fallback Logic', () => {
       expect(match).toBe(true);
     });
 
-    test('Rejects changing password for the admin account via employee update route', async () => {
-      // Mock select target employee
+    test('Rejects changing password for the admin account via student update route', async () => {
+      // Mock select target student
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 1, employee_id: 'admin' }]
+        rows: [{ id: 1, student_id: 'admin' }]
       });
 
       const response = await request(app)
-        .put('/api/admin/employees/admin')
+        .put('/api/admin/students/admin')
         .send({
           password: 'admin-new-password'
         });

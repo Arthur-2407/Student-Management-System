@@ -29,15 +29,15 @@ import { useNotification } from '@contexts/NotificationContext';
 
 interface SecurityEvent {
   id: number;
-  employee_id: number | null;
+  student_id: number | null;
   event_type: string;
   timestamp: string;
   ip_address: string;
   device_info: string;
   details: string;
   severity: string;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };
@@ -45,7 +45,7 @@ interface SecurityEvent {
 
 interface LoginLog {
   id: number;
-  employee_id: number;
+  student_id: number;
   success: boolean;
   spoof_detected: boolean;
   spoof_confidence: number | null;
@@ -53,8 +53,8 @@ interface LoginLog {
   ip_address: string;
   device_info: string;
   timestamp: string;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };
@@ -425,7 +425,7 @@ const SecurityDashboard: React.FC = () => {
                       <thead className="bg-gray-50">
                         <tr>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Employee
+                            Student
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Event Type
@@ -451,13 +451,13 @@ const SecurityDashboard: React.FC = () => {
                             className="hover:bg-gray-50"
                           >
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {event.employee ? (
+                              {event.student ? (
                                 <div>
                                   <div className="font-medium">
-                                    {event.employee.first_name} {event.employee.last_name}
+                                    {event.student.first_name} {event.student.last_name}
                                   </div>
                                   <div className="text-gray-500 text-xs">
-                                    {event.employee.employee_id}
+                                    {event.student.student_id}
                                   </div>
                                 </div>
                               ) : (
@@ -515,7 +515,7 @@ const SecurityDashboard: React.FC = () => {
                       <thead className="bg-gray-50">
                         <tr>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Employee
+                            Student
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Success
@@ -544,13 +544,13 @@ const SecurityDashboard: React.FC = () => {
                             className="hover:bg-gray-50"
                           >
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {log.employee ? (
+                              {log.student ? (
                                 <div>
                                   <div className="font-medium">
-                                    {log.employee.first_name} {log.employee.last_name}
+                                    {log.student.first_name} {log.student.last_name}
                                   </div>
                                   <div className="text-gray-500 text-xs">
-                                    {log.employee.employee_id}
+                                    {log.student.student_id}
                                   </div>
                                 </div>
                               ) : (
@@ -622,7 +622,7 @@ const SecurityDashboard: React.FC = () => {
                       <thead className="bg-gray-50">
                         <tr>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Employee
+                            Student
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Spoof Confidence
@@ -645,13 +645,13 @@ const SecurityDashboard: React.FC = () => {
                             className="hover:bg-gray-50"
                           >
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {attempt.employee ? (
+                              {attempt.student ? (
                                 <div>
                                   <div className="font-medium">
-                                    {attempt.employee.first_name} {attempt.employee.last_name}
+                                    {attempt.student.first_name} {attempt.student.last_name}
                                   </div>
                                   <div className="text-gray-500 text-xs">
-                                    {attempt.employee.employee_id}
+                                    {attempt.student.student_id}
                                   </div>
                                 </div>
                               ) : (

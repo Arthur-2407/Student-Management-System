@@ -84,7 +84,7 @@ function verifyAccessToken(token) {
 
   return {
     id: decoded.id,
-    employeeId: decoded.employeeId,
+    studentId: decoded.studentId,
     email: decoded.email,
     role: decoded.role,
     department: decoded.department,
@@ -99,7 +99,7 @@ function generateTokens(user, options = {}) {
 
   const commonClaims = {
     id: user.id,
-    employeeId: user.employee_id || user.employeeId,
+    studentId: user.student_id || user.studentId,
   };
 
   const accessToken = jwt.sign(
@@ -179,36 +179,36 @@ function authorizeRole(...allowedRoles) {
   };
 }
 
-function authorizeSupervisor() {
+function authorizeTeacher() {
   return async (req, res, next) => {
     try {
       const { query } = require('../config/database');
-      const requestedEmployee = req.params.employeeId || req.body.employeeId;
+      const requestedStudent = req.params.studentId || req.body.studentId;
 
       const result = await query(
-        `SELECT supervisor_id FROM employees WHERE id = $1 OR employee_id = $2`,
-        [Number(requestedEmployee) || null, requestedEmployee || null]
+        `SELECT teacher_id FROM students WHERE id = $1 OR student_id = $2`,
+        [Number(requestedStudent) || null, requestedStudent || null]
       );
 
       if (result.rows.length === 0) {
         return res.status(404).json({
-          error: 'Employee not found',
-          code: 'EMPLOYEE_NOT_FOUND',
+          error: 'Student not found',
+          code: 'STUDENT_NOT_FOUND',
         });
       }
 
-      const supervisorId = result.rows[0].supervisor_id;
+      const teacherId = result.rows[0].teacher_id;
 
-      if (supervisorId !== req.user.id && req.user.role !== 'admin') {
+      if (teacherId !== req.user.id && req.user.role !== 'admin') {
         return res.status(403).json({
-          error: 'Not authorized to manage this employee',
-          code: 'NOT_SUPERVISOR',
+          error: 'Not authorized to manage this student',
+          code: 'NOT_TEACHER',
         });
       }
 
       next();
     } catch (error) {
-      logger.error('Supervisor authorization error', { error: error.message });
+      logger.error('Teacher authorization error', { error: error.message });
       return res.status(500).json({
         error: 'Authorization failed',
         code: 'AUTH_FAILED',
@@ -223,5 +223,5 @@ module.exports = {
   generateTokens,
   verifyRefreshToken,
   authorizeRole,
-  authorizeSupervisor,
+  authorizeTeacher,
 };

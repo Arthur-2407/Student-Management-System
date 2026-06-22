@@ -130,20 +130,20 @@ async function runAllTests() {
     } catch (e) {}
     runQuery('TRUNCATE login_logs CASCADE;');
     runQuery('TRUNCATE security_events CASCADE;');
-    runQuery('TRUNCATE attendance_records CASCADE;');
+    runQuery('TRUNCATE student_attendance CASCADE;');
     runQuery('TRUNCATE leave_requests CASCADE;');
-    runQuery('TRUNCATE work_reports CASCADE;');
+    runQuery('TRUNCATE student_reports CASCADE;');
     // Truncate recovery requests to avoid foreign key violations
     try {
       runQuery('TRUNCATE account_recovery_audit_log CASCADE;');
       runQuery('TRUNCATE account_recovery_requests CASCADE;');
     } catch (e) {}
-    // Delete target employees to clean up
-    runQuery("DELETE FROM employees WHERE employee_id NOT IN ('admin', 'supervisor', 'EMP001');");
+    // Delete target students to clean up
+    runQuery("DELETE FROM students WHERE student_id NOT IN ('admin', 'teacher', 'EMP001');");
     // Ensure admin user has default seeded password hash
-    runQuery("UPDATE employees SET face_enrolled = FALSE, password_hash = '$2a$10$OXc.LHem9gEyDNMKjyH7CepTNesYPmZ62HPF8ISZheTGkk2YqwPgm' WHERE employee_id = 'admin';");
-    // Ensure EMP_TEST001 employee is deleted so we can recreate it
-    runQuery("DELETE FROM employees WHERE employee_id = 'EMP_TEST001';");
+    runQuery("UPDATE students SET face_enrolled = FALSE, password_hash = '$2a$10$OXc.LHem9gEyDNMKjyH7CepTNesYPmZ62HPF8ISZheTGkk2YqwPgm' WHERE student_id = 'admin';");
+    // Ensure EMP_TEST001 student is deleted so we can recreate it
+    runQuery("DELETE FROM students WHERE student_id = 'EMP_TEST001';");
     console.log('✅ Database reset successfully.');
   } catch (err) {
     console.error('❌ Database reset failed:', err.message);
@@ -185,9 +185,9 @@ async function runAllTests() {
   // Verify Admin in Database
   let adminFaceEnrolled = false;
   try {
-    const adminIdStr = runQuery("SELECT id FROM employees WHERE employee_id = 'admin' LIMIT 1;");
+    const adminIdStr = runQuery("SELECT id FROM students WHERE student_id = 'admin' LIMIT 1;");
     const adminId = parseInt(adminIdStr.split('\n')[2].trim());
-    const faceCountStr = runFaceQuery(`SELECT COUNT(*) FROM face_embeddings WHERE employee_id = ${adminId} AND is_active = TRUE;`);
+    const faceCountStr = runFaceQuery(`SELECT COUNT(*) FROM face_embeddings WHERE student_id = ${adminId} AND is_active = TRUE;`);
     const faceCount = parseInt(faceCountStr.split('\n')[2].trim());
     adminFaceEnrolled = faceCount > 0;
     console.log(`Admin Active Face Embeddings in DB: ${faceCount} (Enrolled: ${adminFaceEnrolled})`);
@@ -202,7 +202,7 @@ async function runAllTests() {
     `${BACKEND_URL}/api/auth/bootstrap/setup`,
     setupPayload,
     setupResult.data,
-    'Update admin employees record, insert face_embeddings, log security event',
+    'Update admin students record, insert face_embeddings, log security event',
     setupSuccess ? 'Bootstrap Setup Successful redirecting...' : 'Setup error displayed',
     setupSuccess && adminFaceEnrolled
   );
@@ -237,10 +237,10 @@ async function runAllTests() {
     isLockActive
   );
 
-  // STEP 5: PASSWORD-ONLY LOGIN (For admin/supervisor, must be blocked)
+  // STEP 5: PASSWORD-ONLY LOGIN (For admin/teacher, must be blocked)
   console.log('\n--- STEP 5: PASSWORD LOGIN FOR ADMIN (EXPECT BLOCKED) ---');
   const adminPwdLoginPayload = {
-    employeeId: 'admin',
+    studentId: 'admin',
     password: 'SecureAdminPassword123!'
   };
   const adminPwdLogin = await verifyEndpoint('Admin Password Login', `${PROXY_URL}/api/auth/login`, 'POST', adminPwdLoginPayload);
@@ -261,7 +261,7 @@ async function runAllTests() {
   // STEP 6: ADMIN FACE CAMERA LOGIN (Full Face+Password Login)
   console.log('\n--- STEP 6: ADMIN FACE CAMERA LOGIN ---');
   const adminFaceLoginPayload = {
-    employeeId: 'admin',
+    studentId: 'admin',
     password: 'SecureAdminPassword123!',
     frames: dummyFrames
   };
@@ -278,7 +278,7 @@ async function runAllTests() {
     `${PROXY_URL}/api/auth/face-login`,
     adminFaceLoginPayload,
     adminFaceLogin.data,
-    'Insert login_logs, update employees last_login_at, insert refresh_tokens',
+    'Insert login_logs, update students last_login_at, insert refresh_tokens',
     adminLoggedIn ? 'Admin Redirected to Dashboard' : 'Authentication error message displayed',
     adminLoggedIn
   );
@@ -288,74 +288,74 @@ async function runAllTests() {
     process.exit(1);
   }
 
-  // STEP 7: CREATE EMPLOYEE (EMP_TEST001) USING ADMIN TOKEN
-  console.log('\n--- STEP 7: CREATE EMPLOYEE (EMP_TEST001) ---');
-  const employeePayload = {
-    employeeId: 'EMP_TEST001',
+  // STEP 7: CREATE STUDENT (EMP_TEST001) USING ADMIN TOKEN
+  console.log('\n--- STEP 7: CREATE STUDENT (EMP_TEST001) ---');
+  const studentPayload = {
+    studentId: 'EMP_TEST001',
     firstName: 'Test',
-    lastName: 'Employee',
-    email: 'test.employee@attendance-system.local',
+    lastName: 'Student',
+    email: 'test.student@attendance-system.local',
     phone_number: '+1-555-9999',
     department: 'Engineering',
     position: 'Software Engineer',
-    role: 'employee',
+    role: 'student',
     password: 'TestPass123',
     hireDate: '2026-06-14'
   };
   const createEmpResult = await verifyEndpoint(
-    'Create Employee',
-    `${PROXY_URL}/api/admin/employees`,
+    'Create Student',
+    `${PROXY_URL}/api/admin/students`,
     'POST',
-    employeePayload,
+    studentPayload,
     { 'Authorization': `Bearer ${adminToken}` }
   );
-  const employeeCreated = createEmpResult.pass && createEmpResult.data?.success === true;
-  console.log('Employee created successfully:', employeeCreated);
+  const studentCreated = createEmpResult.pass && createEmpResult.data?.success === true;
+  console.log('Student created successfully:', studentCreated);
   addReportEntry(
     'IMAGE ENROLLMENT (CREATE USER RECORD)',
-    employeeCreated ? 'User record created' : 'Failed to create user record',
-    'POST /api/admin/employees',
-    `${PROXY_URL}/api/admin/employees`,
-    employeePayload,
+    studentCreated ? 'User record created' : 'Failed to create user record',
+    'POST /api/admin/students',
+    `${PROXY_URL}/api/admin/students`,
+    studentPayload,
     createEmpResult.data,
-    'Insert employees (EMP_TEST001)',
-    employeeCreated ? 'Employee created message shown' : 'Failed message shown',
-    employeeCreated
+    'Insert students (EMP_TEST001)',
+    studentCreated ? 'Student created message shown' : 'Failed message shown',
+    studentCreated
   );
 
-  // STEP 8: EMPLOYEE PASSWORD-ONLY LOGIN (Since face is not enrolled yet)
-  console.log('\n--- STEP 8: EMPLOYEE PASSWORD-ONLY LOGIN ---');
+  // STEP 8: STUDENT PASSWORD-ONLY LOGIN (Since face is not enrolled yet)
+  console.log('\n--- STEP 8: STUDENT PASSWORD-ONLY LOGIN ---');
   const empPwdLoginPayload = {
-    employeeId: 'EMP_TEST001',
+    studentId: 'EMP_TEST001',
     password: 'TestPass123'
   };
-  const empPwdLogin = await verifyEndpoint('Employee Password Login', `${PROXY_URL}/api/auth/login`, 'POST', empPwdLoginPayload);
+  const empPwdLogin = await verifyEndpoint('Student Password Login', `${PROXY_URL}/api/auth/login`, 'POST', empPwdLoginPayload);
   const empLoggedIn = empPwdLogin.pass && empPwdLogin.data?.success === true && empPwdLogin.data?.tokens;
-  console.log('Employee logged in successfully with password:', empLoggedIn);
+  console.log('Student logged in successfully with password:', empLoggedIn);
   
   const empToken = empLoggedIn ? empPwdLogin.data.tokens.accessToken : null;
 
   addReportEntry(
     'LOGIN OBJECTIVE (PASSWORD LOGIN)',
-    empLoggedIn ? 'Employee authenticated, password-only permitted before face enrolled' : 'Failed to authenticate',
+    empLoggedIn ? 'Student authenticated, password-only permitted before face enrolled' : 'Failed to authenticate',
     'POST /api/auth/login',
     `${PROXY_URL}/api/auth/login`,
     empPwdLoginPayload,
     empPwdLogin.data,
-    'Insert login_logs, update employees last_login_at',
-    empLoggedIn ? 'Employee Redirected to Dashboard' : 'Invalid credentials',
+    'Insert login_logs, update students last_login_at',
+    empLoggedIn ? 'Student Redirected to Dashboard' : 'Invalid credentials',
     empLoggedIn
   );
 
-  // STEP 9: EMPLOYEE FACE IMAGE ENROLLMENT (IMAGE UPLOAD FLOW)
-  console.log('\n--- STEP 9: EMPLOYEE FACE IMAGE ENROLLMENT (IMAGE UPLOAD FLOW) ---');
+  // STEP 9: STUDENT FACE IMAGE ENROLLMENT (IMAGE UPLOAD FLOW)
+  console.log('\n--- STEP 9: STUDENT FACE IMAGE ENROLLMENT (IMAGE UPLOAD FLOW) ---');
   // For image upload, the frontend duplicates the single uploaded image 5 times to simulate the multi-frame structure
   const empEnrollmentPayload = {
-    employeeId: 'EMP_TEST001',
+    studentId: 'EMP_TEST001',
     frames: Array(5).fill(dummyBase64)
   };
   const empEnrollResult = await verifyEndpoint(
-    'Employee Face Enrollment',
+    'Student Face Enrollment',
     `${PROXY_URL}/api/auth/register-face`,
     'POST',
     empEnrollmentPayload,
@@ -363,14 +363,14 @@ async function runAllTests() {
   );
   
   const empFaceEnrolled = empEnrollResult.pass && empEnrollResult.data?.success === true;
-  console.log('Employee face enrolled successfully:', empFaceEnrolled);
+  console.log('Student face enrolled successfully:', empFaceEnrolled);
 
   // Verify persistence in DB
   let dbEnrolled = false;
   try {
-    const empIdStr = runQuery("SELECT id FROM employees WHERE employee_id = 'EMP_TEST001' LIMIT 1;");
+    const empIdStr = runQuery("SELECT id FROM students WHERE student_id = 'EMP_TEST001' LIMIT 1;");
     const empId = parseInt(empIdStr.split('\n')[2].trim());
-    const dbRes = runFaceQuery(`SELECT COUNT(*) FROM face_embeddings WHERE employee_id = ${empId} AND is_active = TRUE;`);
+    const dbRes = runFaceQuery(`SELECT COUNT(*) FROM face_embeddings WHERE student_id = ${empId} AND is_active = TRUE;`);
     const count = parseInt(dbRes.split('\n')[2].trim());
     dbEnrolled = count > 0;
     console.log(`EMP_TEST001 Active Face Embeddings in DB: ${count} (Persisted: ${dbEnrolled})`);
@@ -385,7 +385,7 @@ async function runAllTests() {
     `${PROXY_URL}/api/auth/register-face`,
     empEnrollmentPayload,
     empEnrollResult.data,
-    'Insert face_embeddings, update employees face_enrolled=TRUE',
+    'Insert face_embeddings, update students face_enrolled=TRUE',
     empFaceEnrolled ? 'Face enrolled successfully message' : 'Face enrollment error message',
     empFaceEnrolled && dbEnrolled
   );
@@ -394,7 +394,7 @@ async function runAllTests() {
   console.log('\n--- STEP 10: UPLOADED IMAGE FACE LOGIN ---');
   // Single image upload login: duplicates the single image into an array of frames (e.g. 5 frames)
   const uploadLoginPayload = {
-    employeeId: 'EMP_TEST001',
+    studentId: 'EMP_TEST001',
     frames: Array(5).fill(dummyBase64)
   };
   const uploadLoginResult = await verifyEndpoint('Upload Image Login', `${PROXY_URL}/api/auth/face-login`, 'POST', uploadLoginPayload);
@@ -402,21 +402,21 @@ async function runAllTests() {
   console.log('Upload Image Login Success:', uploadLoginSuccess);
   addReportEntry(
     'UPLOAD LOGIN OBJECTIVE',
-    uploadLoginSuccess ? 'Employee authenticated via uploaded face image' : 'Authentication failed',
+    uploadLoginSuccess ? 'Student authenticated via uploaded face image' : 'Authentication failed',
     'POST /api/auth/face-login',
     `${PROXY_URL}/api/auth/face-login`,
     uploadLoginPayload,
     uploadLoginResult.data,
-    'Insert login_logs, update employees last_login_at',
-    uploadLoginSuccess ? 'Employee Redirected to Dashboard' : 'Invalid face credentials',
+    'Insert login_logs, update students last_login_at',
+    uploadLoginSuccess ? 'Student Redirected to Dashboard' : 'Invalid face credentials',
     uploadLoginSuccess
   );
 
-  // STEP 11: FACE CAMERA LOGIN (EMPLOYEE FACE LOGIN)
-  console.log('\n--- STEP 11: FACE CAMERA LOGIN (EMPLOYEE FACE LOGIN) ---');
+  // STEP 11: FACE CAMERA LOGIN (STUDENT FACE LOGIN)
+  console.log('\n--- STEP 11: FACE CAMERA LOGIN (STUDENT FACE LOGIN) ---');
   // Face camera login captures a series of frames (e.g., 10 frames)
   const cameraLoginPayload = {
-    employeeId: 'EMP_TEST001',
+    studentId: 'EMP_TEST001',
     frames: dummyFrames
   };
   const cameraLoginResult = await verifyEndpoint('Face Camera Login', `${PROXY_URL}/api/auth/face-login`, 'POST', cameraLoginPayload);
@@ -424,13 +424,13 @@ async function runAllTests() {
   console.log('Camera Face Login Success:', cameraLoginSuccess);
   addReportEntry(
     'FACE LOGIN OBJECTIVE',
-    cameraLoginSuccess ? 'Employee authenticated via camera face detection' : 'Authentication failed',
+    cameraLoginSuccess ? 'Student authenticated via camera face detection' : 'Authentication failed',
     'POST /api/auth/face-login',
     `${PROXY_URL}/api/auth/face-login`,
     cameraLoginPayload,
     cameraLoginResult.data,
-    'Insert login_logs, update employees last_login_at',
-    cameraLoginSuccess ? 'Employee Redirected to Dashboard' : 'Face recognition mismatch error',
+    'Insert login_logs, update students last_login_at',
+    cameraLoginSuccess ? 'Student Redirected to Dashboard' : 'Face recognition mismatch error',
     cameraLoginSuccess
   );
 
@@ -463,7 +463,7 @@ async function runAllTests() {
     mdReport += '---\n\n';
   }
 
-  fs.writeFileSync('d:\\Website\\runtime_validation.md', mdReport, 'utf8');
+  fs.writeFileSync('D:\\Student Management\\runtime_validation.md', mdReport, 'utf8');
   console.log('✅ Generated runtime_validation.md successfully.');
 
   // Also update progress files if requested
@@ -472,7 +472,7 @@ async function runAllTests() {
     
     // Read and update runtime_validation.json
     try {
-      const runValPath = 'd:\\Website\\.ai-progress\\runtime_validation.json';
+      const runValPath = 'D:\\Student Management\\.ai-progress\\runtime_validation.json';
       let runValLogs = [];
       if (fs.existsSync(runValPath)) {
         try {
@@ -494,10 +494,10 @@ async function runAllTests() {
 
   // RESTORE ADMIN PASSWORD TO Admin@123
   try {
-    const adminIdStr = runQuery("SELECT id FROM employees WHERE employee_id = 'admin' LIMIT 1;");
+    const adminIdStr = runQuery("SELECT id FROM students WHERE student_id = 'admin' LIMIT 1;");
     const adminId = parseInt(adminIdStr.split('\n')[2].trim());
     const admin123Hash = '$2a$10$GVLZHVknOoWu3SCwL32e7ubzZreMHC2yEmkil.VEJGdx5Jmla2LEC';
-    runQuery(`UPDATE employees SET password_hash = '${admin123Hash}' WHERE id = ${adminId};`);
+    runQuery(`UPDATE students SET password_hash = '${admin123Hash}' WHERE id = ${adminId};`);
     console.log('✅ Restored admin password to Admin@123 in database.');
   } catch (err) {
     console.error('❌ Failed to restore admin password to Admin@123:', err.message);

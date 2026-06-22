@@ -11,7 +11,7 @@ const ExcelJS = require('exceljs');
  *
  * All endpoints now generate actual Excel .xlsx binary files using ExcelJS.
  * All routes are authenticated and RBAC-enforced.
- * Supervisor scope filtering applied for non-admin users.
+ * Teacher scope filtering applied for non-admin users.
  */
 
 // Helper to apply common styling to header rows
@@ -59,14 +59,14 @@ function toDateString(date) {
 }
 
 // GET /api/excel/attendance - Download attendance data as a real .xlsx file
-// Requires: employee, supervisor or admin role
-router.get('/attendance', authenticateToken, requireRole('employee'), async (req, res) => {
+// Requires: student, teacher or admin role
+router.get('/attendance', authenticateToken, requireRole('student'), async (req, res) => {
   try {
-    const { start_date, end_date, department, employee_id } = req.query;
+    const { start_date, end_date, department, student_id } = req.query;
 
     let queryText = `
       SELECT 
-        e.employee_id,
+        e.student_id,
         e.first_name,
         e.last_name,
         e.department,
@@ -76,8 +76,8 @@ router.get('/attendance', authenticateToken, requireRole('employee'), async (req
         a.geo_fence_status,
         ROUND(a.distance_from_office::numeric, 0) AS distance_meters,
         DATE(a.check_in_time) as date
-      FROM attendance_records a
-      JOIN employees e ON a.employee_id = e.id
+      FROM student_attendance a
+      JOIN students e ON a.student_id = e.id
       WHERE a.deleted_at IS NULL
     `;
 
@@ -85,16 +85,16 @@ router.get('/attendance', authenticateToken, requireRole('employee'), async (req
     let paramCount = 0;
 
     // Role-based scope filtering
-    if (req.user.role === 'employee') {
+    if (req.user.role === 'student') {
       paramCount++;
-      queryText += ` AND a.employee_id = $${paramCount}`;
+      queryText += ` AND a.student_id = $${paramCount}`;
       params.push(req.user.id);
-    } else if (req.user.role === 'supervisor') {
+    } else if (req.user.role === 'teacher') {
       paramCount++;
       queryText += `
-        AND (a.employee_id = $${paramCount} OR a.employee_id IN (
-          SELECT employee_id FROM supervisor_assignments
-          WHERE supervisor_id = $${paramCount} AND is_active = TRUE
+        AND (a.student_id = $${paramCount} OR a.student_id IN (
+          SELECT student_id FROM teacher_assignments
+          WHERE teacher_id = $${paramCount} AND is_active = TRUE
         ))`;
       params.push(req.user.id);
     }
@@ -117,14 +117,14 @@ router.get('/attendance', authenticateToken, requireRole('employee'), async (req
       params.push(department);
     }
 
-    // Optional per-employee filter for admin/supervisor drill-down
-    if (employee_id && req.user.role !== 'employee') {
+    // Optional per-student filter for admin/teacher drill-down
+    if (student_id && req.user.role !== 'student') {
       paramCount++;
-      queryText += ` AND e.employee_id = $${paramCount}`;
-      params.push(employee_id);
+      queryText += ` AND e.student_id = $${paramCount}`;
+      params.push(student_id);
     }
 
-    queryText += ' ORDER BY e.employee_id, a.check_in_time DESC';
+    queryText += ' ORDER BY e.student_id, a.check_in_time DESC';
 
     const result = await query(queryText, params);
 
@@ -135,7 +135,7 @@ router.get('/attendance', authenticateToken, requireRole('employee'), async (req
 
     // Build Excel workbook
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Enterprise Attendance System';
+    workbook.creator = 'Student Management System';
     workbook.created = new Date();
     workbook.modified = new Date();
 
@@ -145,7 +145,7 @@ router.get('/attendance', authenticateToken, requireRole('employee'), async (req
 
     // Set column widths
     sheet.columns = [
-      { header: 'Employee ID',      key: 'employee_id',         width: 16 },
+      { header: 'Student ID',      key: 'student_id',         width: 16 },
       { header: 'First Name',       key: 'first_name',          width: 18 },
       { header: 'Last Name',        key: 'last_name',           width: 18 },
       { header: 'Department',       key: 'department',          width: 20 },
@@ -163,7 +163,7 @@ router.get('/attendance', authenticateToken, requireRole('employee'), async (req
     // Add data rows
     result.rows.forEach((row, idx) => {
       const dataRow = sheet.addRow({
-        employee_id: row.employee_id,
+        student_id: row.student_id,
         first_name: row.first_name,
         last_name: row.last_name,
         department: row.department,
@@ -179,7 +179,7 @@ router.get('/attendance', authenticateToken, requireRole('employee'), async (req
 
     // Add summary footer
     const summaryRow = sheet.addRow({
-      employee_id: `Total Records: ${result.rows.length}`,
+      student_id: `Total Records: ${result.rows.length}`,
     });
     summaryRow.font = { bold: true, italic: true, color: { argb: 'FF555555' } };
 
@@ -204,14 +204,14 @@ router.get('/attendance', authenticateToken, requireRole('employee'), async (req
 });
 
 // GET /api/excel/leave - Download leave data as a real .xlsx file
-// Requires: employee, supervisor or admin role
-router.get('/leave', authenticateToken, requireRole('employee'), async (req, res) => {
+// Requires: student, teacher or admin role
+router.get('/leave', authenticateToken, requireRole('student'), async (req, res) => {
   try {
-    const { start_date, end_date, employee_id } = req.query;
+    const { start_date, end_date, student_id } = req.query;
 
     let queryText = `
       SELECT 
-        e.employee_id,
+        e.student_id,
         e.first_name,
         e.last_name,
         e.department,
@@ -224,7 +224,7 @@ router.get('/leave', authenticateToken, requireRole('employee'), async (req, res
         l.rejection_reason,
         l.created_at
       FROM leave_requests l
-      JOIN employees e ON l.employee_id = e.id
+      JOIN students e ON l.student_id = e.id
       WHERE l.deleted_at IS NULL
     `;
 
@@ -232,16 +232,16 @@ router.get('/leave', authenticateToken, requireRole('employee'), async (req, res
     let paramCount = 0;
 
     // Role-based scope filtering
-    if (req.user.role === 'employee') {
+    if (req.user.role === 'student') {
       paramCount++;
-      queryText += ` AND l.employee_id = $${paramCount}`;
+      queryText += ` AND l.student_id = $${paramCount}`;
       params.push(req.user.id);
-    } else if (req.user.role === 'supervisor') {
+    } else if (req.user.role === 'teacher') {
       paramCount++;
       queryText += `
-        AND (l.employee_id = $${paramCount} OR l.employee_id IN (
-          SELECT employee_id FROM supervisor_assignments
-          WHERE supervisor_id = $${paramCount} AND is_active = TRUE
+        AND (l.student_id = $${paramCount} OR l.student_id IN (
+          SELECT student_id FROM teacher_assignments
+          WHERE teacher_id = $${paramCount} AND is_active = TRUE
         ))`;
       params.push(req.user.id);
     }
@@ -258,11 +258,11 @@ router.get('/leave', authenticateToken, requireRole('employee'), async (req, res
       params.push(end_date);
     }
 
-    // Optional per-employee filter for admin/supervisor drill-down
-    if (employee_id && req.user.role !== 'employee') {
+    // Optional per-student filter for admin/teacher drill-down
+    if (student_id && req.user.role !== 'student') {
       paramCount++;
-      queryText += ` AND e.employee_id = $${paramCount}`;
-      params.push(employee_id);
+      queryText += ` AND e.student_id = $${paramCount}`;
+      params.push(student_id);
     }
 
     queryText += ' ORDER BY l.created_at DESC';
@@ -276,7 +276,7 @@ router.get('/leave', authenticateToken, requireRole('employee'), async (req, res
 
     // Build Excel workbook
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Enterprise Attendance System';
+    workbook.creator = 'Student Management System';
     workbook.created = new Date();
 
     const sheet = workbook.addWorksheet('Leave Report', {
@@ -284,7 +284,7 @@ router.get('/leave', authenticateToken, requireRole('employee'), async (req, res
     });
 
     sheet.columns = [
-      { header: 'Employee ID',     key: 'employee_id',       width: 16 },
+      { header: 'Student ID',     key: 'student_id',       width: 16 },
       { header: 'First Name',      key: 'first_name',        width: 18 },
       { header: 'Last Name',       key: 'last_name',         width: 18 },
       { header: 'Department',      key: 'department',        width: 20 },
@@ -302,7 +302,7 @@ router.get('/leave', authenticateToken, requireRole('employee'), async (req, res
 
     result.rows.forEach((row, idx) => {
       const dataRow = sheet.addRow({
-        employee_id: row.employee_id,
+        student_id: row.student_id,
         first_name: row.first_name,
         last_name: row.last_name,
         department: row.department,
@@ -318,7 +318,7 @@ router.get('/leave', authenticateToken, requireRole('employee'), async (req, res
       styleDataRow(dataRow, idx + 1);
     });
 
-    const summaryRow = sheet.addRow({ employee_id: `Total Records: ${result.rows.length}` });
+    const summaryRow = sheet.addRow({ student_id: `Total Records: ${result.rows.length}` });
     summaryRow.font = { bold: true, italic: true, color: { argb: 'FF555555' } };
 
     const filename = `leave-report-${new Date().toISOString().split('T')[0]}.xlsx`;
@@ -339,29 +339,29 @@ router.get('/leave', authenticateToken, requireRole('employee'), async (req, res
   }
 });
 
-// POST /api/excel/upload - Upload employee data via JSON (admin only)
+// POST /api/excel/upload - Upload student data via JSON (admin only)
 // Requires: admin role
 router.post('/upload', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
-    const { employees } = req.body;
+    const { students } = req.body;
 
-    if (!Array.isArray(employees) || employees.length === 0) {
-      return res.status(400).json({ success: false, message: 'Invalid employee data' });
+    if (!Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid student data' });
     }
 
-    if (employees.length > 500) {
-      return res.status(400).json({ success: false, message: 'Maximum 500 employees per upload' });
+    if (students.length > 500) {
+      return res.status(400).json({ success: false, message: 'Maximum 500 students per upload' });
     }
 
     const results = { inserted: 0, skipped: 0, errors: [] };
 
-    for (const emp of employees) {
+    for (const emp of students) {
       try {
         await query(
-          `INSERT INTO employees
-           (employee_id, first_name, last_name, department, position, email, role, hire_date)
+          `INSERT INTO students
+           (student_id, first_name, last_name, department, position, email, role, hire_date)
            VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::date, CURRENT_DATE))
-           ON CONFLICT (employee_id) DO UPDATE
+           ON CONFLICT (student_id) DO UPDATE
            SET first_name = EXCLUDED.first_name,
                last_name = EXCLUDED.last_name,
                department = EXCLUDED.department,
@@ -370,20 +370,20 @@ router.post('/upload', authenticateToken, requireRole('admin'), async (req, res)
                role = EXCLUDED.role,
                updated_at = NOW()`,
           [
-            emp.employee_id,
+            emp.student_id,
             emp.first_name,
             emp.last_name,
             emp.department,
-            emp.position || 'Employee',
+            emp.position || 'Student',
             emp.email,
-            emp.role || 'employee',
+            emp.role || 'student',
             emp.hire_date || null,
           ]
         );
         results.inserted++;
       } catch (err) {
         results.skipped++;
-        results.errors.push({ employee_id: emp.employee_id, error: err.message });
+        results.errors.push({ student_id: emp.student_id, error: err.message });
       }
     }
 
@@ -395,14 +395,14 @@ router.post('/upload', authenticateToken, requireRole('admin'), async (req, res)
   }
 });
 
-// GET /api/excel/employees - Download employee roster as .xlsx
-// Requires: employee, supervisor or admin role
-router.get('/employees', authenticateToken, requireRole('employee'), async (req, res) => {
+// GET /api/excel/students - Download student roster as .xlsx
+// Requires: student, teacher or admin role
+router.get('/students', authenticateToken, requireRole('student'), async (req, res) => {
   try {
     const { department, role: filterRole } = req.query;
     let queryText = `
       SELECT
-        e.employee_id,
+        e.student_id,
         e.first_name,
         e.last_name,
         e.email,
@@ -415,27 +415,27 @@ router.get('/employees', authenticateToken, requireRole('employee'), async (req,
         e.face_enrolled,
         e.face_enrolled_at,
         e.created_at,
-        sup.employee_id AS supervisor_employee_id,
-        sup.first_name AS supervisor_first_name,
-        sup.last_name AS supervisor_last_name
-      FROM employees e
-      LEFT JOIN employees sup ON e.supervisor_id = sup.id
+        sup.student_id AS teacher_student_id,
+        sup.first_name AS teacher_first_name,
+        sup.last_name AS teacher_last_name
+      FROM students e
+      LEFT JOIN students sup ON e.teacher_id = sup.id
       WHERE e.deleted_at IS NULL
     `;
 
     const params = [];
     let paramCount = 0;
 
-    if (req.user.role === 'employee') {
+    if (req.user.role === 'student') {
       paramCount++;
       queryText += ` AND e.id = $${paramCount}`;
       params.push(req.user.id);
-    } else if (req.user.role === 'supervisor') {
+    } else if (req.user.role === 'teacher') {
       paramCount++;
       queryText += `
         AND (e.id = $${paramCount} OR e.id IN (
-          SELECT employee_id FROM supervisor_assignments
-          WHERE supervisor_id = $${paramCount} AND is_active = TRUE
+          SELECT student_id FROM teacher_assignments
+          WHERE teacher_id = $${paramCount} AND is_active = TRUE
         ))`;
       params.push(req.user.id);
     }
@@ -452,7 +452,7 @@ router.get('/employees', authenticateToken, requireRole('employee'), async (req,
       params.push(filterRole);
     }
 
-    queryText += ' ORDER BY e.department, e.employee_id';
+    queryText += ' ORDER BY e.department, e.student_id';
 
     const result = await query(queryText, params);
 
@@ -461,15 +461,15 @@ router.get('/employees', authenticateToken, requireRole('employee'), async (req,
     }
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Enterprise Attendance System';
+    workbook.creator = 'Student Management System';
     workbook.created = new Date();
 
-    const sheet = workbook.addWorksheet('Employee Roster', {
+    const sheet = workbook.addWorksheet('Student Roster', {
       pageSetup: { paperSize: 9, orientation: 'landscape' },
     });
 
     sheet.columns = [
-      { header: 'Employee ID',      key: 'employee_id',              width: 16 },
+      { header: 'Student ID',      key: 'student_id',              width: 16 },
       { header: 'First Name',       key: 'first_name',               width: 18 },
       { header: 'Last Name',        key: 'last_name',                width: 18 },
       { header: 'Email',            key: 'email',                    width: 30 },
@@ -481,8 +481,8 @@ router.get('/employees', authenticateToken, requireRole('employee'), async (req,
       { header: 'Active',           key: 'is_active',                width: 10 },
       { header: 'Face Enrolled',    key: 'face_enrolled',            width: 14 },
       { header: 'Face Enrolled At', key: 'face_enrolled_at',         width: 22 },
-      { header: 'Supervisor ID',    key: 'supervisor_employee_id',   width: 16 },
-      { header: 'Supervisor',       key: 'supervisor_name',          width: 26 },
+      { header: 'Teacher ID',    key: 'teacher_student_id',   width: 16 },
+      { header: 'Teacher',       key: 'teacher_name',          width: 26 },
       { header: 'Created At',       key: 'created_at',               width: 22 },
     ];
 
@@ -490,7 +490,7 @@ router.get('/employees', authenticateToken, requireRole('employee'), async (req,
 
     result.rows.forEach((row, idx) => {
       const dataRow = sheet.addRow({
-        employee_id: row.employee_id,
+        student_id: row.student_id,
         first_name: row.first_name,
         last_name: row.last_name,
         email: row.email,
@@ -502,19 +502,19 @@ router.get('/employees', authenticateToken, requireRole('employee'), async (req,
         is_active: row.is_active ? 'Yes' : 'No',
         face_enrolled: row.face_enrolled ? 'Yes' : 'No',
         face_enrolled_at: row.face_enrolled_at ? new Date(row.face_enrolled_at).toLocaleString() : 'Not enrolled',
-        supervisor_employee_id: row.supervisor_employee_id || '',
-        supervisor_name: row.supervisor_first_name
-          ? `${row.supervisor_first_name} ${row.supervisor_last_name}`
-          : 'No supervisor',
+        teacher_student_id: row.teacher_student_id || '',
+        teacher_name: row.teacher_first_name
+          ? `${row.teacher_first_name} ${row.teacher_last_name}`
+          : 'No teacher',
         created_at: new Date(row.created_at).toLocaleString(),
       });
       styleDataRow(dataRow, idx + 1);
     });
 
-    const summaryRow = sheet.addRow({ employee_id: `Total: ${result.rows.length} employees` });
+    const summaryRow = sheet.addRow({ student_id: `Total: ${result.rows.length} students` });
     summaryRow.font = { bold: true, italic: true, color: { argb: 'FF555555' } };
 
-    const filename = `employees-${new Date().toISOString().split('T')[0]}.xlsx`;
+    const filename = `students-${new Date().toISOString().split('T')[0]}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Cache-Control', 'no-cache');
@@ -522,13 +522,13 @@ router.get('/employees', authenticateToken, requireRole('employee'), async (req,
     await workbook.xlsx.write(res);
     res.end();
 
-    logger.info('Employee Excel export generated', {
+    logger.info('Student Excel export generated', {
       userId: req.user.id,
       rowCount: result.rows.length,
     });
   } catch (error) {
-    logger.error('Excel employees export error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ success: false, message: 'Failed to generate employee report' });
+    logger.error('Excel students export error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ success: false, message: 'Failed to generate student report' });
   }
 });
 
@@ -547,11 +547,11 @@ router.get('/audit-logs', authenticateToken, requireRole('admin'), async (req, r
         al.user_agent,
         al.created_at,
         al.details,
-        e.employee_id AS actor_employee_id,
+        e.student_id AS actor_student_id,
         e.first_name  AS actor_first_name,
         e.last_name   AS actor_last_name
       FROM audit_logs al
-      LEFT JOIN employees e ON al.actor_employee_id = e.employee_id
+      LEFT JOIN students e ON al.actor_student_id = e.student_id
       WHERE 1=1
     `;
 
@@ -585,7 +585,7 @@ router.get('/audit-logs', authenticateToken, requireRole('admin'), async (req, r
     }
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Enterprise Attendance System';
+    workbook.creator = 'Student Management System';
     workbook.created = new Date();
 
     const sheet = workbook.addWorksheet('Audit Log', {
@@ -594,7 +594,7 @@ router.get('/audit-logs', authenticateToken, requireRole('admin'), async (req, r
 
     sheet.columns = [
       { header: 'ID',            key: 'id',                   width: 10 },
-      { header: 'Actor ID',      key: 'actor_employee_id',    width: 14 },
+      { header: 'Actor ID',      key: 'actor_student_id',    width: 14 },
       { header: 'Actor Name',    key: 'actor_name',           width: 26 },
       { header: 'Action',        key: 'action',               width: 30 },
       { header: 'Resource Type', key: 'resource_type',        width: 20 },
@@ -609,7 +609,7 @@ router.get('/audit-logs', authenticateToken, requireRole('admin'), async (req, r
     result.rows.forEach((row, idx) => {
       const dataRow = sheet.addRow({
         id: row.id,
-        actor_employee_id: row.actor_employee_id || 'system',
+        actor_student_id: row.actor_student_id || 'system',
         actor_name: row.actor_first_name ? `${row.actor_first_name} ${row.actor_last_name}` : 'System',
         action: row.action,
         resource_type: row.resource_type,
@@ -636,8 +636,8 @@ router.get('/audit-logs', authenticateToken, requireRole('admin'), async (req, r
   }
 });
 
-// GET /api/excel/security-events - Download security events as .xlsx (admin or supervisor or employee)
-router.get('/security-events', authenticateToken, requireRole('employee'), async (req, res) => {
+// GET /api/excel/security-events - Download security events as .xlsx (admin or teacher or student)
+router.get('/security-events', authenticateToken, requireRole('student'), async (req, res) => {
   try {
     const { start_date, end_date, event_type, severity } = req.query;
 
@@ -650,28 +650,28 @@ router.get('/security-events', authenticateToken, requireRole('employee'), async
         se.device_info,
         se.details,
         se.timestamp AS created_at,
-        e.employee_id,
+        e.student_id,
         e.first_name,
         e.last_name,
-        e.role AS employee_role
+        e.role AS student_role
       FROM security_events se
-      LEFT JOIN employees e ON se.employee_id = e.id
+      LEFT JOIN students e ON se.student_id = e.id
       WHERE 1=1
     `;
 
     const params = [];
     let paramCount = 0;
 
-    if (req.user.role === 'employee') {
+    if (req.user.role === 'student') {
       paramCount++;
-      queryText += ` AND se.employee_id = $${paramCount}`;
+      queryText += ` AND se.student_id = $${paramCount}`;
       params.push(req.user.id);
-    } else if (req.user.role === 'supervisor') {
+    } else if (req.user.role === 'teacher') {
       paramCount++;
       queryText += `
-        AND (se.employee_id = $${paramCount} OR se.employee_id IN (
-          SELECT employee_id FROM supervisor_assignments
-          WHERE supervisor_id = $${paramCount} AND is_active = TRUE
+        AND (se.student_id = $${paramCount} OR se.student_id IN (
+          SELECT student_id FROM teacher_assignments
+          WHERE teacher_id = $${paramCount} AND is_active = TRUE
         ))`;
       params.push(req.user.id);
     }
@@ -709,7 +709,7 @@ router.get('/security-events', authenticateToken, requireRole('employee'), async
     }
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Enterprise Attendance System';
+    workbook.creator = 'Student Management System';
     workbook.created = new Date();
 
     const sheet = workbook.addWorksheet('Security Events', {
@@ -720,9 +720,9 @@ router.get('/security-events', authenticateToken, requireRole('employee'), async
       { header: 'ID',           key: 'id',             width: 10 },
       { header: 'Event Type',   key: 'event_type',     width: 30 },
       { header: 'Severity',     key: 'severity',       width: 12 },
-      { header: 'Employee ID',  key: 'employee_id',    width: 14 },
-      { header: 'Employee',     key: 'employee_name',  width: 26 },
-      { header: 'Role',         key: 'employee_role',  width: 14 },
+      { header: 'Student ID',  key: 'student_id',    width: 14 },
+      { header: 'Student',     key: 'student_name',  width: 26 },
+      { header: 'Role',         key: 'student_role',  width: 14 },
       { header: 'IP Address',   key: 'ip_address',     width: 18 },
       { header: 'Device Info',  key: 'device_info',    width: 40 },
       { header: 'Details',      key: 'details',        width: 50 },
@@ -736,9 +736,9 @@ router.get('/security-events', authenticateToken, requireRole('employee'), async
         id: row.id,
         event_type: row.event_type,
         severity: row.severity || 'info',
-        employee_id: row.employee_id || '',
-        employee_name: row.first_name ? `${row.first_name} ${row.last_name}` : 'Unknown',
-        employee_role: row.employee_role || '',
+        student_id: row.student_id || '',
+        student_name: row.first_name ? `${row.first_name} ${row.last_name}` : 'Unknown',
+        student_role: row.student_role || '',
         ip_address: row.ip_address || '',
         device_info: row.device_info || '',
         details: typeof row.details === 'object' ? JSON.stringify(row.details) : String(row.details || ''),
@@ -774,8 +774,8 @@ router.get('/security-events', authenticateToken, requireRole('employee'), async
 });
 
 // GET /api/excel/performance - Download performance metrics as .xlsx
-// Requires: employee, supervisor or admin role
-router.get('/performance', authenticateToken, requireRole('employee'), async (req, res) => {
+// Requires: student, teacher or admin role
+router.get('/performance', authenticateToken, requireRole('student'), async (req, res) => {
   try {
     const { start_date, end_date, department } = req.query;
 
@@ -797,14 +797,14 @@ router.get('/performance', authenticateToken, requireRole('employee'), async (re
     let filterSql = '';
     let paramIndex = 4;
 
-    if (req.user.role === 'employee') {
+    if (req.user.role === 'student') {
       filterSql += ` AND e.id = $${paramIndex}`;
       params.push(req.user.id);
       paramIndex++;
-    } else if (req.user.role === 'supervisor') {
+    } else if (req.user.role === 'teacher') {
       filterSql += ` AND (e.id = $${paramIndex} OR e.id IN (
-        SELECT employee_id FROM supervisor_assignments
-        WHERE supervisor_id = $${paramIndex} AND is_active = TRUE
+        SELECT student_id FROM teacher_assignments
+        WHERE teacher_id = $${paramIndex} AND is_active = TRUE
       ))`;
       params.push(req.user.id);
       paramIndex++;
@@ -817,16 +817,16 @@ router.get('/performance', authenticateToken, requireRole('employee'), async (re
     }
 
     const queryText = `
-      SELECT e.employee_id, e.first_name, e.last_name, e.department, e.position,
+      SELECT e.student_id, e.first_name, e.last_name, e.department, e.position,
              COUNT(ar.id)::int AS total_checkins,
              ROUND(COALESCE(AVG(EXTRACT(EPOCH FROM ar.work_hours) / 3600), 0)::numeric, 2)::float AS avg_hours,
              COUNT(ar.id) FILTER (WHERE ar.check_in_time::TIME > $3::TIME)::int AS late_count
-      FROM employees e
-      LEFT JOIN attendance_records ar ON e.id = ar.employee_id 
+      FROM students e
+      LEFT JOIN student_attendance ar ON e.id = ar.student_id 
         AND ar.check_in_time::DATE BETWEEN $1::DATE AND $2::DATE
       WHERE e.is_active = TRUE
       ${filterSql}
-      GROUP BY e.id, e.employee_id, e.first_name, e.last_name, e.department, e.position
+      GROUP BY e.id, e.student_id, e.first_name, e.last_name, e.department, e.position
       ORDER BY total_checkins DESC, avg_hours DESC
     `;
 
@@ -837,7 +837,7 @@ router.get('/performance', authenticateToken, requireRole('employee'), async (re
     }
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Enterprise Attendance System';
+    workbook.creator = 'Student Management System';
     workbook.created = new Date();
 
     const sheet = workbook.addWorksheet('Performance Report', {
@@ -845,7 +845,7 @@ router.get('/performance', authenticateToken, requireRole('employee'), async (re
     });
 
     sheet.columns = [
-      { header: 'Employee ID',    key: 'employee_id',    width: 16 },
+      { header: 'Student ID',    key: 'student_id',    width: 16 },
       { header: 'First Name',     key: 'first_name',     width: 18 },
       { header: 'Last Name',      key: 'last_name',      width: 18 },
       { header: 'Department',     key: 'department',     width: 20 },
@@ -859,7 +859,7 @@ router.get('/performance', authenticateToken, requireRole('employee'), async (re
 
     result.rows.forEach((row, idx) => {
       const dataRow = sheet.addRow({
-        employee_id: row.employee_id,
+        student_id: row.student_id,
         first_name: row.first_name,
         last_name: row.last_name,
         department: row.department || 'Unassigned',
@@ -872,7 +872,7 @@ router.get('/performance', authenticateToken, requireRole('employee'), async (re
     });
 
     const summaryRow = sheet.addRow({
-      employee_id: `Total Records: ${result.rows.length}`,
+      student_id: `Total Records: ${result.rows.length}`,
     });
     summaryRow.font = { bold: true, italic: true, color: { argb: 'FF555555' } };
 

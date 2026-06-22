@@ -2,11 +2,11 @@
 
 BEGIN;
 
-DROP INDEX IF EXISTS uix_attendance_one_open_per_employee_per_day;
-DROP INDEX IF EXISTS idx_attendance_employee_date;
+DROP INDEX IF EXISTS uix_attendance_one_open_per_student_per_day;
+DROP INDEX IF EXISTS idx_attendance_student_date;
 DROP INDEX IF EXISTS uix_attendance_idempotency;
 
-ALTER TABLE attendance_records
+ALTER TABLE student_attendance
   DROP COLUMN IF EXISTS idempotency_key;
 
 COMMIT;

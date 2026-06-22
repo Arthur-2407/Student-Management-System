@@ -26,7 +26,7 @@ describe('database and route contract alignment', () => {
 
     expect(geofenceRoutes).toContain('office_locations');
     expect(geofenceRoutes).not.toContain('office_location LIMIT');
-    expect(excelRoutes).toContain('FROM attendance_records a');
+    expect(excelRoutes).toContain('FROM student_attendance a');
     expect(workReportRoutes).toContain('image_urls');
     expect(workReportRoutes).not.toContain('image_data');
   });

@@ -166,7 +166,7 @@ app.get('/api/admin/contact-info', async (req, res) => {
         `SELECT ac.admin_name as name, ac.admin_email as email,
                 ac.admin_phone as phone, ac.admin_designation as designation
          FROM admin_configuration ac
-         JOIN employees e ON ac.admin_employee_id = e.id
+         JOIN students e ON ac.admin_student_id = e.id
          WHERE e.is_active = TRUE
          ORDER BY ac.updated_at DESC
          LIMIT 1`
@@ -176,7 +176,7 @@ app.get('/api/admin/contact-info', async (req, res) => {
       result = await _dbQuery(
         `SELECT CONCAT(first_name, ' ', last_name) as name, email,
                 phone_number as phone, position as designation
-         FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1`
+         FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1`
       );
     }
     if (!result || result.rows.length === 0) {
@@ -209,7 +209,7 @@ app.get('/api/system/features', authenticateToken, (req, res) => {
 });
 
 // V5: Job queue stats endpoint
-app.get('/api/system/queue', authenticateToken, requireRole('supervisor'), (req, res) => {
+app.get('/api/system/queue', authenticateToken, requireRole('teacher'), (req, res) => {
   res.json({ queue: jobQueue.getStats() });
 });
 
@@ -219,7 +219,7 @@ app.get('/api/system/permissions', authenticateToken, (req, res) => {
 });
 
 // V6: Tracing stats endpoint
-app.get('/api/system/traces', authenticateToken, requireRole('supervisor'), (req, res) => {
+app.get('/api/system/traces', authenticateToken, requireRole('teacher'), (req, res) => {
   res.json({ tracing: enhancedTracing.getStats() });
 });
 
@@ -259,7 +259,7 @@ app.get('/metrics', (req, res) => {
 });
 
 // V8: Authenticated Prometheus JSON metrics endpoint
-app.get('/api/telemetry/prometheus', authenticateToken, requireRole('supervisor'), (req, res) => {
+app.get('/api/telemetry/prometheus', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
     const collector = getPrometheusCollector();
     res.json({

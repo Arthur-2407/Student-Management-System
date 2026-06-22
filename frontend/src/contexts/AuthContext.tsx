@@ -7,15 +7,15 @@ import { websocketService } from '@services/websocketService';
 
 export interface User {
   id: number;
-  employeeId: string;
+  studentId: string;
   email: string;
   role: string;
   department: string;
   firstName?: string;
   lastName?: string;
   faceEnrolled?: boolean;
-  supervisorId?: number | null;
-  supervisorName?: string | null;
+  teacherId?: number | null;
+  teacherName?: string | null;
 }
 
 interface AuthContextType {
@@ -92,8 +92,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     syncToStore(userData, tokens.accessToken, tokens.refreshToken);
 
     // ARCH BRIDGE #2: Connect WebSocket and join the correct rooms for this user's role.
-    // connectAndJoin handles handshake timing and emits 'join' + 'join-supervisor' as needed.
-    websocketService.connectAndJoin(tokens.accessToken, userData.employeeId, userData.role);
+    // connectAndJoin handles handshake timing and emits 'join' + 'join-teacher' as needed.
+    websocketService.connectAndJoin(tokens.accessToken, userData.studentId, userData.role);
 
     // STABILIZATION: Schedule proactive token refresh at 80% of access token TTL.
     scheduleProactiveRefresh(tokens.accessToken);
@@ -132,7 +132,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         const { accessToken, refreshToken: newRefreshToken } =
           response.data.tokens;
-        const userData = response.data.employee;
+        const userData = response.data.student;
 
         localStorage.setItem('accessToken', accessToken);
         localStorage.setItem('refreshToken', newRefreshToken);
@@ -144,7 +144,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         // ARCH BRIDGE #2: Re-connect WebSocket with fresh token if not already connected
         if (!websocketService.isConnected()) {
-          websocketService.connectAndJoin(accessToken, userData.employeeId, userData.role);
+          websocketService.connectAndJoin(accessToken, userData.studentId, userData.role);
         }
 
         // STABILIZATION: Schedule next proactive refresh
@@ -209,12 +209,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     const handleTokenRefreshed = (e: Event) => {
       const customEvent = e as CustomEvent;
-      const { accessToken, employee } = customEvent.detail;
+      const { accessToken, student } = customEvent.detail;
       if (accessToken) {
         scheduleProactiveRefresh(accessToken);
       }
-      if (employee) {
-        setUser(employee);
+      if (student) {
+        setUser(student);
       }
     };
     window.addEventListener('auth:token-refreshed', handleTokenRefreshed);

@@ -19,7 +19,7 @@ AI_SERVICE_URL = "http://localhost:8000"
 class CompleteBiometricProof:
     def __init__(self):
         self.jwt_token = None
-        self.employee_id = "REAL_BIOTEST"
+        self.student_id = "REAL_BIOTEST"
         self.password = "test123"
         self.frames = []
         self.results = {
@@ -61,12 +61,12 @@ class CompleteBiometricProof:
         """TEST 1: Authenticate using password"""
         print("\n[TEST 1] PASSWORD AUTHENTICATION")
         print("=" * 70)
-        print(f"Testing: {self.employee_id}")
+        print(f"Testing: {self.student_id}")
         
         try:
             r = requests.post(f"{BASE_URL}/api/auth/login",
                 json={
-                    "employeeId": self.employee_id,
+                    "studentId": self.student_id,
                     "password": self.password
                 },
                 timeout=10)
@@ -163,7 +163,7 @@ class CompleteBiometricProof:
             
             r = requests.post(f"{BASE_URL}/api/auth/face-login",
                 json={
-                    "employeeId": self.employee_id,
+                    "studentId": self.student_id,
                     "password": self.password,
                     "frames": frames
                 },
@@ -222,7 +222,7 @@ class CompleteBiometricProof:
             )
             cur = conn.cursor()
             
-            # Get the employee's ID from the main database
+            # Get the student's ID from the main database
             conn2 = psycopg2.connect(
                 host='localhost', port=5432,
                 user='postgres', password='securepassword123',
@@ -232,17 +232,17 @@ class CompleteBiometricProof:
             cur2 = conn2.cursor()
             
             try:
-                cur2.execute("SELECT id FROM employees WHERE employee_id = %s", (self.employee_id,))
+                cur2.execute("SELECT id FROM students WHERE student_id = %s", (self.student_id,))
                 result = cur2.fetchone()
                 if result:
                     emp_db_id = result[0]
-                    print(f"Employee DB ID: {emp_db_id}")
+                    print(f"Student DB ID: {emp_db_id}")
                     
-                    # Query embeddings for this employee
+                    # Query embeddings for this student
                     cur.execute("""
                         SELECT id, embedding_version, confidence_score, is_active, enrollment_date
                         FROM face_embeddings
-                        WHERE employee_id = %s
+                        WHERE student_id = %s
                         ORDER BY enrollment_date DESC
                     """, (emp_db_id,))
                     
@@ -260,7 +260,7 @@ class CompleteBiometricProof:
                             "name": "Database Embeddings",
                             "status": "PASSED",
                             "embedding_count": len(embeddings),
-                            "details": f"{len(embeddings)} embeddings stored for {self.employee_id}"
+                            "details": f"{len(embeddings)} embeddings stored for {self.student_id}"
                         })
                         
                         cur.close()

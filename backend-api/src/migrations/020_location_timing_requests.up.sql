@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS location_timing_requests (
     id SERIAL PRIMARY KEY,
-    employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     request_type VARCHAR(20) NOT NULL CHECK (request_type IN ('location', 'timing', 'both')),
     requested_location_name VARCHAR(150),
     requested_latitude DOUBLE PRECISION,
@@ -19,5 +19,5 @@ CREATE TABLE IF NOT EXISTS location_timing_requests (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_loc_time_req_employee ON location_timing_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_loc_time_req_student ON location_timing_requests(student_id);
 CREATE INDEX IF NOT EXISTS idx_loc_time_req_status ON location_timing_requests(status);

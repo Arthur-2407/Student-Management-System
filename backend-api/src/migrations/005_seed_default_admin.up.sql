@@ -1,10 +1,10 @@
 -- Seed default administrator access for initial setup and local recovery.
 -- Default credentials:
---   employee_id: admin
+--   student_id: admin
 --   password:    admin
 
-INSERT INTO employees (
-  employee_id,
+INSERT INTO students (
+  student_id,
   first_name,
   last_name,
   email,
@@ -40,7 +40,7 @@ INSERT INTO employees (
   CURRENT_TIMESTAMP,
   CURRENT_TIMESTAMP
 )
-ON CONFLICT (employee_id) DO UPDATE SET
+ON CONFLICT (student_id) DO UPDATE SET
   first_name = EXCLUDED.first_name,
   last_name = EXCLUDED.last_name,
   email = EXCLUDED.email,
@@ -53,6 +53,6 @@ ON CONFLICT (employee_id) DO UPDATE SET
   password_changed_at = CURRENT_TIMESTAMP,
   failed_login_count = 0,
   locked_until = NULL,
-  metadata = COALESCE(employees.metadata, '{}'::jsonb)
+  metadata = COALESCE(students.metadata, '{}'::jsonb)
     || '{"default_admin": true, "all_feature_access": true}'::jsonb,
   updated_at = CURRENT_TIMESTAMP;

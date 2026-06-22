@@ -2,7 +2,7 @@
 -- Purpose: Add approver_id and approval_timestamp columns used by leave routes
 
 ALTER TABLE leave_requests
-  ADD COLUMN IF NOT EXISTS approver_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS approver_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS approval_timestamp TIMESTAMPTZ;
 
 -- Create indexes for performance

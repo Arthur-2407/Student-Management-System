@@ -31,7 +31,7 @@ const FaceLogin = () => {
   const { showError, showSuccess } = useNotification();
   const coordinator = useAsyncCoordinator('face-login');
 
-  const [employeeId, setEmployeeId] = useState<string>('');
+  const [studentId, setStudentId] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [requirePassword, setRequirePassword] = useState<boolean>(false);
   const [frames, setFrames] = useState<CapturedFrame[]>([]);
@@ -53,8 +53,8 @@ const FaceLogin = () => {
 
   // Prefill from navigation state
   useEffect(() => {
-    if (locationState.state?.employeeId) {
-      setEmployeeId(locationState.state.employeeId);
+    if (locationState.state?.studentId) {
+      setStudentId(locationState.state.studentId);
     }
     if (locationState.state?.requirePassword) {
       setRequirePassword(true);
@@ -82,15 +82,15 @@ const FaceLogin = () => {
 
   // Check pre-login data to determine password requirement — NO hardcoding
   useEffect(() => {
-    const checkEmployeeId = async () => {
-      if (!employeeId || employeeId.length < 2) {
+    const checkStudentId = async () => {
+      if (!studentId || studentId.length < 2) {
         setPreLoginData(null);
         setRequirePassword(locationState.state?.requirePassword || false);
         return;
       }
       setIsCheckingId(true);
       try {
-        const res = await authApi.preLoginCheck({ employeeId });
+        const res = await authApi.preLoginCheck({ studentId });
         const data = res.data;
         setPreLoginData(data);
         
@@ -113,9 +113,9 @@ const FaceLogin = () => {
       }
     };
 
-    const debounce = setTimeout(checkEmployeeId, 600);
+    const debounce = setTimeout(checkStudentId, 600);
     return () => clearTimeout(debounce);
-  }, [employeeId, locationState.state]);
+  }, [studentId, locationState.state]);
 
   // Handle frame capture — keeps a rolling buffer of last 20 frames
   const handleFrameCapture = useCallback((frame: string) => {
@@ -136,8 +136,8 @@ const FaceLogin = () => {
 
   // Core authentication logic
   const handleFaceLogin = useCallback(async (currentFrames: CapturedFrame[]) => {
-    if (!employeeId) {
-      showError('Please enter your Employee ID');
+    if (!studentId) {
+      showError('Please enter your Student ID');
       return;
     }
     if (requirePassword && !password) {
@@ -166,7 +166,7 @@ const FaceLogin = () => {
     try {
       const loginData: FaceLoginData = {
         frames: currentFrames.map((f: CapturedFrame) => f.data),
-        employeeId,
+        studentId,
         password: requirePassword ? password : undefined,
         location: location || undefined,
       };
@@ -191,8 +191,8 @@ const FaceLogin = () => {
       if (response.data.success && response.data.authenticated) {
         setLivenessStatus('success');
         showSuccess('Authentication successful!');
-        if (response.data.tokens && response.data.employee) {
-          login(response.data.tokens, response.data.employee);
+        if (response.data.tokens && response.data.student) {
+          login(response.data.tokens, response.data.student);
           setTimeout(() => navigate('/dashboard'), 800);
         }
       } else {
@@ -214,7 +214,7 @@ const FaceLogin = () => {
       resetProcessingState();
       setFrames([]);
     }
-  }, [employeeId, password, requirePassword, location, isProcessing, coordinator, login, navigate, showError, showSuccess, resetProcessingState]);
+  }, [studentId, password, requirePassword, location, isProcessing, coordinator, login, navigate, showError, showSuccess, resetProcessingState]);
 
   // Auto-trigger authentication when enough frames have been collected silently
   useEffect(() => {
@@ -222,7 +222,7 @@ const FaceLogin = () => {
       frames.length >= MIN_FRAMES_FOR_AUTH &&
       !isProcessing &&
       !autoAuthTriggered &&
-      employeeId &&
+      studentId &&
       livenessStatus !== 'success' &&
       !isCameraStopped &&
       !isCheckingId &&           // Wait for pre-login check to complete (prevents race for admin)
@@ -234,14 +234,14 @@ const FaceLogin = () => {
         handleFaceLogin(frames);
       }, AUTO_AUTH_DELAY_MS);
     }
-  }, [frames, isProcessing, autoAuthTriggered, employeeId, livenessStatus, isCameraStopped, isCheckingId, requirePassword, locationState.state?.passwordVerified, handleFaceLogin]);
+  }, [frames, isProcessing, autoAuthTriggered, studentId, livenessStatus, isCameraStopped, isCheckingId, requirePassword, locationState.state?.passwordVerified, handleFaceLogin]);
 
-  // Reset auto-auth trigger when employee ID or password changes
+  // Reset auto-auth trigger when student ID or password changes
   useEffect(() => {
     setAutoAuthTriggered(false);
     setLivenessStatus('idle');
     setFrames([]);
-  }, [employeeId, password]);
+  }, [studentId, password]);
 
   const handleStopCamera = () => {
     setIsCameraStopped(true);
@@ -385,21 +385,21 @@ const FaceLogin = () => {
                 )}
               </motion.div>
 
-              {/* Employee ID */}
+              {/* Student ID */}
               <div className="mb-5">
-                <label htmlFor="face-login-employee-id" className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Employee ID
+                <label htmlFor="face-login-student-id" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Student ID
                 </label>
                 <input
-                  id="face-login-employee-id"
+                  id="face-login-student-id"
                   type="text"
-                  value={employeeId}
+                  value={studentId}
                   onChange={e => {
                     const val = e.target.value;
                     if (val.trim().toLowerCase() === 'admin') {
-                      setEmployeeId('admin');
+                      setStudentId('admin');
                     } else {
-                      setEmployeeId(val);
+                      setStudentId(val);
                     }
                   }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm"
@@ -430,7 +430,7 @@ const FaceLogin = () => {
                       {preLoginData?.role && (
                         <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-semibold ${
                           preLoginData.role === 'admin' ? 'bg-red-100 text-red-700' :
-                          preLoginData.role === 'supervisor' ? 'bg-amber-100 text-amber-700' :
+                          preLoginData.role === 'teacher' ? 'bg-amber-100 text-amber-700' :
                           'bg-green-100 text-green-700'
                         }`}>
                           {preLoginData.role}
@@ -466,7 +466,7 @@ const FaceLogin = () => {
                 <button
                   type="button"
                   onClick={() => handleFaceLogin(frames)}
-                  disabled={isProcessing || livenessStatus === 'success' || !employeeId || !password || frames.length < MIN_FRAMES_FOR_AUTH}
+                  disabled={isProcessing || livenessStatus === 'success' || !studentId || !password || frames.length < MIN_FRAMES_FOR_AUTH}
                   className="mb-5 w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 text-white font-semibold rounded-xl shadow-lg transition-all text-sm"
                 >
                   {isProcessing ? (

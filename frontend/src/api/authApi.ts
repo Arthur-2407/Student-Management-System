@@ -3,7 +3,7 @@ import { AxiosResponse } from 'axios';
 
 export interface FaceLoginData {
   frames: string[];
-  employeeId: string;
+  studentId: string;
   password?: string;
   challengeType?: string;
   location?: {
@@ -21,9 +21,9 @@ export interface FaceLoginResponse {
     accessToken: string;
     refreshToken: string;
   };
-  employee?: {
+  student?: {
     id: number;
-    employeeId: string;
+    studentId: string;
     firstName?: string;
     lastName?: string;
     email: string;
@@ -36,13 +36,13 @@ export interface FaceLoginResponse {
 
 export interface RegisterFaceData {
   frames: string[];
-  employeeId: string;
+  studentId: string;
 }
 
 export interface RegisterFaceResponse {
   success: boolean;
   message: string;
-  employeeId: string;
+  studentId: string;
 }
 
 export interface RefreshTokenData {
@@ -55,9 +55,9 @@ export interface RefreshTokenResponse {
     accessToken: string;
     refreshToken: string;
   };
-  employee: {
+  student: {
     id: number;
-    employeeId: string;
+    studentId: string;
     email: string;
     role: string;
     department: string;
@@ -90,13 +90,13 @@ export interface BootstrapSetupResponse {
 
 // Pre-login check — backend determines auth requirements without hardcoding role
 export interface PreLoginCheckData {
-  employeeId: string;
+  studentId: string;
 }
 
 export interface PreLoginCheckResponse {
   success: boolean;
   exists: boolean;
-  role: 'admin' | 'supervisor' | 'employee' | null;
+  role: 'admin' | 'teacher' | 'student' | null;
   has_password: boolean;
   has_face: boolean;
   required_method: 'face_and_password' | 'password_or_face' | 'password';

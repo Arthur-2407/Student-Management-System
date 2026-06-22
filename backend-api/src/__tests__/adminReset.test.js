@@ -34,7 +34,7 @@ app.use(express.json());
 
 // Mock authenticateToken middleware and req.user
 app.use((req, res, next) => {
-  req.user = { id: 1, employeeId: 'admin', role: 'admin' };
+  req.user = { id: 1, studentId: 'admin', role: 'admin' };
   next();
 });
 
@@ -49,7 +49,7 @@ describe('Admin Reset Workflow Endpoints', () => {
   test('POST /api/admin/reset/initiate - successful password and face verification', async () => {
     // Mock password query
     query.mockResolvedValueOnce({
-      rows: [{ id: 1, employee_id: 'admin', password_hash: '$2a$10$abcdefghijklmnopqrstuv' }],
+      rows: [{ id: 1, student_id: 'admin', password_hash: '$2a$10$abcdefghijklmnopqrstuv' }],
     });
     // Mock bcrypt compare
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
@@ -95,7 +95,7 @@ describe('Admin Reset Workflow Endpoints', () => {
   test('GET /api/admin/configuration - successful configuration retrieval', async () => {
     // Mock admin check
     query.mockResolvedValueOnce({
-      rows: [{ id: 1, employee_id: 'admin' }],
+      rows: [{ id: 1, student_id: 'admin' }],
     });
     // Mock config check
     query.mockResolvedValueOnce({
@@ -122,7 +122,7 @@ describe('Admin Reset Workflow Endpoints', () => {
   test('POST /api/admin/configuration - successful configuration update', async () => {
     // Mock admin check
     query.mockResolvedValueOnce({
-      rows: [{ id: 1, employee_id: 'admin' }],
+      rows: [{ id: 1, student_id: 'admin' }],
     });
     // Mock transaction BEGIN
     query.mockResolvedValueOnce({});
@@ -130,7 +130,7 @@ describe('Admin Reset Workflow Endpoints', () => {
     query.mockResolvedValueOnce({
       rows: [{ '1': 1 }],
     });
-    // Mock transaction UPDATE, employees UPDATE, COMMIT
+    // Mock transaction UPDATE, students UPDATE, COMMIT
     query.mockResolvedValue(true);
 
     const response = await request(app)
@@ -152,7 +152,7 @@ describe('Admin Reset Workflow Endpoints', () => {
   test('POST /api/admin/configuration - validation error for invalid emails', async () => {
     // Mock admin check
     query.mockResolvedValueOnce({
-      rows: [{ id: 1, employee_id: 'admin' }],
+      rows: [{ id: 1, student_id: 'admin' }],
     });
 
     const response = await request(app)

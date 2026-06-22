@@ -124,9 +124,9 @@ async function getModelStatus(modelName) {
 /**
  * Perform face recognition inference with automatic ONNX/CPU fallback
  */
-async function inferenceWithFallback(frames, employeeId, options = {}) {
+async function inferenceWithFallback(frames, studentId, options = {}) {
   const span = tracing.startSpan('onnx.inference_with_fallback', {
-    employee_id: employeeId,
+    student_id: studentId,
     frames_count: frames.length
   });
   
@@ -137,13 +137,13 @@ async function inferenceWithFallback(frames, employeeId, options = {}) {
     const useOnnx = options.preferOnnx !== false && ONNX_CONFIG.useOnnxByDefault;
     
     if (useOnnx) {
-      logger.debug(`[ONNXOrchestration] Attempting ONNX inference: ${employeeId}`);
+      logger.debug(`[ONNXOrchestration] Attempting ONNX inference: ${studentId}`);
       span.setAttribute('inference_engine', 'onnx');
       
       try {
         const result = await axios.post(
           `${ONNX_CONFIG.aiServiceUrl}/api/face-login-onnx`,
-          { frames, employee_id: employeeId },
+          { frames, student_id: studentId },
           { timeout: 15000 }
         );
         
@@ -174,12 +174,12 @@ async function inferenceWithFallback(frames, employeeId, options = {}) {
     }
     
     // Fallback to CPU inference
-    logger.debug(`[ONNXOrchestration] Using CPU inference: ${employeeId}`);
+    logger.debug(`[ONNXOrchestration] Using CPU inference: ${studentId}`);
     span.setAttribute('inference_engine', 'cpu_fallback');
     
     const result = await axios.post(
       `${ONNX_CONFIG.aiServiceUrl}/api/face-login`,
-      { frames, employee_id: employeeId },
+      { frames, student_id: studentId },
       { timeout: 15000 }
     );
     
@@ -278,7 +278,7 @@ async function benchmarkInference(frames, sampleId = 'benchmark') {
     const cpuStart = Date.now();
     const cpuResult = await axios.post(
       `${ONNX_CONFIG.aiServiceUrl}/api/face-login`,
-      { frames, employee_id: sampleId },
+      { frames, student_id: sampleId },
       { timeout: 60000 }
     );
     const cpuLatency = Date.now() - cpuStart;
@@ -290,7 +290,7 @@ async function benchmarkInference(frames, sampleId = 'benchmark') {
     try {
       onnxResult = await axios.post(
         `${ONNX_CONFIG.aiServiceUrl}/api/face-login-onnx`,
-        { frames, employee_id: sampleId },
+        { frames, student_id: sampleId },
         { timeout: 60000 }
       );
       onnxLatency = Date.now() - onnxStart;

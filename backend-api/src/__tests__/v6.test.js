@@ -23,9 +23,9 @@ describe('RBAC Middleware', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  test('denies employee access to admin routes', () => {
+  test('denies student access to admin routes', () => {
     const middleware = requireRole('admin');
-    const req = { user: { id: 2, role: 'employee' }, url: '/test' };
+    const req = { user: { id: 2, role: 'student' }, url: '/test' };
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     const next = jest.fn();
     middleware(req, res, next);
@@ -33,17 +33,17 @@ describe('RBAC Middleware', () => {
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  test('allows supervisor access to supervisor routes', () => {
-    const middleware = requireRole('supervisor');
-    const req = { user: { id: 3, role: 'supervisor' } };
+  test('allows teacher access to teacher routes', () => {
+    const middleware = requireRole('teacher');
+    const req = { user: { id: 3, role: 'teacher' } };
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     const next = jest.fn();
     middleware(req, res, next);
     expect(next).toHaveBeenCalled();
   });
 
-  test('allows admin access to supervisor routes (hierarchy)', () => {
-    const middleware = requireRole('supervisor');
+  test('allows admin access to teacher routes (hierarchy)', () => {
+    const middleware = requireRole('teacher');
     const req = { user: { id: 1, role: 'admin' } };
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     const next = jest.fn();
@@ -52,7 +52,7 @@ describe('RBAC Middleware', () => {
   });
 
   test('denies unauthenticated requests', () => {
-    const middleware = requireRole('employee');
+    const middleware = requireRole('student');
     const req = {};
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     const next = jest.fn();
@@ -61,7 +61,7 @@ describe('RBAC Middleware', () => {
   });
 
   test('getPermissionsForRole returns correct permissions', () => {
-    const perms = getPermissionsForRole('employee');
+    const perms = getPermissionsForRole('student');
     expect(perms['view:dashboard']).toBe(true);
     expect(perms['manage:security']).toBe(false);
     expect(perms['manage:mfa']).toBe(true);
@@ -69,7 +69,7 @@ describe('RBAC Middleware', () => {
 
   test('requirePermission grants access for valid permission', () => {
     const middleware = requirePermission('view:dashboard');
-    const req = { user: { id: 1, role: 'employee' } };
+    const req = { user: { id: 1, role: 'student' } };
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     const next = jest.fn();
     middleware(req, res, next);
@@ -78,7 +78,7 @@ describe('RBAC Middleware', () => {
 
   test('requirePermission denies for insufficient permission', () => {
     const middleware = requirePermission('manage:security');
-    const req = { user: { id: 2, role: 'employee' }, url: '/test' };
+    const req = { user: { id: 2, role: 'student' }, url: '/test' };
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     const next = jest.fn();
     middleware(req, res, next);

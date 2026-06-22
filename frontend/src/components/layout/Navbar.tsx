@@ -28,9 +28,9 @@ const Navbar = () => {
     { name: 'Attendance', href: '/attendance', icon: <FaUserClock /> },
     { name: 'Leave', href: '/leave', icon: <FaCalendar /> },
     { name: 'Reports', href: '/reports', icon: <FaChartBar /> },
-    ...(user?.role === 'supervisor' || user?.role === 'admin' 
+    ...(user?.role === 'teacher' || user?.role === 'admin' 
       ? [
-          { name: 'Supervisor', href: '/supervisor', icon: <FaUsers /> },
+          { name: 'Teacher', href: '/teacher', icon: <FaUsers /> },
         ] 
       : []),
     ...(user?.role === 'admin' 

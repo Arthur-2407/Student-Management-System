@@ -26,11 +26,11 @@ const SECURITY_EVENT_TYPES = new Set([
 
 const SEVERITIES = new Set(['low', 'medium', 'high', 'critical']);
 
-async function resolveEmployeeId(employeeId) {
-  if (!employeeId) return null;
-  if (Number.isInteger(employeeId)) return employeeId;
+async function resolveStudentId(studentId) {
+  if (!studentId) return null;
+  if (Number.isInteger(studentId)) return studentId;
 
-  const empResult = await query('SELECT id FROM employees WHERE employee_id = $1', [employeeId]);
+  const empResult = await query('SELECT id FROM students WHERE student_id = $1', [studentId]);
   return empResult.rows[0]?.id ?? null;
 }
 
@@ -41,7 +41,7 @@ function normalizeEventType(eventType) {
 async function logSecurityEvent(eventData) {
   try {
     const {
-      employeeId,
+      studentId,
       eventType,
       ipAddress,
       deviceInfo,
@@ -50,15 +50,15 @@ async function logSecurityEvent(eventData) {
     } = eventData;
 
     const normalizedType = normalizeEventType(eventType);
-    const employeeIdNum = await resolveEmployeeId(employeeId);
+    const studentIdNum = await resolveStudentId(studentId);
     const normalizedSeverity = SEVERITIES.has(severity) ? severity : 'medium';
 
     await query(
       `INSERT INTO security_events
-       (employee_id, event_type, ip_address, device_info, details, severity)
+       (student_id, event_type, ip_address, device_info, details, severity)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [
-        employeeIdNum,
+        studentIdNum,
         normalizedType,
         ipAddress || null,
         deviceInfo || null,
@@ -68,7 +68,7 @@ async function logSecurityEvent(eventData) {
     );
 
     logger.info('Security event logged', {
-      employeeId,
+      studentId,
       eventType: normalizedType,
       severity: normalizedSeverity,
     });
@@ -80,7 +80,7 @@ async function logSecurityEvent(eventData) {
 async function logAuditEvent(eventData) {
   try {
     const {
-      actorEmployeeId,
+      actorStudentId,
       action,
       resourceType,
       resourceId,
@@ -90,11 +90,11 @@ async function logAuditEvent(eventData) {
       details = {},
     } = eventData;
 
-    const actorIdNum = await resolveEmployeeId(actorEmployeeId);
+    const actorIdNum = await resolveStudentId(actorStudentId);
 
     await query(
       `INSERT INTO audit_logs
-       (actor_employee_id, action, resource_type, resource_id, ip_address, user_agent, request_id, details)
+       (actor_student_id, action, resource_type, resource_id, ip_address, user_agent, request_id, details)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         actorIdNum,
@@ -134,19 +134,19 @@ async function logSystemEvent(eventData) {
 
 async function getSecurityEvents(filters = {}) {
   let queryText = `
-    SELECT se.*, e.employee_id, e.first_name, e.last_name
+    SELECT se.*, e.student_id, e.first_name, e.last_name
     FROM security_events se
-    LEFT JOIN employees e ON se.employee_id = e.id
+    LEFT JOIN students e ON se.student_id = e.id
     WHERE 1=1
   `;
 
   const params = [];
   let paramCount = 0;
 
-  if (filters.employeeId) {
+  if (filters.studentId) {
     paramCount += 1;
-    queryText += ` AND e.employee_id = $${paramCount}`;
-    params.push(filters.employeeId);
+    queryText += ` AND e.student_id = $${paramCount}`;
+    params.push(filters.studentId);
   }
 
   if (filters.eventType) {
@@ -213,12 +213,12 @@ async function getSecurityStats(timeRange = '24h') {
      ORDER BY severity`
   );
 
-  const topEmployeesResult = await query(
-    `SELECT e.employee_id, e.first_name, e.last_name, COUNT(*) as count
+  const topStudentsResult = await query(
+    `SELECT e.student_id, e.first_name, e.last_name, COUNT(*) as count
      FROM security_events se
-     JOIN employees e ON se.employee_id = e.id
+     JOIN students e ON se.student_id = e.id
      WHERE ${timeFilter}
-     GROUP BY e.id, e.employee_id, e.first_name, e.last_name
+     GROUP BY e.id, e.student_id, e.first_name, e.last_name
      ORDER BY count DESC
      LIMIT 10`
   );
@@ -227,7 +227,7 @@ async function getSecurityStats(timeRange = '24h') {
     total: parseInt(totalResult.rows[0].count, 10),
     byType: typeResult.rows,
     bySeverity: severityResult.rows,
-    topEmployees: topEmployeesResult.rows,
+    topStudents: topStudentsResult.rows,
   };
 }
 

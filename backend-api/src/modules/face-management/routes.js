@@ -3,8 +3,8 @@
  * 
  * Enforces permissions:
  * - Admin: Full control, instant changes.
- * - Supervisor: Can request changes for self/team (needs Admin approval), can approve employee requests.
- * - Employee: Can request changes for self (needs Supervisor/Admin approval).
+ * - Teacher: Can request changes for self/team (needs Admin approval), can approve student requests.
+ * - Student: Can request changes for self (needs Teacher/Admin approval).
  */
 
 const express = require('express');
@@ -23,39 +23,39 @@ router.use('/face-change-requests', authenticateToken);
 router.use('/face-management', authenticateToken);
 
 // Helper to create notifications in main db
-async function createNotification(employeeId, title, message, payload = {}) {
+async function createNotification(studentId, title, message, payload = {}) {
   try {
     await query(
-      `INSERT INTO notifications (employee_id, type, title, message, payload)
+      `INSERT INTO notifications (student_id, type, title, message, payload)
        VALUES ($1, 'face', $2, $3, $4)`,
-      [employeeId, title, message, JSON.stringify(payload)]
+      [studentId, title, message, JSON.stringify(payload)]
     );
   } catch (err) {
     logger.warn('Failed to create notification', { error: err.message });
   }
 }
 
-// Helper to check if a supervisor supervises an employee
-async function isSupervisedBy(supervisorId, employeeId) {
+// Helper to check if a teacher supervises an student
+async function isSupervisedBy(teacherId, studentId) {
   const result = await query(
-    `SELECT id FROM employees 
+    `SELECT id FROM students 
      WHERE id = $1 AND (
-       supervisor_id = $2 
+       teacher_id = $2 
        OR EXISTS (
-         SELECT 1 FROM supervisor_assignments 
-         WHERE supervisor_id = $2 AND employee_id = $1 AND is_active = TRUE
+         SELECT 1 FROM teacher_assignments 
+         WHERE teacher_id = $2 AND student_id = $1 AND is_active = TRUE
        )
      )`,
-    [employeeId, supervisorId]
+    [studentId, teacherId]
   );
   return result.rows.length > 0;
 }
 
-// Helper to fetch active face embedding for an employee (from face db)
-async function getActiveEmbedding(employeeId) {
+// Helper to fetch active face embedding for an student (from face db)
+async function getActiveEmbedding(studentId) {
   const result = await faceQuery(
-    'SELECT id, embedding_vector FROM face_embeddings WHERE employee_id = $1 AND is_active = TRUE LIMIT 1',
-    [employeeId]
+    'SELECT id, embedding_vector FROM face_embeddings WHERE student_id = $1 AND is_active = TRUE LIMIT 1',
+    [studentId]
   );
   return result.rows[0] || null;
 }
@@ -153,12 +153,12 @@ function decryptEmbedding(encryptedData) {
 
 // Helper to generate embedding vector from frames via Face-AI service
 // PRODUCTION POLICY: Face-AI service must be available. No synthetic fallbacks permitted.
-async function generateEmbeddingFromFrames(frames, employeeId) {
+async function generateEmbeddingFromFrames(frames, studentId) {
   const faceAIServiceUrl = process.env.FACE_AI_SERVICE_URL || 'http://face-ai-service:8000';
   try {
     const response = await axios.post(
       `${faceAIServiceUrl}/api/register-face`,
-      { frames, employeeId, employee_id: employeeId },
+      { frames, studentId, student_id: studentId },
       { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
     );
 
@@ -185,7 +185,7 @@ async function generateEmbeddingFromFrames(frames, employeeId) {
     // The Face-AI service must be operational for face enrollment to proceed.
     logger.error('Face AI service unavailable during face enrollment', {
       error: err.message,
-      employeeId,
+      studentId,
       serviceUrl: faceAIServiceUrl,
     });
     return {
@@ -204,25 +204,25 @@ router.post('/face-change-requests', async (req, res) => {
   let faceTxBegun = false;
   let mainTxBegun = false;
   try {
-    const { employeeId, requestType, frames } = req.body;
+    const { studentId, requestType, frames } = req.body;
     const requesterId = req.user.id;
     const requesterRole = req.user.role;
 
-    if (!employeeId || !requestType) {
-      return res.status(400).json({ success: false, message: 'employeeId and requestType are required' });
+    if (!studentId || !requestType) {
+      return res.status(400).json({ success: false, message: 'studentId and requestType are required' });
     }
 
     if (!['ADD', 'UPDATE', 'REPLACE', 'DELETE'].includes(requestType)) {
       return res.status(400).json({ success: false, message: 'Invalid requestType' });
     }
 
-    // Resolve target employee
+    // Resolve target student
     const targetResult = await query(
-      'SELECT id, employee_id, first_name, last_name, role, face_enrolled FROM employees WHERE employee_id = $1 AND is_active = TRUE',
-      [employeeId]
+      'SELECT id, student_id, first_name, last_name, role, face_enrolled FROM students WHERE student_id = $1 AND is_active = TRUE',
+      [studentId]
     );
     if (targetResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Target employee not found or inactive' });
+      return res.status(404).json({ success: false, message: 'Target student not found or inactive' });
     }
     const target = targetResult.rows[0];
 
@@ -230,16 +230,16 @@ router.post('/face-change-requests', async (req, res) => {
     let isAuthorized = false;
     if (requesterRole === 'admin') {
       isAuthorized = true;
-    } else if (requesterRole === 'supervisor') {
-      // Supervisor can request for self or team members
+    } else if (requesterRole === 'teacher') {
+      // Teacher can request for self or team members
       isAuthorized = (target.id === requesterId) || await isSupervisedBy(requesterId, target.id);
-    } else if (requesterRole === 'employee') {
-      // Employee can only request for self
+    } else if (requesterRole === 'student') {
+      // Student can only request for self
       isAuthorized = (target.id === requesterId);
     }
 
     if (!isAuthorized) {
-      return res.status(403).json({ success: false, message: 'Unauthorized to request face changes for this employee' });
+      return res.status(403).json({ success: false, message: 'Unauthorized to request face changes for this student' });
     }
 
     // Fetch previous active embedding
@@ -256,7 +256,7 @@ router.post('/face-change-requests', async (req, res) => {
       if (!Array.isArray(frames) || frames.length === 0) {
         return res.status(400).json({ success: false, message: 'Frames are required for face registration' });
       }
-      const embGen = await generateEmbeddingFromFrames(frames, employeeId);
+      const embGen = await generateEmbeddingFromFrames(frames, studentId);
       if (!embGen.success) {
         return res.status(400).json({ success: false, message: embGen.error });
       }
@@ -276,18 +276,18 @@ router.post('/face-change-requests', async (req, res) => {
       let newEmbId = null;
 
       if (requestType === 'DELETE') {
-        await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
-        await query('UPDATE employees SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1', [target.id]);
+        await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1', [target.id]);
+        await query('UPDATE students SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1', [target.id]);
       } else {
         // Deactivate previous embeddings and store new one (encrypted)
-        await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
+        await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1', [target.id]);
         
         // Encrypt the embedding before storage
         const embeddingArray = JSON.parse(newEmbedding);
         const encryptedEmbedding = encryptEmbedding(embeddingArray);
         
         const insResult = await faceQuery(
-          `INSERT INTO face_embeddings (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by)
+          `INSERT INTO face_embeddings (student_id, embedding_vector, embedding_version, confidence_score, enrolled_by)
            VALUES ($1, $2, $3, $4, $5) RETURNING id`,
           [target.id, encryptedEmbedding, embVersion, embConfidence, requesterId]
         );
@@ -328,21 +328,21 @@ router.post('/face-change-requests', async (req, res) => {
         );
 
         await query(
-          `UPDATE employees SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
+          `UPDATE students SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
           [requesterId, target.id]
         );
       }
 
       // Record in audit logs
       await faceQuery(
-        `INSERT INTO face_audit_logs (employee_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
+        `INSERT INTO face_audit_logs (student_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
          VALUES ($1, $2, $3, $4, $5, $6::inet, $7)`,
         [target.id, requestType, requesterId, prevEmbeddingId, newEmbId, req.ip, req.headers['user-agent']]
       );
 
       // Record in requests history as auto-approved
       const reqResult = await faceQuery(
-        `INSERT INTO face_change_requests (employee_id, request_type, requested_by, new_face_embedding, previous_face_embedding, status)
+        `INSERT INTO face_change_requests (student_id, request_type, requested_by, new_face_embedding, previous_face_embedding, status)
          VALUES ($1, $2, $3, $4, $5, 'APPROVED') RETURNING id`,
         [target.id, requestType, requesterId, newEmbedding, prevEmbedding]
       );
@@ -359,10 +359,10 @@ router.post('/face-change-requests', async (req, res) => {
       faceTxBegun = false;
 
       await logAuditEvent({
-        actorEmployeeId: req.user.employeeId,
+        actorStudentId: req.user.studentId,
         action: `face.${requestType.toLowerCase()}`,
         resourceType: 'face_profile',
-        resourceId: employeeId,
+        resourceId: studentId,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
         details: { directAdminAction: true }
@@ -371,13 +371,13 @@ router.post('/face-change-requests', async (req, res) => {
       return res.json({ success: true, message: `Face profile updated successfully (${requestType})`, instant: true });
     }
 
-    // Supervisor / Employee requests (require approvals)
+    // Teacher / Student requests (require approvals)
     await faceQuery('BEGIN');
     faceTxBegun = true;
 
     // Create change request
     const changeReq = await faceQuery(
-      `INSERT INTO face_change_requests (employee_id, request_type, requested_by, new_face_embedding, previous_face_embedding, status)
+      `INSERT INTO face_change_requests (student_id, request_type, requested_by, new_face_embedding, previous_face_embedding, status)
        VALUES ($1, $2, $3, $4, $5, 'PENDING') RETURNING id`,
       [target.id, requestType, requesterId, newEmbedding, prevEmbedding]
     );
@@ -421,7 +421,7 @@ router.post('/face-change-requests', async (req, res) => {
     }
 
     // Create approval request
-    const assignedRole = (requesterRole === 'supervisor') ? 'admin' : 'supervisor';
+    const assignedRole = (requesterRole === 'teacher') ? 'admin' : 'teacher';
     await faceQuery(
       `INSERT INTO face_approval_requests (request_id, assigned_approver_role, status)
        VALUES ($1, $2, 'PENDING')`,
@@ -434,21 +434,21 @@ router.post('/face-change-requests', async (req, res) => {
     // Async create notifications in main db (outside transaction)
     let notifyTargetId = null;
     if (assignedRole === 'admin') {
-      const adminResult = await query("SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1");
+      const adminResult = await query("SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1");
       if (adminResult.rows.length > 0) {
         notifyTargetId = adminResult.rows[0].id;
       }
     } else {
-      const supervisorResult = await query(
-        `SELECT supervisor_id FROM employees WHERE id = $1 AND supervisor_id IS NOT NULL
+      const teacherResult = await query(
+        `SELECT teacher_id FROM students WHERE id = $1 AND teacher_id IS NOT NULL
          UNION ALL
-         SELECT supervisor_id FROM supervisor_assignments WHERE employee_id = $1 AND is_active = TRUE AND supervisor_id IS NOT NULL
+         SELECT teacher_id FROM teacher_assignments WHERE student_id = $1 AND is_active = TRUE AND teacher_id IS NOT NULL
          LIMIT 1`,
         [target.id]
       );
-      notifyTargetId = supervisorResult.rows[0]?.supervisor_id || null;
+      notifyTargetId = teacherResult.rows[0]?.teacher_id || null;
       if (!notifyTargetId) {
-        const adminResult = await query("SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1");
+        const adminResult = await query("SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1");
         if (adminResult.rows.length > 0) {
           notifyTargetId = adminResult.rows[0].id;
         }
@@ -458,19 +458,19 @@ router.post('/face-change-requests', async (req, res) => {
       await createNotification(
         notifyTargetId,
         'New face change request',
-        `${req.user.employeeId} submitted a face change request.`,
+        `${req.user.studentId} submitted a face change request.`,
         { faceRequestId: requestId }
       );
     }
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'face.request-change',
       resourceType: 'face_change_request',
       resourceId: String(requestId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { requestType, targetEmployee: employeeId, assignedApproverRole: assignedRole }
+      details: { requestType, targetStudent: studentId, assignedApproverRole: assignedRole }
     });
 
     return res.status(201).json({
@@ -504,7 +504,7 @@ router.get('/face-change-requests/pending', async (req, res) => {
     if (role === 'admin') {
       // Admins see all pending requests in the approval queue
       const result = await faceQuery(
-        `SELECT r.id, r.employee_id, r.request_type, r.created_at, r.requested_by, r.status
+        `SELECT r.id, r.student_id, r.request_type, r.created_at, r.requested_by, r.status
          FROM face_change_requests r
          JOIN face_approval_requests ar ON r.id = ar.request_id
          WHERE r.status = 'PENDING' AND r.deleted_at IS NULL
@@ -512,69 +512,69 @@ router.get('/face-change-requests/pending', async (req, res) => {
          ORDER BY r.created_at DESC`
       );
       rows = result.rows;
-    } else if (role === 'supervisor') {
-      // Get all employee IDs supervised by this supervisor
+    } else if (role === 'teacher') {
+      // Get all student IDs supervised by this teacher
       const supervisedResult = await query(
-        `SELECT id FROM employees 
-         WHERE supervisor_id = $1 
+        `SELECT id FROM students 
+         WHERE teacher_id = $1 
             OR EXISTS (
-              SELECT 1 FROM supervisor_assignments 
-              WHERE supervisor_id = $1 AND employee_id = employees.id AND is_active = TRUE
+              SELECT 1 FROM teacher_assignments 
+              WHERE teacher_id = $1 AND student_id = students.id AND is_active = TRUE
             )`,
         [userId]
       );
       const supervisedIds = supervisedResult.rows.map(r => r.id);
 
-      // Fetch pending requests assigned to supervisors
+      // Fetch pending requests assigned to teachers
       const reqResult = await faceQuery(
-        `SELECT r.id, r.employee_id, r.request_type, r.created_at, r.requested_by, r.status
+        `SELECT r.id, r.student_id, r.request_type, r.created_at, r.requested_by, r.status
          FROM face_change_requests r
          JOIN face_approval_requests ar ON r.id = ar.request_id
          WHERE r.status = 'PENDING' AND r.deleted_at IS NULL
-           AND ar.status = 'PENDING' AND ar.assigned_approver_role = 'supervisor'
+           AND ar.status = 'PENDING' AND ar.assigned_approver_role = 'teacher'
          ORDER BY r.created_at DESC`
       );
-      // Filter requests for employees supervised by this supervisor
-      rows = reqResult.rows.filter(row => supervisedIds.includes(row.employee_id));
+      // Filter requests for students supervised by this teacher
+      rows = reqResult.rows.filter(row => supervisedIds.includes(row.student_id));
     } else {
-      // Employees see their own pending requests
+      // Students see their own pending requests
       const reqResult = await faceQuery(
-        `SELECT r.id, r.employee_id, r.request_type, r.created_at, r.status
+        `SELECT r.id, r.student_id, r.request_type, r.created_at, r.status
          FROM face_change_requests r
-         WHERE r.status = 'PENDING' AND r.employee_id = $1 AND r.deleted_at IS NULL
+         WHERE r.status = 'PENDING' AND r.student_id = $1 AND r.deleted_at IS NULL
          ORDER BY r.created_at DESC`,
         [userId]
       );
       rows = reqResult.rows;
     }
 
-    // Enrich rows with employee details from the main database
-    const employeeIds = [...new Set(rows.flatMap(r => [r.employee_id, r.requested_by]).filter(Boolean))];
-    let employeesMap = {};
-    if (employeeIds.length > 0) {
+    // Enrich rows with student details from the main database
+    const studentIds = [...new Set(rows.flatMap(r => [r.student_id, r.requested_by]).filter(Boolean))];
+    let studentsMap = {};
+    if (studentIds.length > 0) {
       const empResult = await query(
-        `SELECT id, employee_id, first_name, last_name, department FROM employees WHERE id = ANY($1)`,
-        [employeeIds]
+        `SELECT id, student_id, first_name, last_name, department FROM students WHERE id = ANY($1)`,
+        [studentIds]
       );
-      employeesMap = empResult.rows.reduce((map, emp) => {
+      studentsMap = empResult.rows.reduce((map, emp) => {
         map[emp.id] = emp;
         return map;
       }, {});
     }
 
     const enrichedData = rows.map(r => {
-      const e = employeesMap[r.employee_id] || {};
-      const reqEmp = employeesMap[r.requested_by] || {};
+      const e = studentsMap[r.student_id] || {};
+      const reqEmp = studentsMap[r.requested_by] || {};
       return {
         id: r.id,
         request_type: r.request_type,
         created_at: r.created_at,
         status: r.status,
-        employee_id: e.employee_id,
+        student_id: e.student_id,
         first_name: e.first_name,
         last_name: e.last_name,
         department: e.department,
-        requester_employee_id: reqEmp.employee_id,
+        requester_student_id: reqEmp.student_id,
         requester_first_name: reqEmp.first_name,
         requester_last_name: reqEmp.last_name
       };
@@ -606,7 +606,7 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
 
     // Fetch change request details from face db
     const reqResult = await faceQuery(
-      `SELECT r.id, r.employee_id, r.request_type, r.new_face_embedding, r.previous_face_embedding, r.status,
+      `SELECT r.id, r.student_id, r.request_type, r.new_face_embedding, r.previous_face_embedding, r.status,
               ar.assigned_approver_role
        FROM face_change_requests r
        JOIN face_approval_requests ar ON r.id = ar.request_id
@@ -628,8 +628,8 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
     let canApprove = false;
     if (approverRole === 'admin') {
       canApprove = true;
-    } else if (approverRole === 'supervisor' && changeRequest.assigned_approver_role === 'supervisor') {
-      canApprove = await isSupervisedBy(approverId, changeRequest.employee_id);
+    } else if (approverRole === 'teacher' && changeRequest.assigned_approver_role === 'teacher') {
+      canApprove = await isSupervisedBy(approverId, changeRequest.student_id);
     }
 
     if (!canApprove) {
@@ -655,20 +655,20 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
     );
 
     let newEmbId = null;
-    const activeEmb = await getActiveEmbedding(changeRequest.employee_id);
+    const activeEmb = await getActiveEmbedding(changeRequest.student_id);
     const prevEmbeddingId = activeEmb ? activeEmb.id : null;
 
     if (changeRequest.request_type === 'DELETE') {
-      await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [changeRequest.employee_id]);
-      await faceQuery("UPDATE user_images SET verification_status = 'DELETED' WHERE user_id = $1 AND verification_status = 'PENDING'", [changeRequest.employee_id]);
-      await query('UPDATE employees SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1', [changeRequest.employee_id]);
+      await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1', [changeRequest.student_id]);
+      await faceQuery("UPDATE user_images SET verification_status = 'DELETED' WHERE user_id = $1 AND verification_status = 'PENDING'", [changeRequest.student_id]);
+      await query('UPDATE students SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1', [changeRequest.student_id]);
     } else {
-      await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [changeRequest.employee_id]);
+      await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1', [changeRequest.student_id]);
       
       const insResult = await faceQuery(
-        `INSERT INTO face_embeddings (employee_id, embedding_vector, enrolled_by)
+        `INSERT INTO face_embeddings (student_id, embedding_vector, enrolled_by)
          VALUES ($1, $2, $3) RETURNING id`,
-        [changeRequest.employee_id, changeRequest.new_face_embedding, changeRequest.employee_id]
+        [changeRequest.student_id, changeRequest.new_face_embedding, changeRequest.student_id]
       );
       newEmbId = insResult.rows[0].id;
 
@@ -677,20 +677,20 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
         `UPDATE user_images
          SET verification_status = 'VERIFIED'
          WHERE user_id = $1 AND verification_status = 'PENDING'`,
-        [changeRequest.employee_id]
+        [changeRequest.student_id]
       );
 
       await query(
-        `UPDATE employees SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
-        [approverId, changeRequest.employee_id]
+        `UPDATE students SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
+        [approverId, changeRequest.student_id]
       );
     }
 
     // Record in audit logs in face db
     await faceQuery(
-      `INSERT INTO face_audit_logs (employee_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
+      `INSERT INTO face_audit_logs (student_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
        VALUES ($1, $2, $3, $4, $5, $6::inet, $7)`,
-      [changeRequest.employee_id, changeRequest.request_type, approverId, prevEmbeddingId, newEmbId, req.ip, req.headers['user-agent']]
+      [changeRequest.student_id, changeRequest.request_type, approverId, prevEmbeddingId, newEmbId, req.ip, req.headers['user-agent']]
     );
 
     await query('COMMIT');
@@ -699,25 +699,25 @@ router.post('/face-change-requests/:id/approve', async (req, res) => {
     await faceQuery('COMMIT');
     faceTxBegun = false;
 
-    // Fetch target employee info from main db for auditing
-    const empResult = await query('SELECT employee_id FROM employees WHERE id = $1', [changeRequest.employee_id]);
-    const targetEmployeeIdText = empResult.rows[0]?.employee_id || '';
+    // Fetch target student info from main db for auditing
+    const empResult = await query('SELECT student_id FROM students WHERE id = $1', [changeRequest.student_id]);
+    const targetStudentIdText = empResult.rows[0]?.student_id || '';
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'face.approve-change',
       resourceType: 'face_change_request',
       resourceId: String(requestId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { approvedFor: targetEmployeeIdText, requestType: changeRequest.request_type }
+      details: { approvedFor: targetStudentIdText, requestType: changeRequest.request_type }
     });
 
-    // Notify employee of approval
+    // Notify student of approval
     await createNotification(
-      changeRequest.employee_id,
+      changeRequest.student_id,
       'Face change request approved',
-      `Your face change request has been approved by ${req.user.employeeId}.`,
+      `Your face change request has been approved by ${req.user.studentId}.`,
       { faceRequestId: requestId }
     );
 
@@ -752,7 +752,7 @@ router.post('/face-change-requests/:id/reject', async (req, res) => {
 
     // Fetch request details from face db
     const reqResult = await faceQuery(
-      `SELECT r.id, r.employee_id, r.status, ar.assigned_approver_role
+      `SELECT r.id, r.student_id, r.status, ar.assigned_approver_role
        FROM face_change_requests r
        JOIN face_approval_requests ar ON r.id = ar.request_id
        WHERE r.id = $1 AND r.deleted_at IS NULL`,
@@ -773,8 +773,8 @@ router.post('/face-change-requests/:id/reject', async (req, res) => {
     let canReject = false;
     if (approverRole === 'admin') {
       canReject = true;
-    } else if (approverRole === 'supervisor' && changeRequest.assigned_approver_role === 'supervisor') {
-      canReject = await isSupervisedBy(approverId, changeRequest.employee_id);
+    } else if (approverRole === 'teacher' && changeRequest.assigned_approver_role === 'teacher') {
+      canReject = await isSupervisedBy(approverId, changeRequest.student_id);
     }
 
     if (!canReject) {
@@ -787,7 +787,7 @@ router.post('/face-change-requests/:id/reject', async (req, res) => {
 
     await faceQuery("UPDATE face_change_requests SET status = 'REJECTED', updated_at = NOW() WHERE id = $1", [requestId]);
     await faceQuery("UPDATE face_approval_requests SET status = 'REJECTED' WHERE request_id = $1", [requestId]);
-    await faceQuery("UPDATE user_images SET verification_status = 'REJECTED' WHERE user_id = $1 AND verification_status = 'PENDING'", [changeRequest.employee_id]);
+    await faceQuery("UPDATE user_images SET verification_status = 'REJECTED' WHERE user_id = $1 AND verification_status = 'PENDING'", [changeRequest.student_id]);
 
     // Record in history in face db
     await faceQuery(
@@ -799,25 +799,25 @@ router.post('/face-change-requests/:id/reject', async (req, res) => {
     await faceQuery('COMMIT');
     faceTxBegun = false;
 
-    // Fetch target employee info from main db for auditing
-    const empResult = await query('SELECT employee_id FROM employees WHERE id = $1', [changeRequest.employee_id]);
-    const targetEmployeeIdText = empResult.rows[0]?.employee_id || '';
+    // Fetch target student info from main db for auditing
+    const empResult = await query('SELECT student_id FROM students WHERE id = $1', [changeRequest.student_id]);
+    const targetStudentIdText = empResult.rows[0]?.student_id || '';
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'face.reject-change',
       resourceType: 'face_change_request',
       resourceId: String(requestId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { rejectedFor: targetEmployeeIdText }
+      details: { rejectedFor: targetStudentIdText }
     });
 
-    // Notify employee of rejection
+    // Notify student of rejection
     await createNotification(
-      changeRequest.employee_id,
+      changeRequest.student_id,
       'Face change request rejected',
-      `Your face change request has been rejected by ${req.user.employeeId}.`,
+      `Your face change request has been rejected by ${req.user.studentId}.`,
       { faceRequestId: requestId }
     );
 
@@ -843,18 +843,18 @@ router.get('/face-change-requests/history', async (req, res) => {
     let logResult;
     if (role === 'admin') {
       logResult = await faceQuery(
-        `SELECT id, employee_id, action, timestamp, ip_address, device_info, performed_by
+        `SELECT id, student_id, action, timestamp, ip_address, device_info, performed_by
          FROM face_audit_logs
          ORDER BY timestamp DESC LIMIT 100`
       );
-    } else if (role === 'supervisor') {
-      // Get all employee IDs supervised by this supervisor
+    } else if (role === 'teacher') {
+      // Get all student IDs supervised by this teacher
       const supervisedResult = await query(
-        `SELECT id FROM employees 
-         WHERE supervisor_id = $1 
+        `SELECT id FROM students 
+         WHERE teacher_id = $1 
             OR EXISTS (
-              SELECT 1 FROM supervisor_assignments 
-              WHERE supervisor_id = $1 AND employee_id = employees.id AND is_active = TRUE
+              SELECT 1 FROM teacher_assignments 
+              WHERE teacher_id = $1 AND student_id = students.id AND is_active = TRUE
             )`,
         [userId]
       );
@@ -862,49 +862,49 @@ router.get('/face-change-requests/history', async (req, res) => {
       const targetIds = [userId, ...supervisedIds];
 
       logResult = await faceQuery(
-        `SELECT id, employee_id, action, timestamp, ip_address, device_info, performed_by
+        `SELECT id, student_id, action, timestamp, ip_address, device_info, performed_by
          FROM face_audit_logs
-         WHERE employee_id = ANY($1)
+         WHERE student_id = ANY($1)
          ORDER BY timestamp DESC LIMIT 100`,
         [targetIds]
       );
     } else {
       logResult = await faceQuery(
-        `SELECT id, employee_id, action, timestamp, ip_address, device_info
+        `SELECT id, student_id, action, timestamp, ip_address, device_info
          FROM face_audit_logs
-         WHERE employee_id = $1
+         WHERE student_id = $1
          ORDER BY timestamp DESC LIMIT 100`,
         [userId]
       );
     }
 
     const rows = logResult.rows;
-    const employeeIds = [...new Set(rows.flatMap(r => [r.employee_id, r.performed_by]).filter(Boolean))];
-    let employeesMap = {};
-    if (employeeIds.length > 0) {
+    const studentIds = [...new Set(rows.flatMap(r => [r.student_id, r.performed_by]).filter(Boolean))];
+    let studentsMap = {};
+    if (studentIds.length > 0) {
       const empResult = await query(
-        `SELECT id, employee_id, first_name, last_name FROM employees WHERE id = ANY($1)`,
-        [employeeIds]
+        `SELECT id, student_id, first_name, last_name FROM students WHERE id = ANY($1)`,
+        [studentIds]
       );
-      employeesMap = empResult.rows.reduce((map, emp) => {
+      studentsMap = empResult.rows.reduce((map, emp) => {
         map[emp.id] = emp;
         return map;
       }, {});
     }
 
     const enrichedLogs = rows.map(r => {
-      const e = employeesMap[r.employee_id] || {};
-      const p = employeesMap[r.performed_by] || {};
+      const e = studentsMap[r.student_id] || {};
+      const p = studentsMap[r.performed_by] || {};
       return {
         id: r.id,
         action: r.action,
         timestamp: r.timestamp,
         ip_address: r.ip_address,
         device_info: r.device_info,
-        employee_id: e.employee_id,
+        student_id: e.student_id,
         first_name: e.first_name,
         last_name: e.last_name,
-        perf_employee_id: p.employee_id,
+        perf_student_id: p.student_id,
         perf_first_name: p.first_name,
         perf_last_name: p.last_name
       };
@@ -925,26 +925,26 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
   let mainTxBegun = false;
   let faceTxBegun = false;
   try {
-    const { employeeId, frames } = req.body;
+    const { studentId, frames } = req.body;
     const adminId = req.user.id;
 
-    if (!employeeId || !Array.isArray(frames) || frames.length === 0) {
-      return res.status(400).json({ success: false, message: 'employeeId and non-empty frames array are required' });
+    if (!studentId || !Array.isArray(frames) || frames.length === 0) {
+      return res.status(400).json({ success: false, message: 'studentId and non-empty frames array are required' });
     }
 
     const targetResult = await query(
-      'SELECT id, employee_id, first_name, last_name, face_enrolled FROM employees WHERE employee_id = $1 AND is_active = TRUE',
-      [employeeId]
+      'SELECT id, student_id, first_name, last_name, face_enrolled FROM students WHERE student_id = $1 AND is_active = TRUE',
+      [studentId]
     );
     if (targetResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Employee not found or inactive' });
+      return res.status(404).json({ success: false, message: 'Student not found or inactive' });
     }
     const target = targetResult.rows[0];
 
     const activeEmb = await getActiveEmbedding(target.id);
     const prevEmbeddingId = activeEmb ? activeEmb.id : null;
 
-    const embGen = await generateEmbeddingFromFrames(frames, employeeId);
+    const embGen = await generateEmbeddingFromFrames(frames, studentId);
     if (!embGen.success) {
       return res.status(400).json({ success: false, message: embGen.error });
     }
@@ -956,11 +956,11 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
     mainTxBegun = true;
 
     // Deactivate old embeddings in face db
-    await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
+    await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1', [target.id]);
 
     // Insert new embedding in face db
     const insResult = await faceQuery(
-      `INSERT INTO face_embeddings (employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by)
+      `INSERT INTO face_embeddings (student_id, embedding_vector, embedding_version, confidence_score, enrolled_by)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [target.id, embGen.embedding, embGen.version, embGen.confidence, adminId]
     );
@@ -1001,16 +1001,16 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
       ]
     );
 
-    // Update employees table in main db
+    // Update students table in main db
     await query(
-      `UPDATE employees SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
+      `UPDATE students SET face_enrolled = TRUE, face_enrolled_at = NOW(), face_enrolled_by = $1 WHERE id = $2`,
       [adminId, target.id]
     );
 
     // Audit logs in face db
     const action = target.face_enrolled ? 'UPDATE' : 'ADD';
     await faceQuery(
-      `INSERT INTO face_audit_logs (employee_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
+      `INSERT INTO face_audit_logs (student_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
        VALUES ($1, $2, $3, $4, $5, $6::inet, $7)`,
       [target.id, action, adminId, prevEmbeddingId, newEmbId, req.ip, req.headers['user-agent']]
     );
@@ -1022,10 +1022,10 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
     faceTxBegun = false;
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'face.admin-direct-register',
       resourceType: 'face_profile',
-      resourceId: employeeId,
+      resourceId: studentId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
       details: { action }
@@ -1045,22 +1045,22 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
 });
 
 /**
- * DELETE /api/face-management/admin-delete/:employeeId
+ * DELETE /api/face-management/admin-delete/:studentId
  * Admin directly delete face
  */
-router.delete('/face-management/admin-delete/:employeeId', requireRole('admin'), async (req, res) => {
+router.delete('/face-management/admin-delete/:studentId', requireRole('admin'), async (req, res) => {
   let mainTxBegun = false;
   let faceTxBegun = false;
   try {
-    const { employeeId } = req.params;
+    const { studentId } = req.params;
     const adminId = req.user.id;
 
     const targetResult = await query(
-      'SELECT id, employee_id, face_enrolled FROM employees WHERE employee_id = $1 AND is_active = TRUE',
-      [employeeId]
+      'SELECT id, student_id, face_enrolled FROM students WHERE student_id = $1 AND is_active = TRUE',
+      [studentId]
     );
     if (targetResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Employee not found or inactive' });
+      return res.status(404).json({ success: false, message: 'Student not found or inactive' });
     }
     const target = targetResult.rows[0];
 
@@ -1074,17 +1074,17 @@ router.delete('/face-management/admin-delete/:employeeId', requireRole('admin'),
     mainTxBegun = true;
 
     // Deactivate embeddings in face db
-    await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1', [target.id]);
+    await faceQuery('UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1', [target.id]);
 
-    // Update employees table in main db
+    // Update students table in main db
     await query(
-      `UPDATE employees SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1`,
+      `UPDATE students SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL WHERE id = $1`,
       [target.id]
     );
 
     // Audit logs in face db
     await faceQuery(
-      `INSERT INTO face_audit_logs (employee_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
+      `INSERT INTO face_audit_logs (student_id, action, performed_by, previous_embedding_id, new_embedding_id, ip_address, device_info)
        VALUES ($1, 'DELETE', $2, $3, NULL, $4::inet, $5)`,
       [target.id, adminId, prevEmbeddingId, req.ip, req.headers['user-agent']]
     );
@@ -1096,10 +1096,10 @@ router.delete('/face-management/admin-delete/:employeeId', requireRole('admin'),
     faceTxBegun = false;
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'face.admin-direct-delete',
       resourceType: 'face_profile',
-      resourceId: employeeId,
+      resourceId: studentId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
       details: {}

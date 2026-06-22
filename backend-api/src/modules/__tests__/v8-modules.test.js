@@ -184,7 +184,7 @@ describe('SiemExporter', () => {
       eventType: 'LOGIN_FAILED',
       severity: 'high',
       ip: '10.0.0.1',
-      employeeId: 'E001',
+      studentId: 'E001',
     });
     expect(json['@timestamp']).toBeDefined();
     expect(json['source.ip']).toBe('10.0.0.1');

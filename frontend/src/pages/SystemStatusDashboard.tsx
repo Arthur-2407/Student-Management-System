@@ -36,7 +36,7 @@ const POLL_MS = 10_000;
 /**
  * ADDITION 3 + 5 — System Status & Operational Telemetry Dashboard
  *
- * Provides realtime operational visibility for supervisors/admins:
+ * Provides realtime operational visibility for teachers/admins:
  *   - Service health indicators
  *   - Circuit breaker states
  *   - Degraded-mode status

@@ -34,14 +34,14 @@ function totalLeaveDays(startDate, endDate) {
 }
 
 function canManageLeave(user) {
-  return user.role === 'admin' || user.role === 'supervisor';
+  return user.role === 'admin' || user.role === 'teacher';
 }
 
-async function createNotification(employeeId, title, message, payload = {}) {
+async function createNotification(studentId, title, message, payload = {}) {
   await query(
-    `INSERT INTO notifications (employee_id, type, title, message, payload)
+    `INSERT INTO notifications (student_id, type, title, message, payload)
      VALUES ($1, $2, $3, $4, $5)`,
-    [employeeId, 'leave', title, message, JSON.stringify(payload)]
+    [studentId, 'leave', title, message, JSON.stringify(payload)]
   );
 }
 
@@ -67,22 +67,22 @@ router.post('/request', async (req, res) => {
       });
     }
 
-    const employeeResult = await query(
-      `SELECT supervisor_id FROM employees WHERE id = $1 AND supervisor_id IS NOT NULL
+    const studentResult = await query(
+      `SELECT teacher_id FROM students WHERE id = $1 AND teacher_id IS NOT NULL
        UNION ALL
-       SELECT supervisor_id FROM supervisor_assignments WHERE employee_id = $1 AND is_active = TRUE AND supervisor_id IS NOT NULL
+       SELECT teacher_id FROM teacher_assignments WHERE student_id = $1 AND is_active = TRUE AND teacher_id IS NOT NULL
        LIMIT 1`,
       [req.user.id]
     );
-    let supervisorId = employeeResult.rows[0]?.supervisor_id || null;
+    let teacherId = studentResult.rows[0]?.teacher_id || null;
 
-    // Fallback to Admin if no supervisor is assigned
-    if (!supervisorId) {
+    // Fallback to Admin if no teacher is assigned
+    if (!teacherId) {
       const adminResult = await query(
-        "SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+        "SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
       );
       if (adminResult.rows.length > 0) {
-        supervisorId = adminResult.rows[0].id;
+        teacherId = adminResult.rows[0].id;
       }
     }
 
@@ -95,24 +95,24 @@ router.post('/request', async (req, res) => {
 
     const result = await query(
       `INSERT INTO leave_requests
-         (employee_id, supervisor_id, leave_type, start_date, end_date, total_days, reason, status, approver_id, approval_timestamp, approved_at, attachment_data, attachment_name)
+         (student_id, teacher_id, leave_type, start_date, end_date, total_days, reason, status, approver_id, approval_timestamp, approved_at, attachment_data, attachment_name)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, ${approvalTimestampSql}, ${approvalTimestampSql}, $10, $11)
        RETURNING *`,
-      [req.user.id, supervisorId, leaveType, startDate, endDate, days, reason, initialStatus, approverId, attachmentData, attachmentName]
+      [req.user.id, teacherId, leaveType, startDate, endDate, days, reason, initialStatus, approverId, attachmentData, attachmentName]
     );
 
-    // If it's a supervisor requesting, notify their supervisor (Admin)
-    if (supervisorId && !isAdmin) {
+    // If it's a teacher requesting, notify their teacher (Admin)
+    if (teacherId && !isAdmin) {
       await createNotification(
-        supervisorId,
+        teacherId,
         'New leave request',
-        `${req.user.employeeId} submitted a ${leaveType} leave request.`,
+        `${req.user.studentId} submitted a ${leaveType} leave request.`,
         { leaveRequestId: result.rows[0].id }
       );
     }
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'leave.request.create',
       resourceType: 'leave_request',
       resourceId: String(result.rows[0].id),
@@ -126,7 +126,7 @@ router.post('/request', async (req, res) => {
     try {
       await query(
         `INSERT INTO leave_approval_history
-           (leave_request_id, action, actor_employee_id, actor_role,
+           (leave_request_id, action, actor_student_id, actor_role,
             previous_status, new_status, reason, ip_address, user_agent)
          VALUES ($1, $2, $3, $4, NULL, $5, $6, $7::inet, $8)`,
         [
@@ -146,9 +146,9 @@ router.post('/request', async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      io.notifySupervisors('attendance_update', {
+      io.notifyTeachers('attendance_update', {
         type: 'leave-request',
-        employeeId: req.user.employeeId,
+        studentId: req.user.studentId,
       });
     }
 
@@ -165,7 +165,7 @@ router.get('/my-requests', async (req, res) => {
     const result = await query(
       `SELECT lr.*
        FROM leave_requests lr
-       WHERE lr.employee_id = $1
+       WHERE lr.student_id = $1
        ORDER BY lr.created_at DESC
        LIMIT $2`,
       [req.user.id, limit]
@@ -185,21 +185,21 @@ router.get('/team-requests', async (req, res) => {
     }
 
     const limit = Math.min(Number.parseInt(req.query.limit, 10) || 50, 200);
-    const roleToFilter = req.user.role === 'admin' ? 'supervisor' : 'employee';
+    const roleToFilter = req.user.role === 'admin' ? 'teacher' : 'student';
     const params = [limit, req.user.id, roleToFilter];
 
     const result = await query(
       `SELECT lr.*,
               json_build_object(
-                'employee_id', e.employee_id,
+                'student_id', e.student_id,
                 'first_name', e.first_name,
                 'last_name', e.last_name,
                 'department', e.department,
                 'role', e.role
-              ) AS employee
+              ) AS student
        FROM leave_requests lr
-       JOIN employees e ON e.id = lr.employee_id
-       WHERE 1=1 AND lr.supervisor_id = $2 AND e.role = $3
+       JOIN students e ON e.id = lr.student_id
+       WHERE 1=1 AND lr.teacher_id = $2 AND e.role = $3
        ORDER BY lr.created_at DESC
        LIMIT $1`,
       params
@@ -218,17 +218,17 @@ router.get('/request/:id', async (req, res) => {
     const result = await query(
       `SELECT lr.*,
               json_build_object(
-                'employee_id', e.employee_id,
+                'student_id', e.student_id,
                 'first_name', e.first_name,
                 'last_name', e.last_name,
                 'department', e.department
-              ) AS employee
+              ) AS student
        FROM leave_requests lr
-       JOIN employees e ON e.id = lr.employee_id
+       JOIN students e ON e.id = lr.student_id
        WHERE lr.id = $1
          AND (
-           lr.employee_id = $2
-           OR lr.supervisor_id = $2
+           lr.student_id = $2
+           OR lr.teacher_id = $2
          )`,
       [id, req.user.id]
     );
@@ -250,7 +250,7 @@ router.put('/request/:id/cancel', async (req, res) => {
     const result = await query(
       `UPDATE leave_requests
        SET status = 'cancelled', updated_at = NOW()
-       WHERE id = $1 AND employee_id = $2 AND status = 'pending'
+       WHERE id = $1 AND student_id = $2 AND status = 'pending'
        RETURNING *`,
       [id, req.user.id]
     );
@@ -263,9 +263,9 @@ router.put('/request/:id/cancel', async (req, res) => {
     try {
       await query(
         `INSERT INTO leave_approval_history
-           (leave_request_id, action, actor_employee_id, actor_role,
+           (leave_request_id, action, actor_student_id, actor_role,
             previous_status, new_status, reason, ip_address, user_agent)
-         VALUES ($1, 'cancel', $2, $3, 'pending', 'cancelled', 'Cancelled by employee', $4::inet, $5)`,
+         VALUES ($1, 'cancel', $2, $3, 'pending', 'cancelled', 'Cancelled by student', $4::inet, $5)`,
         [
           id, req.user.id, req.user.role,
           req.ip, req.headers['user-agent'] || null,
@@ -276,7 +276,7 @@ router.put('/request/:id/cancel', async (req, res) => {
     }
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'leave.request.cancel',
       resourceType: 'leave_request',
       resourceId: String(id),
@@ -311,7 +311,7 @@ router.put('/request/:id/approve', async (req, res) => {
            updated_at = NOW()
        WHERE lr.id = $1
          AND lr.status = 'pending'
-         AND lr.supervisor_id = $2
+         AND lr.teacher_id = $2
        RETURNING *`,
       [id, req.user.id]
     );
@@ -326,7 +326,7 @@ router.put('/request/:id/approve', async (req, res) => {
     try {
       await query(
         `INSERT INTO leave_approval_history
-           (leave_request_id, action, actor_employee_id, actor_role,
+           (leave_request_id, action, actor_student_id, actor_role,
             previous_status, new_status, reason, ip_address, user_agent)
          VALUES ($1, 'approve', $2, $3, 'pending', 'approved', $4, $5::inet, $6)`,
         [
@@ -339,7 +339,7 @@ router.put('/request/:id/approve', async (req, res) => {
     }
 
     await createNotification(
-      leaveRecord.employee_id,
+      leaveRecord.student_id,
       'Leave approved',
       'Your leave request has been approved.',
       { leaveRequestId: id }
@@ -347,18 +347,18 @@ router.put('/request/:id/approve', async (req, res) => {
 
     try {
       const empResult = await query(
-        'SELECT employee_id FROM employees WHERE id = $1',
-        [leaveRecord.employee_id]
+        'SELECT student_id FROM students WHERE id = $1',
+        [leaveRecord.student_id]
       );
-      const empStrId = empResult.rows[0]?.employee_id;
+      const empStrId = empResult.rows[0]?.student_id;
       const io = req.app.get('io');
       if (io) {
-        io.notifySupervisors('attendance_update', {
+        io.notifyTeachers('attendance_update', {
           type: 'leave-update',
           requestId: id,
         });
         if (empStrId) {
-          io.notifyEmployee(empStrId, 'attendance_update', {
+          io.notifyStudent(empStrId, 'attendance_update', {
             type: 'leave-update',
             status: 'approved',
           });
@@ -369,7 +369,7 @@ router.put('/request/:id/approve', async (req, res) => {
     }
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'leave.request.approve',
       resourceType: 'leave_request',
       resourceId: String(id),
@@ -378,7 +378,7 @@ router.put('/request/:id/approve', async (req, res) => {
       requestId: req.requestId,
       details: {
         leaveType: leaveRecord.leave_type,
-        employeeId: leaveRecord.employee_id,
+        studentId: leaveRecord.student_id,
         startDate: leaveRecord.start_date,
         endDate: leaveRecord.end_date,
         approvedByRole: req.user.role
@@ -415,7 +415,7 @@ router.put('/request/:id/reject', async (req, res) => {
            updated_at = NOW()
        WHERE lr.id = $1
          AND lr.status = 'pending'
-         AND lr.supervisor_id = $2
+         AND lr.teacher_id = $2
        RETURNING *`,
       [id, req.user.id, reason]
     );
@@ -430,7 +430,7 @@ router.put('/request/:id/reject', async (req, res) => {
     try {
       await query(
         `INSERT INTO leave_approval_history
-           (leave_request_id, action, actor_employee_id, actor_role,
+           (leave_request_id, action, actor_student_id, actor_role,
             previous_status, new_status, reason, ip_address, user_agent)
          VALUES ($1, 'reject', $2, $3, 'pending', 'rejected', $4, $5::inet, $6)`,
         [
@@ -443,7 +443,7 @@ router.put('/request/:id/reject', async (req, res) => {
     }
 
     await createNotification(
-      leaveRecord.employee_id,
+      leaveRecord.student_id,
       'Leave rejected',
       'Your leave request has been rejected.',
       { leaveRequestId: id, reason }
@@ -451,18 +451,18 @@ router.put('/request/:id/reject', async (req, res) => {
 
     try {
       const empResult = await query(
-        'SELECT employee_id FROM employees WHERE id = $1',
-        [leaveRecord.employee_id]
+        'SELECT student_id FROM students WHERE id = $1',
+        [leaveRecord.student_id]
       );
-      const empStrId = empResult.rows[0]?.employee_id;
+      const empStrId = empResult.rows[0]?.student_id;
       const io = req.app.get('io');
       if (io) {
-        io.notifySupervisors('attendance_update', {
+        io.notifyTeachers('attendance_update', {
           type: 'leave-update',
           requestId: id,
         });
         if (empStrId) {
-          io.notifyEmployee(empStrId, 'attendance_update', {
+          io.notifyStudent(empStrId, 'attendance_update', {
             type: 'leave-update',
             status: 'rejected',
           });
@@ -473,7 +473,7 @@ router.put('/request/:id/reject', async (req, res) => {
     }
 
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'leave.request.reject',
       resourceType: 'leave_request',
       resourceId: String(id),
@@ -482,7 +482,7 @@ router.put('/request/:id/reject', async (req, res) => {
       requestId: req.requestId,
       details: {
         leaveType: leaveRecord.leave_type,
-        employeeId: leaveRecord.employee_id,
+        studentId: leaveRecord.student_id,
         startDate: leaveRecord.start_date,
         endDate: leaveRecord.end_date,
         rejectionReason: reason,
@@ -511,7 +511,7 @@ router.get('/stats', async (req, res) => {
          COALESCE(SUM(total_days) FILTER (WHERE status = 'approved' AND leave_type = 'maternity'), 0)::int AS maternity_days_used,
          COALESCE(SUM(total_days) FILTER (WHERE status = 'approved' AND leave_type = 'paternity'), 0)::int AS paternity_days_used
        FROM leave_requests
-       WHERE employee_id = $1`,
+       WHERE student_id = $1`,
       [req.user.id]
     );
 

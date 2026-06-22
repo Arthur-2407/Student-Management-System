@@ -9,7 +9,7 @@ BEGIN;
 -- ============================================================
 CREATE TABLE IF NOT EXISTS account_recovery_requests (
   id              SERIAL PRIMARY KEY,
-  employee_id     INTEGER NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+  student_id     INTEGER NOT NULL REFERENCES students(id) ON DELETE RESTRICT,
   request_type    VARCHAR(30) NOT NULL CHECK (request_type IN (
                     'password_reset',
                     'face_reset',
@@ -17,16 +17,16 @@ CREATE TABLE IF NOT EXISTS account_recovery_requests (
                   )),
   status          VARCHAR(20) NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'approved', 'rejected', 'completed', 'expired')),
-  -- Who requested it (may differ from employee if admin requests on behalf)
-  requested_by    INTEGER REFERENCES employees(id),
+  -- Who requested it (may differ from student if admin requests on behalf)
+  requested_by    INTEGER REFERENCES students(id),
   request_reason  TEXT,
   -- Approval workflow
-  reviewed_by     INTEGER REFERENCES employees(id),
+  reviewed_by     INTEGER REFERENCES students(id),
   reviewed_at     TIMESTAMP,
   review_notes    TEXT,
   -- Completion tracking
   completed_at    TIMESTAMP,
-  completed_by    INTEGER REFERENCES employees(id),
+  completed_by    INTEGER REFERENCES students(id),
   -- Expiry (pending requests auto-expire after 48h)
   expires_at      TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '48 hours'),
   -- Secure one-time token for recovery link (bcrypt-hashed)
@@ -40,13 +40,14 @@ CREATE TABLE IF NOT EXISTS account_recovery_requests (
 );
 
 -- Indexes for fast lookups
-CREATE INDEX IF NOT EXISTS idx_recovery_employee     ON account_recovery_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_recovery_student     ON account_recovery_requests(student_id);
 CREATE INDEX IF NOT EXISTS idx_recovery_status       ON account_recovery_requests(status);
 CREATE INDEX IF NOT EXISTS idx_recovery_requested_by ON account_recovery_requests(requested_by);
 CREATE INDEX IF NOT EXISTS idx_recovery_reviewed_by  ON account_recovery_requests(reviewed_by);
 CREATE INDEX IF NOT EXISTS idx_recovery_expires      ON account_recovery_requests(expires_at);
 
 -- Auto-update updated_at on every change
+DROP TRIGGER IF EXISTS update_account_recovery_updated_at ON account_recovery_requests;
 CREATE TRIGGER update_account_recovery_updated_at
   BEFORE UPDATE ON account_recovery_requests
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -57,7 +58,7 @@ CREATE TRIGGER update_account_recovery_updated_at
 CREATE TABLE IF NOT EXISTS account_recovery_audit_log (
   id              BIGSERIAL PRIMARY KEY,
   recovery_id     INTEGER NOT NULL REFERENCES account_recovery_requests(id) ON DELETE RESTRICT,
-  actor_id        INTEGER REFERENCES employees(id),
+  actor_id        INTEGER REFERENCES students(id),
   action          VARCHAR(50) NOT NULL,   -- e.g. REQUESTED, APPROVED, REJECTED, COMPLETED, EXPIRED
   details         JSONB,
   ip_address      INET,

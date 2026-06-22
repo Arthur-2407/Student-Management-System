@@ -1,33 +1,33 @@
 import api from '@services/api';
 import { AxiosResponse } from 'axios';
 
-export interface Employee {
+export interface Student {
   id: number;
-  employee_id: string;
+  student_id: string;
   first_name: string;
   last_name: string;
   email: string;
   phone_number?: string;
   department: string;
   position: string;
-  role: 'employee' | 'supervisor' | 'admin';
-  supervisor_id?: number | null;
+  role: 'student' | 'teacher' | 'admin';
+  teacher_id?: number | null;
   hire_date: string;
   is_active: boolean;
   face_enrolled?: boolean;
   mfa_enabled?: boolean;
   created_at: string;
   updated_at: string;
-  // Work location (from employee_locations table, if assigned)
+  // Work location (from student_locations table, if assigned)
   work_location_name?: string | null;
   work_location_lat?: number | null;
   work_location_lng?: number | null;
   work_location_radius?: number | null;
 }
 
-export interface EmployeeLocation {
+export interface StudentLocation {
   id: number;
-  employee_id: number;
+  student_id: number;
   name: string;
   latitude: number;
   longitude: number;
@@ -37,10 +37,10 @@ export interface EmployeeLocation {
   updated_at: string;
 }
 
-// Row returned by the bulk /employees/locations endpoint
-export interface EmployeeLocationRow {
+// Row returned by the bulk /students/locations endpoint
+export interface StudentLocationRow {
   id: number;
-  employee_id: string;
+  student_id: string;
   first_name: string;
   last_name: string;
   role: string;
@@ -60,42 +60,42 @@ export interface EmployeeLocationRow {
 }
 
 
-export interface Supervisor extends Employee {
-  assigned_employees?: Employee[];
-  active_employee_count?: number;
+export interface Teacher extends Student {
+  assigned_students?: Student[];
+  active_student_count?: number;
 }
 
 export interface HierarchyData {
-  supervisors: Supervisor[];
-  unassignedEmployees: Employee[];
-  totalSupervisors: number;
-  totalUnassignedEmployees: number;
-  totalActiveEmployees: number;
+  teachers: Teacher[];
+  unassignedStudents: Student[];
+  totalTeachers: number;
+  totalUnassignedStudents: number;
+  totalActiveStudents: number;
 }
 
-export interface TeamMember extends Employee {
+export interface TeamMember extends Student {
   checked_in_today: string | number;
   pending_leave_status?: string | null;
 }
 
-export interface CreateEmployeeData {
-  employeeId: string;
+export interface CreateStudentData {
+  studentId: string;
   firstName: string;
   lastName: string;
   email: string;
   phoneNumber?: string;
   department: string;
   position: string;
-  role: 'employee' | 'supervisor' | 'admin';
-  supervisorId?: number | null;
+  role: 'student' | 'teacher' | 'admin';
+  teacherId?: number | null;
   hireDate: string;
   password?: string;
 }
 
 export interface WorkTiming {
   id: number;
-  employee_id?: number | null;
-  employee_code?: string | null;
+  student_id?: number | null;
+  student_code?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   department?: string | null;
@@ -112,27 +112,27 @@ export interface WorkTiming {
 }
 
 export const adminApi = {
-  // Employee management
-  getEmployees: async (params?: {
+  // Student management
+  getStudents: async (params?: {
     page?: number;
     limit?: number;
     department?: string;
     role?: string;
     isActive?: boolean;
-  }): Promise<AxiosResponse<{ success: boolean; data: Employee[]; pagination: any }>> => {
-    return api.get('/admin/employees', { params });
+  }): Promise<AxiosResponse<{ success: boolean; data: Student[]; pagination: any }>> => {
+    return api.get('/admin/students', { params });
   },
 
-  createEmployee: async (data: CreateEmployeeData): Promise<AxiosResponse<any>> => {
-    return api.post('/admin/employees', data);
+  createStudent: async (data: CreateStudentData): Promise<AxiosResponse<any>> => {
+    return api.post('/admin/students', data);
   },
 
-  updateEmployee: async (id: number, data: Partial<CreateEmployeeData> & { isActive?: boolean }): Promise<AxiosResponse<any>> => {
-    return api.put(`/admin/employees/${id}`, data);
+  updateStudent: async (id: number, data: Partial<CreateStudentData> & { isActive?: boolean }): Promise<AxiosResponse<any>> => {
+    return api.put(`/admin/students/${id}`, data);
   },
 
-  deactivateEmployee: async (id: number): Promise<AxiosResponse<any>> => {
-    return api.delete(`/admin/employees/${id}`);
+  deactivateStudent: async (id: number): Promise<AxiosResponse<any>> => {
+    return api.delete(`/admin/students/${id}`);
   },
 
   // Hierarchy management
@@ -140,17 +140,17 @@ export const adminApi = {
     return api.get('/admin/hierarchy');
   },
 
-  // Supervisor assignments
-  assignEmployeesToSupervisor: async (supervisorId: string | number, employeeIds: number[]): Promise<AxiosResponse<{ success: boolean; assignedCount: number }>> => {
-    return api.post(`/admin/supervisors/${supervisorId}/assign-employees`, { employeeIds });
+  // Teacher assignments
+  assignStudentsToTeacher: async (teacherId: string | number, studentIds: number[]): Promise<AxiosResponse<{ success: boolean; assignedCount: number }>> => {
+    return api.post(`/admin/teachers/${teacherId}/assign-students`, { studentIds });
   },
 
-  getSupervisorEmployees: async (supervisorId: string | number): Promise<AxiosResponse<{ success: boolean; data: Employee[] }>> => {
-    return api.get(`/admin/supervisors/${supervisorId}/employees`);
+  getTeacherStudents: async (teacherId: string | number): Promise<AxiosResponse<{ success: boolean; data: Student[] }>> => {
+    return api.get(`/admin/teachers/${teacherId}/students`);
   },
 
-  removeEmployeeFromSupervisor: async (supervisorId: string | number, employeeId: string | number): Promise<AxiosResponse<{ success: boolean }>> => {
-    return api.delete(`/admin/supervisors/${supervisorId}/employees/${employeeId}`);
+  removeStudentFromTeacher: async (teacherId: string | number, studentId: string | number): Promise<AxiosResponse<{ success: boolean }>> => {
+    return api.delete(`/admin/teachers/${teacherId}/students/${studentId}`);
   },
 
   // Department management
@@ -158,7 +158,7 @@ export const adminApi = {
     return api.get('/admin/departments');
   },
 
-  createDepartment: async (data: { departmentName: string; departmentHeadId?: number; maxEmployees?: number }): Promise<AxiosResponse<any>> => {
+  createDepartment: async (data: { departmentName: string; departmentHeadId?: number; maxStudents?: number }): Promise<AxiosResponse<any>> => {
     return api.post('/admin/departments', data);
   },
 
@@ -168,7 +168,7 @@ export const adminApi = {
   },
 
   createWorkTiming: async (data: {
-    employeeId?: number;
+    studentId?: number;
     department?: string;
     workStartTime: string;
     workEndTime: string;
@@ -187,39 +187,39 @@ export const adminApi = {
     return api.delete(`/admin/work-timings/${id}`);
   },
 
-  // Employee location management
-  getEmployeeLocation: async (employeeId: number | string): Promise<AxiosResponse<{ success: boolean; data: EmployeeLocation | null }>> => {
-    return api.get(`/admin/employees/${employeeId}/location`);
+  // Student location management
+  getStudentLocation: async (studentId: number | string): Promise<AxiosResponse<{ success: boolean; data: StudentLocation | null }>> => {
+    return api.get(`/admin/students/${studentId}/location`);
   },
 
-  assignEmployeeLocation: async (
-    employeeId: number | string,
+  assignStudentLocation: async (
+    studentId: number | string,
     data: { name: string; latitude: number; longitude: number; radiusMeters: number }
-  ): Promise<AxiosResponse<{ success: boolean; data: EmployeeLocation; message: string }>> => {
-    return api.post(`/admin/employees/${employeeId}/location`, data);
+  ): Promise<AxiosResponse<{ success: boolean; data: StudentLocation; message: string }>> => {
+    return api.post(`/admin/students/${studentId}/location`, data);
   },
 
-  removeEmployeeLocation: async (employeeId: number | string): Promise<AxiosResponse<{ success: boolean; message: string }>> => {
-    return api.delete(`/admin/employees/${employeeId}/location`);
+  removeStudentLocation: async (studentId: number | string): Promise<AxiosResponse<{ success: boolean; message: string }>> => {
+    return api.delete(`/admin/students/${studentId}/location`);
   },
 
-  // Bulk fetch: all employees with their location status (real-time)
-  getAllEmployeeLocations: async (): Promise<AxiosResponse<{ success: boolean; data: EmployeeLocationRow[] }>> => {
-    return api.get('/admin/employees/locations');
+  // Bulk fetch: all students with their location status (real-time)
+  getAllStudentLocations: async (): Promise<AxiosResponse<{ success: boolean; data: StudentLocationRow[] }>> => {
+    return api.get('/admin/students/locations');
   },
 
 
-  // Supervisor team (for supervisor role)
+  // Teacher team (for teacher role)
   getMyTeam: async (): Promise<AxiosResponse<{ success: boolean; data: TeamMember[]; count: number }>> => {
-    return api.get('/admin/supervisor/team');
+    return api.get('/admin/teacher/team');
   },
 
-  getTeamMemberAttendance: async (employeeId: number, params?: { startDate?: string; endDate?: string; limit?: number }): Promise<AxiosResponse<any>> => {
-    return api.get(`/admin/supervisor/team/${employeeId}/attendance`, { params });
+  getTeamMemberAttendance: async (studentId: number, params?: { startDate?: string; endDate?: string; limit?: number }): Promise<AxiosResponse<any>> => {
+    return api.get(`/admin/teacher/team/${studentId}/attendance`, { params });
   },
 
-  resetEmployeeMfa: async (employeeId: string | number): Promise<AxiosResponse<{ success: boolean; message: string }>> => {
-    return api.post(`/admin/employees/${employeeId}/mfa/reset`);
+  resetStudentMfa: async (studentId: string | number): Promise<AxiosResponse<{ success: boolean; message: string }>> => {
+    return api.post(`/admin/students/${studentId}/mfa/reset`);
   },
 
   // Admin configuration & reset

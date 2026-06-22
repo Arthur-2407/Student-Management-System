@@ -3,19 +3,19 @@
 -- Date: 2026-06-14
 
 -- Delete seeded face embeddings
-DELETE FROM face_embeddings WHERE employee_id IN (
-  SELECT id FROM employees WHERE employee_id IN ('admin', 'supervisor')
+DELETE FROM face_embeddings WHERE student_id IN (
+  SELECT id FROM students WHERE student_id IN ('admin', 'teacher')
 );
 
--- Reset employees face enrolled fields
-UPDATE employees SET
+-- Reset students face enrolled fields
+UPDATE students SET
   face_enrolled = FALSE,
   face_enrolled_at = NULL,
   face_enrolled_by = NULL
-WHERE employee_id IN ('admin', 'supervisor');
+WHERE student_id IN ('admin', 'teacher');
 
--- Delete seeded supervisor account
-DELETE FROM employees WHERE employee_id = 'supervisor';
+-- Delete seeded teacher account
+DELETE FROM students WHERE student_id = 'teacher';
 
 -- Drop tables
 DROP TABLE IF EXISTS face_audit_logs CASCADE;

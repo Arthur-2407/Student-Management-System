@@ -20,14 +20,14 @@ export interface CheckOutData {
 export interface AttendanceHistoryParams {
   startDate?: string;
   endDate?: string;
-  employeeId?: string;
+  studentId?: string;
   limit?: number;
   page?: number;
   scope?: string;
 }
 
-export interface EmployeeInfo {
-  employee_id: string;
+export interface StudentInfo {
+  student_id: string;
   first_name: string;
   last_name: string;
   department: string;
@@ -35,7 +35,7 @@ export interface EmployeeInfo {
 
 export interface AttendanceRecord {
   id: number;
-  employee_id: number;
+  student_id: number;
   check_in_time: string;
   check_out_time: string | null;
   work_hours: string | null;
@@ -52,7 +52,7 @@ export interface AttendanceRecord {
   notes: string | null;
   created_at: string;
   updated_at: string;
-  employee: EmployeeInfo;
+  student: StudentInfo;
 }
 
 export interface AttendanceStats {

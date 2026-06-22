@@ -26,10 +26,10 @@ const ROOT = path.resolve(__dirname, '..');
 const DEPENDENCY_GRAPH = {
   postgres:        { depends: [], healthUrl: null, port: 5432 },
   redis:           { depends: [], healthUrl: null, port: 6379 },
-  'face-ai-service': { depends: ['redis'], healthUrl: 'http://localhost:8000/health', port: 8000 },
-  'backend-api':   { depends: ['postgres', 'redis'], healthUrl: 'http://localhost:3001/health', port: 3001 },
-  frontend:        { depends: ['backend-api'], healthUrl: 'http://localhost:3000', port: 3000 },
-  nginx:           { depends: ['frontend', 'backend-api'], healthUrl: 'http://localhost:80/health', port: 80 },
+  'student-face-ai': { depends: ['redis'], healthUrl: 'http://localhost:8000/health', port: 8000 },
+  'student-backend':   { depends: ['postgres', 'redis'], healthUrl: 'http://localhost:3001/health', port: 3001 },
+  frontend:        { depends: ['student-backend'], healthUrl: 'http://localhost:3000', port: 3000 },
+  nginx:           { depends: ['frontend', 'student-backend'], healthUrl: 'http://localhost:80/health', port: 80 },
 };
 
 // ── Topological sort for boot order ────────────────────────────────────────

@@ -39,7 +39,7 @@ interface LeaveStats {
 
 interface DepartmentData {
   department: string;
-  employees: number;
+  students: number;
   attendanceRate: number;
 }
 
@@ -57,11 +57,11 @@ const ReportsPage: React.FC = () => {
   const [selectedMetric, setSelectedMetric] = useState<string | null>('total');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Managed employee list for Weekly chart and Detailed Reports selector
-  const [managedEmployees, setManagedEmployees] = useState<any[]>([]);
+  // Managed student list for Weekly chart and Detailed Reports selector
+  const [managedStudents, setManagedStudents] = useState<any[]>([]);
 
-  // For Detailed Reports — target employee for per-person PDF/Excel download (admin/supervisor only)
-  const [detailedReportTargetEmployee, setDetailedReportTargetEmployee] = useState<string>('');
+  // For Detailed Reports — target student for per-person PDF/Excel download (admin/teacher only)
+  const [detailedReportTargetStudent, setDetailedReportTargetStudent] = useState<string>('');
   
   // Helper to generate the past 6 months dynamically
   const getMonthsList = () => {
@@ -141,54 +141,54 @@ const ReportsPage: React.FC = () => {
   const monthsList = getMonthsList();
   const [weeklySelectedMonth, setWeeklySelectedMonth] = useState<string>(monthsList[0].value);
   const [weeklySelectedWeek, setWeeklySelectedWeek] = useState<number>(getCurrentWeekIndex());
-  const [weeklySelectedEmployee, setWeeklySelectedEmployee] = useState<string>('');
-  const [weeklyEmployees, setWeeklyEmployees] = useState<any[]>([]);
+  const [weeklySelectedStudent, setWeeklySelectedStudent] = useState<string>('');
+  const [weeklyStudents, setWeeklyStudents] = useState<any[]>([]);
   const [weeklyAttendanceLogs, setWeeklyAttendanceLogs] = useState<any[]>([]);
   const [weeklyLoading, setWeeklyLoading] = useState<boolean>(false);
 
-  // Fetch managed employees list from backend (real-time, role-scoped)
+  // Fetch managed students list from backend (real-time, role-scoped)
   useEffect(() => {
-    const fetchManagedEmployees = async () => {
+    const fetchManagedStudents = async () => {
       try {
-        const response = await reportsApi.getManagedEmployees();
+        const response = await reportsApi.getManagedStudents();
         const list = response.data.data || [];
-        setManagedEmployees(list);
-        setWeeklyEmployees(list);
+        setManagedStudents(list);
+        setWeeklyStudents(list);
 
-        // Set initial employee selection
-        if (!weeklySelectedEmployee) {
-          if (user?.role === 'employee') {
-            // Employee always sees their own data
-            setWeeklySelectedEmployee(user.employeeId);
+        // Set initial student selection
+        if (!weeklySelectedStudent) {
+          if (user?.role === 'student') {
+            // Student always sees their own data
+            setWeeklySelectedStudent(user.studentId);
           } else if (list.length > 0) {
-            // Admin/supervisor: default to first in list (or themselves)
-            const selfEntry = list.find((e: any) => e.employee_id === user?.employeeId);
-            setWeeklySelectedEmployee(selfEntry ? selfEntry.employee_id : list[0].employee_id);
+            // Admin/teacher: default to first in list (or themselves)
+            const selfEntry = list.find((e: any) => e.student_id === user?.studentId);
+            setWeeklySelectedStudent(selfEntry ? selfEntry.student_id : list[0].student_id);
           } else if (user) {
-            setWeeklySelectedEmployee(user.employeeId);
+            setWeeklySelectedStudent(user.studentId);
           }
         }
       } catch (err) {
-        console.error('Failed to fetch managed employees:', err);
+        console.error('Failed to fetch managed students:', err);
         // Fallback to just the logged-in user
         if (user) {
-          const selfEntry = [{ employee_id: user.employeeId, first_name: user.firstName || 'Me', last_name: user.lastName || '', role: user.role }];
-          setWeeklyEmployees(selfEntry);
-          setManagedEmployees(selfEntry);
-          if (!weeklySelectedEmployee) setWeeklySelectedEmployee(user.employeeId);
+          const selfEntry = [{ student_id: user.studentId, first_name: user.firstName || 'Me', last_name: user.lastName || '', role: user.role }];
+          setWeeklyStudents(selfEntry);
+          setManagedStudents(selfEntry);
+          if (!weeklySelectedStudent) setWeeklySelectedStudent(user.studentId);
         }
       }
     };
 
-    if (user) fetchManagedEmployees();
+    if (user) fetchManagedStudents();
   }, [user]);
 
-  // Fetch raw logs for the selected employee and week
+  // Fetch raw logs for the selected student and week
   useEffect(() => {
     const abortController = new AbortController();
     
     const fetchWeeklyAttendance = async () => {
-      if (!weeklySelectedEmployee) return;
+      if (!weeklySelectedStudent) return;
       
       try {
         setWeeklyLoading(true);
@@ -198,7 +198,7 @@ const ReportsPage: React.FC = () => {
         const response = await reportsApi.getAttendanceReport({
           startDate: activeWeek.startDate,
           endDate: activeWeek.endDate,
-          employeeId: weeklySelectedEmployee,
+          studentId: weeklySelectedStudent,
           limit: 100
         });
         
@@ -216,7 +216,7 @@ const ReportsPage: React.FC = () => {
     return () => {
       abortController.abort();
     };
-  }, [weeklySelectedMonth, weeklySelectedWeek, weeklySelectedEmployee, refreshTrigger]);
+  }, [weeklySelectedMonth, weeklySelectedWeek, weeklySelectedStudent, refreshTrigger]);
 
   const toLocalISOString = (date: Date) => {
     const year = date.getFullYear();
@@ -359,7 +359,7 @@ const ReportsPage: React.FC = () => {
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Employee</th>
+                <th>Student</th>
                 <th>Assigned Shift</th>
                 <th>Check-in</th>
                 <th>Check-out</th>
@@ -382,7 +382,7 @@ const ReportsPage: React.FC = () => {
                 return `
                   <tr>
                     <td>${new Date(r.check_in_time).toLocaleDateString()}</td>
-                    <td>${r.first_name ? `${r.first_name} ${r.last_name} (${r.employee_id})` : `User (${r.employee_id})`}</td>
+                    <td>${r.first_name ? `${r.first_name} ${r.last_name} (${r.student_id})` : `User (${r.student_id})`}</td>
                     <td>${formatTime(r.work_start_time)} - ${formatTime(r.work_end_time)}</td>
                     <td>${formatTime(r.check_in_time)}</td>
                     <td>${r.check_out_time ? formatTime(r.check_out_time) : '—'}</td>
@@ -435,7 +435,7 @@ const ReportsPage: React.FC = () => {
           <table>
             <thead>
               <tr>
-                <th>Employee</th>
+                <th>Student</th>
                 <th>Leave Type</th>
                 <th>Start Date</th>
                 <th>End Date</th>
@@ -447,7 +447,7 @@ const ReportsPage: React.FC = () => {
             <tbody>
               ${leavesList.map((r: any) => `
                 <tr>
-                  <td>${r.first_name} ${r.last_name} (${r.employee_id})</td>
+                  <td>${r.first_name} ${r.last_name} (${r.student_id})</td>
                   <td style="text-transform: capitalize;">${r.leave_type}</td>
                   <td>${String(r.start_date).split('T')[0]}</td>
                   <td>${String(r.end_date).split('T')[0]}</td>
@@ -479,7 +479,7 @@ const ReportsPage: React.FC = () => {
                 <th>Timestamp</th>
                 <th>Event Type</th>
                 <th>Severity</th>
-                <th>Employee</th>
+                <th>Student</th>
                 <th>IP Address</th>
                 <th>Details</th>
               </tr>
@@ -494,7 +494,7 @@ const ReportsPage: React.FC = () => {
                       ${r.severity}
                     </span>
                   </td>
-                  <td>${r.first_name ? `${r.first_name} ${r.last_name} (${r.employee_id})` : 'System'}</td>
+                  <td>${r.first_name ? `${r.first_name} ${r.last_name} (${r.student_id})` : 'System'}</td>
                   <td>${r.ip_address || '—'}</td>
                   <td>${typeof r.details === 'object' ? JSON.stringify(r.details) : r.details}</td>
                 </tr>
@@ -511,11 +511,11 @@ const ReportsPage: React.FC = () => {
         const performanceList = response.data.data || [];
 
         contentHtml = `
-          <h2>Employee Performance Metrics</h2>
+          <h2>Student Performance Metrics</h2>
           <table>
             <thead>
               <tr>
-                <th>Employee ID</th>
+                <th>Student ID</th>
                 <th>Name</th>
                 <th>Department</th>
                 <th>Position</th>
@@ -527,7 +527,7 @@ const ReportsPage: React.FC = () => {
             <tbody>
               ${performanceList.map((r: any) => `
                 <tr>
-                  <td>${r.employee_id}</td>
+                  <td>${r.student_id}</td>
                   <td>${r.first_name} ${r.last_name}</td>
                   <td>${r.department || 'Unassigned'}</td>
                   <td>${r.position || '—'}</td>
@@ -651,7 +651,7 @@ const ReportsPage: React.FC = () => {
           <body>
             <div class="header">
               <h1>${reportTitle}</h1>
-              <p>Enterprise Attendance Management System</p>
+              <p>Student Management System</p>
             </div>
             <div class="meta-info">
               <div><strong>Report Period:</strong> ${range.startDate} to ${range.endDate}</div>
@@ -676,34 +676,34 @@ const ReportsPage: React.FC = () => {
     }
   };
 
-  // Handle export — supports optional targetEmployeeId for per-employee reports (admin/supervisor)
-  const handleExport = async (format: string, type: string = 'attendance', targetEmployeeId?: string) => {
+  // Handle export — supports optional targetStudentId for per-student reports (admin/teacher)
+  const handleExport = async (format: string, type: string = 'attendance', targetStudentId?: string) => {
     try {
-      const employeeLabel = targetEmployeeId
+      const studentLabel = targetStudentId
         ? (() => {
-            const emp = managedEmployees.find((e: any) => e.employee_id === targetEmployeeId);
-            return emp ? `${emp.first_name} ${emp.last_name}` : targetEmployeeId;
+            const emp = managedStudents.find((e: any) => e.student_id === targetStudentId);
+            return emp ? `${emp.first_name} ${emp.last_name}` : targetStudentId;
           })()
         : 'All';
-      showSuccess(`Generating ${format.toUpperCase()} report for ${employeeLabel}...`);
+      showSuccess(`Generating ${format.toUpperCase()} report for ${studentLabel}...`);
       const range = getDateRange(selectedPeriod);
 
       if (format === 'excel') {
         let response;
-        const empSuffix = targetEmployeeId ? `-${targetEmployeeId}` : '';
+        const empSuffix = targetStudentId ? `-${targetStudentId}` : '';
         let filename = `${type}-report${empSuffix}-${range.startDate}-to-${range.endDate}.xlsx`;
         
         if (type === 'attendance') {
           response = await reportsApi.downloadAttendanceExcel({
             startDate: range.startDate,
             endDate: range.endDate,
-            employeeId: targetEmployeeId
+            studentId: targetStudentId
           });
         } else if (type === 'leave') {
           response = await reportsApi.downloadLeaveExcel({
             startDate: range.startDate,
             endDate: range.endDate,
-            employeeId: targetEmployeeId
+            studentId: targetStudentId
           });
         } else if (type === 'security') {
           response = await api.get('/excel/security-events', {
@@ -729,7 +729,7 @@ const ReportsPage: React.FC = () => {
           link.click();
           link.parentNode?.removeChild(link);
           window.URL.revokeObjectURL(url);
-          showSuccess(`${type} Excel for ${employeeLabel} downloaded!`);
+          showSuccess(`${type} Excel for ${studentLabel} downloaded!`);
         }
       } else if (format === 'pdf') {
         await generatePDFReport(range, type);
@@ -886,7 +886,7 @@ const ReportsPage: React.FC = () => {
     return timeStr;
   };
 
-  // Daily worked hours and weekly sum calculations for selected employee and week
+  // Daily worked hours and weekly sum calculations for selected student and week
   const weekDates = getWeekDates(weeklySelectedMonth, weeklySelectedWeek);
   
   const dailyDataForChart = weekDates.map(day => {
@@ -1037,7 +1037,7 @@ const ReportsPage: React.FC = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Date</th>
-                      <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Employee</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Student</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Assigned Shift</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Check-in</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Check-out</th>
@@ -1050,7 +1050,7 @@ const ReportsPage: React.FC = () => {
                           {new Date(r.check_in_time).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-3 whitespace-nowrap">
-                          {r.first_name ? `${r.first_name} ${r.last_name} (${r.employee_id})` : `User (${r.employee_id})`}
+                          {r.first_name ? `${r.first_name} ${r.last_name} (${r.student_id})` : `User (${r.student_id})`}
                         </td>
                         <td className="px-6 py-3 whitespace-nowrap font-mono text-xs text-gray-600">
                           {formatTime(r.work_start_time)} - {formatTime(r.work_end_time)}
@@ -1070,7 +1070,7 @@ const ReportsPage: React.FC = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Date</th>
-                      <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Employee</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Student</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Assigned Shift</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Actual Check In / Out</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Working Hours</th>
@@ -1085,7 +1085,7 @@ const ReportsPage: React.FC = () => {
                             {new Date(r.check_in_time).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-3 whitespace-nowrap">
-                            {r.first_name ? `${r.first_name} ${r.last_name} (${r.employee_id})` : `User (${r.employee_id})`}
+                            {r.first_name ? `${r.first_name} ${r.last_name} (${r.student_id})` : `User (${r.student_id})`}
                           </td>
                           <td className="px-6 py-3 whitespace-nowrap font-mono text-xs text-gray-600">
                             {formatTime(r.work_start_time)} - {formatTime(r.work_end_time)}
@@ -1109,7 +1109,7 @@ const ReportsPage: React.FC = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Date</th>
-                      <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Employee</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Student</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Check-in Status</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Check-out Status</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Compliance</th>
@@ -1124,7 +1124,7 @@ const ReportsPage: React.FC = () => {
                             {new Date(r.check_in_time).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-3 whitespace-nowrap">
-                            {r.first_name ? `${r.first_name} ${r.last_name} (${r.employee_id})` : `User (${r.employee_id})`}
+                            {r.first_name ? `${r.first_name} ${r.last_name} (${r.student_id})` : `User (${r.student_id})`}
                           </td>
                           <td className="px-6 py-3 whitespace-nowrap">
                             <span className={`px-2 py-0.5 text-2xs font-bold rounded-full ${r.geo_fence_status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -1157,7 +1157,7 @@ const ReportsPage: React.FC = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Date</th>
-                      <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Employee</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Student</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Assigned Shift</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Check In & Out Times</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider text-xs">Exceptions</th>
@@ -1172,7 +1172,7 @@ const ReportsPage: React.FC = () => {
                             {new Date(r.check_in_time).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-3 whitespace-nowrap">
-                            {r.first_name ? `${r.first_name} ${r.last_name} (${r.employee_id})` : `User (${r.employee_id})`}
+                            {r.first_name ? `${r.first_name} ${r.last_name} (${r.student_id})` : `User (${r.student_id})`}
                           </td>
                           <td className="px-6 py-3 whitespace-nowrap font-mono text-xs text-gray-600">
                             {formatTime(r.work_start_time)} - {formatTime(r.work_end_time)}
@@ -1214,18 +1214,18 @@ const ReportsPage: React.FC = () => {
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-3">
-                  {/* Employee Dropdown Selector (Admins & Supervisors only) */}
-                  {(user?.role === 'admin' || user?.role === 'supervisor') && weeklyEmployees.length > 0 && (
+                  {/* Student Dropdown Selector (Admins & Teachers only) */}
+                  {(user?.role === 'admin' || user?.role === 'teacher') && weeklyStudents.length > 0 && (
                     <div className="flex flex-col">
-                      <label className="text-3xs text-gray-400 font-semibold uppercase mb-1">Employee</label>
+                      <label className="text-3xs text-gray-400 font-semibold uppercase mb-1">Student</label>
                       <select
-                        value={weeklySelectedEmployee}
-                        onChange={(e) => setWeeklySelectedEmployee(e.target.value)}
+                        value={weeklySelectedStudent}
+                        onChange={(e) => setWeeklySelectedStudent(e.target.value)}
                         className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-md bg-white font-medium text-gray-700 focus:ring-blue-500 focus:border-blue-500"
                       >
-                        {weeklyEmployees.map(emp => (
-                          <option key={emp.employee_id} value={emp.employee_id}>
-                            {emp.first_name} {emp.last_name || ''} ({emp.employee_id})
+                        {weeklyStudents.map(emp => (
+                          <option key={emp.student_id} value={emp.student_id}>
+                            {emp.first_name} {emp.last_name || ''} ({emp.student_id})
                           </option>
                         ))}
                       </select>
@@ -1277,7 +1277,7 @@ const ReportsPage: React.FC = () => {
                   </div>
                   
                   <div className="mt-4 pt-4 border-t border-blue-100 text-2xs text-gray-450 font-mono">
-                    <div className="truncate">Selected: {weeklySelectedEmployee}</div>
+                    <div className="truncate">Selected: {weeklySelectedStudent}</div>
                     <div className="truncate">
                       Period: {getWeeksOfMonth(weeklySelectedMonth).find(w => w.index === weeklySelectedWeek)?.startDate} to {getWeeksOfMonth(weeklySelectedMonth).find(w => w.index === weeklySelectedWeek)?.endDate}
                     </div>
@@ -1407,14 +1407,14 @@ const ReportsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Leave Distribution Chart — visible to admin and supervisor (role-scoped from backend) */}
-            {leaveStats && (user?.role === 'admin' || user?.role === 'supervisor') && (
+            {/* Leave Distribution Chart — visible to admin and teacher (role-scoped from backend) */}
+            {leaveStats && (user?.role === 'admin' || user?.role === 'teacher') && (
               <div className="bg-white rounded-xl shadow p-6 lg:col-span-3">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">Leave Request Distribution</h2>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {user?.role === 'supervisor' ? 'Showing data for your assigned employees' : 'Organisation-wide leave summary'} — live from database
+                      {user?.role === 'teacher' ? 'Showing data for your assigned students' : 'Organisation-wide leave summary'} — live from database
                     </p>
                   </div>
                   <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
@@ -1483,27 +1483,27 @@ const ReportsPage: React.FC = () => {
               <p className="text-xs text-gray-500 mt-0.5">Download detailed report data for the selected period</p>
             </div>
 
-            {/* Employee selector for admin and supervisor one-click per-employee download */}
-            {(user?.role === 'admin' || user?.role === 'supervisor') && managedEmployees.length > 0 && (
+            {/* Student selector for admin and teacher one-click per-student download */}
+            {(user?.role === 'admin' || user?.role === 'teacher') && managedStudents.length > 0 && (
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                  Filter by Employee:
+                  Filter by Student:
                 </label>
                 <select
-                  value={detailedReportTargetEmployee}
-                  onChange={(e) => setDetailedReportTargetEmployee(e.target.value)}
+                  value={detailedReportTargetStudent}
+                  onChange={(e) => setDetailedReportTargetStudent(e.target.value)}
                   className="text-sm px-3 py-1.5 border border-gray-300 rounded-md bg-white font-medium text-gray-700 focus:ring-blue-500 focus:border-blue-500 min-w-[200px]"
                 >
-                  <option value="">All {user?.role === 'admin' ? 'Employees' : 'My Team'}</option>
-                  {managedEmployees.map((emp: any) => (
-                    <option key={emp.employee_id} value={emp.employee_id}>
-                      {emp.first_name} {emp.last_name || ''} ({emp.employee_id})
+                  <option value="">All {user?.role === 'admin' ? 'Students' : 'My Team'}</option>
+                  {managedStudents.map((emp: any) => (
+                    <option key={emp.student_id} value={emp.student_id}>
+                      {emp.first_name} {emp.last_name || ''} ({emp.student_id})
                     </option>
                   ))}
                 </select>
-                {detailedReportTargetEmployee && (
+                {detailedReportTargetStudent && (
                   <button
-                    onClick={() => setDetailedReportTargetEmployee('')}
+                    onClick={() => setDetailedReportTargetStudent('')}
                     className="text-xs text-gray-400 hover:text-gray-700 font-medium underline"
                   >
                     Clear
@@ -1518,21 +1518,21 @@ const ReportsPage: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">Attendance Summary Report</h3>
                   <p className="text-sm text-gray-500">
-                    {detailedReportTargetEmployee
-                      ? (() => { const e = managedEmployees.find((m: any) => m.employee_id === detailedReportTargetEmployee); return e ? `Records for ${e.first_name} ${e.last_name}` : 'Filtered attendance records'; })()
+                    {detailedReportTargetStudent
+                      ? (() => { const e = managedStudents.find((m: any) => m.student_id === detailedReportTargetStudent); return e ? `Records for ${e.first_name} ${e.last_name}` : 'Filtered attendance records'; })()
                       : 'Detailed attendance records and statistics'}
                   </p>
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => handleExport('pdf', 'attendance', detailedReportTargetEmployee || undefined)}
+                    onClick={() => handleExport('pdf', 'attendance', detailedReportTargetStudent || undefined)}
                     className="flex items-center px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
                   >
                     <FaFilePdf className="mr-1" />
                     PDF
                   </button>
                   <button
-                    onClick={() => handleExport('excel', 'attendance', detailedReportTargetEmployee || undefined)}
+                    onClick={() => handleExport('excel', 'attendance', detailedReportTargetStudent || undefined)}
                     className="flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200"
                   >
                     <FaFileExcel className="mr-1" />
@@ -1545,21 +1545,21 @@ const ReportsPage: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">Leave Usage Report</h3>
                   <p className="text-sm text-gray-500">
-                    {detailedReportTargetEmployee
-                      ? (() => { const e = managedEmployees.find((m: any) => m.employee_id === detailedReportTargetEmployee); return e ? `Leave records for ${e.first_name} ${e.last_name}` : 'Filtered leave records'; })()
+                    {detailedReportTargetStudent
+                      ? (() => { const e = managedStudents.find((m: any) => m.student_id === detailedReportTargetStudent); return e ? `Leave records for ${e.first_name} ${e.last_name}` : 'Filtered leave records'; })()
                       : 'Comprehensive leave request and approval data'}
                   </p>
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => handleExport('pdf', 'leave', detailedReportTargetEmployee || undefined)}
+                    onClick={() => handleExport('pdf', 'leave', detailedReportTargetStudent || undefined)}
                     className="flex items-center px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
                   >
                     <FaFilePdf className="mr-1" />
                     PDF
                   </button>
                   <button
-                    onClick={() => handleExport('excel', 'leave', detailedReportTargetEmployee || undefined)}
+                    onClick={() => handleExport('excel', 'leave', detailedReportTargetStudent || undefined)}
                     className="flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200"
                   >
                     <FaFileExcel className="mr-1" />
@@ -1594,7 +1594,7 @@ const ReportsPage: React.FC = () => {
               <div className="px-6 py-4 flex justify-between items-center hover:bg-gray-50">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">Performance Analytics Report</h3>
-                  <p className="text-sm text-gray-500">Employee performance metrics and trends</p>
+                  <p className="text-sm text-gray-500">Student performance metrics and trends</p>
                 </div>
                 <div className="flex space-x-2">
                   <button

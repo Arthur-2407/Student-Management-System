@@ -14,7 +14,7 @@ async function verifyAdmin() {
   
   // 2. Perform Admin Face Login
   const loginPayload = {
-    employeeId: 'admin',
+    studentId: 'admin',
     password: 'Admin@123',
     frames: dummyFrames
   };

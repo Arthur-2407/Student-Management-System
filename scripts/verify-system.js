@@ -14,12 +14,41 @@ const { execSync } = require('child_process');
 const path = require('path');
 const http = require('http');
 
+const fs = require('fs');
+
 const ROOT = path.resolve(__dirname, '..');
 
-function runCommand(cmd, cwd) {
+// Load environment variables from .env manually
+const envConfig = {};
+const dotenvPath = path.join(ROOT, '.env');
+if (fs.existsSync(dotenvPath)) {
+  const content = fs.readFileSync(dotenvPath, 'utf8');
+  content.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const parts = trimmed.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        const val = parts.slice(1).join('=').trim().replace(/^['"]|['"]$/g, '');
+        envConfig[key] = val;
+      }
+    }
+  });
+}
+
+// Override Docker hostnames with localhost (127.0.0.1) for local script execution
+const testEnv = { ...envConfig };
+testEnv.DB_HOST = '127.0.0.1';
+testEnv.FACE_DB_HOST = '127.0.0.1';
+
+function runCommand(cmd, cwd, extraEnv = {}) {
   try {
     console.log(`Executing: ${cmd}`);
-    execSync(cmd, { cwd, stdio: 'inherit' });
+    execSync(cmd, { 
+      cwd, 
+      stdio: 'inherit',
+      env: { ...process.env, ...extraEnv }
+    });
     return true;
   } catch (err) {
     console.error(`Command failed: ${cmd}\nError: ${err.message}`);
@@ -60,13 +89,13 @@ async function verifyAll() {
   // 2. Backend Unit Tests
   console.log('\n⏳ Running Backend API Unit Tests...');
   // Note: Backend has 107/107 tests. We run them within the container or locally if dependencies mock is used
-  // Let's run it inside backend-api directory
-  backendTestsOk = runCommand('npm test', path.join(ROOT, 'backend-api'));
+  // Let's run it inside student-backend directory
+  backendTestsOk = runCommand('npm test', path.join(ROOT, 'backend-api'), testEnv);
 
   // 3. Health & Endpoint Auditing
   console.log('\n⏳ Auditing Nginx health and face-ai endpoints...');
-  const healthRes = await probeUrl('http://localhost/health');
-  const faceRes = await probeUrl('http://localhost/face-ai/health');
+  const healthRes = await probeUrl('http://localhost:8080/health');
+  const faceRes = await probeUrl('http://localhost:8080/face-ai/health');
   
   healthOk = (healthRes.status === 'up' && healthRes.code === 200) &&
              (faceRes.status === 'up' && faceRes.code === 200);
@@ -78,12 +107,12 @@ async function verifyAll() {
   console.log('\n⏳ Verifying Database tables and triggers...');
   try {
     const tableCount = execSync(
-      'docker exec attendance-db-prod psql -U postgres -d attendance_system -t -c "SELECT count(*) FROM information_schema.tables WHERE table_schema=\'public\' AND table_name IN (\'users\', \'employees\', \'face_embeddings\', \'security_events\', \'audit_logs\');"',
+      'docker exec student-db-prod psql -U postgres -d student_system -t -c "SELECT count(*) FROM information_schema.tables WHERE table_schema=\'public\' AND table_name IN (\'users\', \'students\', \'face_embeddings\', \'security_events\', \'audit_logs\');"',
       { encoding: 'utf8' }
     ).trim();
     
     const depthCheck = execSync(
-      'docker exec attendance-db-prod psql -U postgres -d attendance_system -t -c "SELECT count(*) FROM pg_trigger WHERE tgname LIKE \'%recursion%\' OR tgname LIKE \'%loop%\';"',
+      'docker exec student-db-prod psql -U postgres -d student_system -t -c "SELECT count(*) FROM pg_trigger WHERE tgname LIKE \'%recursion%\' OR tgname LIKE \'%loop%\';"',
       { encoding: 'utf8' }
     ).trim();
 

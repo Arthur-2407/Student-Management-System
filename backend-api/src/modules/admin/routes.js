@@ -36,15 +36,15 @@ function formatInterval(interval) {
 }
 
 // ============================================================================
-// EMPLOYEE MANAGEMENT
+// STUDENT MANAGEMENT
 // ============================================================================
 
 /**
- * GET /api/admin/employees
- * List all employees with optional filtering and pagination
+ * GET /api/admin/students
+ * List all students with optional filtering and pagination
  * Admin only
  */
-router.get('/employees', requireRole('admin'), async (req, res) => {
+router.get('/students', requireRole('admin'), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, parseInt(req.query.limit, 10) || 50);
@@ -63,7 +63,7 @@ router.get('/employees', requireRole('admin'), async (req, res) => {
       params.push(department);
     }
 
-    if (role && ['employee', 'supervisor', 'admin'].includes(role)) {
+    if (role && ['student', 'teacher', 'admin'].includes(role)) {
       paramCount++;
       filterQuery += ` AND role = $${paramCount}`;
       params.push(role);
@@ -76,16 +76,16 @@ router.get('/employees', requireRole('admin'), async (req, res) => {
     }
 
     const countResult = await query(
-      `SELECT COUNT(*) FROM employees ${filterQuery}`,
+      `SELECT COUNT(*) FROM students ${filterQuery}`,
       params
     );
 
     const result = await query(
       `SELECT 
-        id, employee_id, first_name, last_name, email, phone_number,
-        department, position, role, supervisor_id, hire_date, is_active,
+        id, student_id, first_name, last_name, email, phone_number,
+        department, position, role, teacher_id, hire_date, is_active,
         face_enrolled, mfa_enabled, created_at, updated_at
-       FROM employees
+       FROM students
        ${filterQuery}
        ORDER BY first_name, last_name
        LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
@@ -103,29 +103,29 @@ router.get('/employees', requireRole('admin'), async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Employee list error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to fetch employees' });
+    logger.error('Student list error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to fetch students' });
   }
 });
 
 /**
- * POST /api/admin/employees
- * Create new employee
+ * POST /api/admin/students
+ * Create new student
  * Admin only
  */
-router.post('/employees', requireRole('admin'), async (req, res) => {
+router.post('/students', requireRole('admin'), async (req, res) => {
   try {
     const {
-      employeeId, firstName, lastName, email, phoneNumber,
-      department, position, role, supervisorId, hireDate, password
+      studentId, firstName, lastName, email, phoneNumber,
+      department, position, role, teacherId, hireDate, password
     } = req.body;
 
     // Validation
-    if (!employeeId || !firstName || !lastName || !email || !department || !position || !hireDate) {
+    if (!studentId || !firstName || !lastName || !email || !department || !position || !hireDate) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    if (!['employee', 'supervisor', 'admin'].includes(role)) {
+    if (!['student', 'teacher', 'admin'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -133,109 +133,109 @@ router.post('/employees', requireRole('admin'), async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    // Check if employee_id or email already exists
+    // Check if student_id or email already exists
     const existsResult = await query(
-      'SELECT id FROM employees WHERE employee_id = $1 OR email = $2',
-      [employeeId, email]
+      'SELECT id FROM students WHERE student_id = $1 OR email = $2',
+      [studentId, email]
     );
 
     if (existsResult.rows.length > 0) {
-      return res.status(409).json({ error: 'Employee ID or email already exists' });
+      return res.status(409).json({ error: 'Student ID or email already exists' });
     }
 
     // Hash password
-    const actualPassword = (password && String(password).trim() !== '') ? String(password) : String(employeeId);
+    const actualPassword = (password && String(password).trim() !== '') ? String(password) : String(studentId);
     const passwordHash = await bcrypt.hash(actualPassword, 10);
 
-    // Resolve supervisor_id for supervisors to report to admin by default
-    let actualSupervisorId = supervisorId || null;
-    if (role === 'supervisor' && !actualSupervisorId) {
-      const adminRes = await query("SELECT id FROM employees WHERE role = 'admin' LIMIT 1");
+    // Resolve teacher_id for teachers to report to admin by default
+    let actualTeacherId = teacherId || null;
+    if (role === 'teacher' && !actualTeacherId) {
+      const adminRes = await query("SELECT id FROM students WHERE role = 'admin' LIMIT 1");
       if (adminRes.rows.length > 0) {
-        actualSupervisorId = adminRes.rows[0].id;
+        actualTeacherId = adminRes.rows[0].id;
       }
     }
 
-    // Insert employee
+    // Insert student
     const result = await query(
-      `INSERT INTO employees (
-        employee_id, first_name, last_name, email, phone_number,
-        department, position, role, supervisor_id, hire_date,
+      `INSERT INTO students (
+        student_id, first_name, last_name, email, phone_number,
+        department, position, role, teacher_id, hire_date,
         password_hash, is_active, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, NOW(), NOW())
-      RETURNING id, employee_id, first_name, last_name, email, role`,
+      RETURNING id, student_id, first_name, last_name, email, role`,
       [
-        employeeId, firstName, lastName, email, phoneNumber || null,
-        department, position, role, actualSupervisorId, hireDate,
+        studentId, firstName, lastName, email, phoneNumber || null,
+        department, position, role, actualTeacherId, hireDate,
         passwordHash
       ]
     );
 
-    const newEmployee = result.rows[0];
+    const newStudent = result.rows[0];
 
-    // Create supervisor assignment if supervisorId is provided
-    if (supervisorId) {
-      const parsedId = isNaN(supervisorId) ? null : parseInt(supervisorId, 10);
-      const supRes = await query('SELECT id, role FROM employees WHERE id = $1 OR employee_id = $2', [parsedId, String(supervisorId)]);
-      if (supRes.rows.length > 0 && ['supervisor', 'admin'].includes(supRes.rows[0].role)) {
+    // Create teacher assignment if teacherId is provided
+    if (teacherId) {
+      const parsedId = isNaN(teacherId) ? null : parseInt(teacherId, 10);
+      const supRes = await query('SELECT id, role FROM students WHERE id = $1 OR student_id = $2', [parsedId, String(teacherId)]);
+      if (supRes.rows.length > 0 && ['teacher', 'admin'].includes(supRes.rows[0].role)) {
         const targetSupId = supRes.rows[0].id;
         await query(
-          `INSERT INTO supervisor_assignments (supervisor_id, employee_id, assigned_by, assigned_at, is_active)
+          `INSERT INTO teacher_assignments (teacher_id, student_id, assigned_by, assigned_at, is_active)
            VALUES ($1, $2, $3, NOW(), TRUE)
-           ON CONFLICT (supervisor_id, employee_id) DO UPDATE
+           ON CONFLICT (teacher_id, student_id) DO UPDATE
            SET is_active = TRUE, assigned_at = NOW(), assigned_by = $3, unassigned_at = NULL, unassigned_by = NULL`,
-          [targetSupId, newEmployee.id, req.user.id]
+          [targetSupId, newStudent.id, req.user.id]
         );
       }
     }
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'employee.create',
-      resourceType: 'employee',
-      resourceId: String(newEmployee.id),
+      actorStudentId: req.user.studentId,
+      action: 'student.create',
+      resourceType: 'student',
+      resourceId: String(newStudent.id),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { employeeId: newEmployee.employee_id, role }
+      details: { studentId: newStudent.student_id, role }
     });
 
     res.status(201).json({
       success: true,
-      data: newEmployee,
-      message: 'Employee created successfully'
+      data: newStudent,
+      message: 'Student created successfully'
     });
   } catch (error) {
-    logger.error('Employee create error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to create employee' });
+    logger.error('Student create error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to create student' });
   }
 });
 
 /**
- * PUT /api/admin/employees/:employeeId
- * Update employee details
+ * PUT /api/admin/students/:studentId
+ * Update student details
  * Admin only
  */
-router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
+router.put('/students/:studentId', requireRole('admin'), async (req, res) => {
   try {
-    const { employeeId } = req.params;
+    const { studentId } = req.params;
     const {
       firstName, lastName, email, phoneNumber,
-      department, position, role, supervisorId, isActive, password
+      department, position, role, teacherId, isActive, password
     } = req.body;
 
-    // Fetch existing employee
+    // Fetch existing student
     const empResult = await query(
-      'SELECT id, employee_id FROM employees WHERE id = $1 OR employee_id = $2',
-      [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
+      'SELECT id, student_id FROM students WHERE id = $1 OR student_id = $2',
+      [isNaN(studentId) ? null : parseInt(studentId, 10), studentId]
     );
 
     if (empResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return res.status(404).json({ error: 'Student not found' });
     }
 
     const empId = empResult.rows[0].id;
-    const targetEmployeeId = empResult.rows[0].employee_id;
+    const targetStudentId = empResult.rows[0].student_id;
 
     // Build update query
     const updates = [];
@@ -243,7 +243,7 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
     let paramCount = 1;
 
     if (password !== undefined) {
-      if (targetEmployeeId === 'admin') {
+      if (targetStudentId === 'admin') {
         return res.status(403).json({ error: 'Cannot change password for admin account' });
       }
       if (password && password.trim() !== '') {
@@ -287,24 +287,24 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
       updates.push(`position = $${paramCount}`);
       values.push(position);
     }
-    if (role !== undefined && ['employee', 'supervisor', 'admin'].includes(role)) {
+    if (role !== undefined && ['student', 'teacher', 'admin'].includes(role)) {
       paramCount++;
       updates.push(`role = $${paramCount}`);
       values.push(role);
     }
     let targetSupId = null;
-    if (supervisorId !== undefined) {
-      if (supervisorId) {
-        const parsedId = isNaN(supervisorId) ? null : parseInt(supervisorId, 10);
-        const supRes = await query('SELECT id, role FROM employees WHERE id = $1 OR employee_id = $2', [parsedId, String(supervisorId)]);
-        if (supRes.rows.length > 0 && ['supervisor', 'admin'].includes(supRes.rows[0].role)) {
+    if (teacherId !== undefined) {
+      if (teacherId) {
+        const parsedId = isNaN(teacherId) ? null : parseInt(teacherId, 10);
+        const supRes = await query('SELECT id, role FROM students WHERE id = $1 OR student_id = $2', [parsedId, String(teacherId)]);
+        if (supRes.rows.length > 0 && ['teacher', 'admin'].includes(supRes.rows[0].role)) {
           targetSupId = supRes.rows[0].id;
         } else {
-          return res.status(400).json({ error: 'Selected supervisor not found or invalid role' });
+          return res.status(400).json({ error: 'Selected teacher not found or invalid role' });
         }
       }
       paramCount++;
-      updates.push(`supervisor_id = $${paramCount}`);
+      updates.push(`teacher_id = $${paramCount}`);
       values.push(targetSupId);
     }
     if (isActive !== undefined) {
@@ -313,7 +313,7 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
       values.push(isActive);
       if (isActive === false) {
         await query(
-          'UPDATE refresh_tokens SET revoked_at = NOW() WHERE employee_id = $1',
+          'UPDATE refresh_tokens SET revoked_at = NOW() WHERE student_id = $1',
           [empId]
         );
       }
@@ -326,27 +326,27 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
     }
 
     const updateResult = await query(
-      `UPDATE employees SET ${updates.join(', ')} WHERE id = $1 RETURNING id, employee_id, first_name, last_name, role`,
+      `UPDATE students SET ${updates.join(', ')} WHERE id = $1 RETURNING id, student_id, first_name, last_name, role`,
       values
     );
 
-    const updatedEmployee = updateResult.rows[0];
+    const updatedStudent = updateResult.rows[0];
 
-    if (supervisorId !== undefined) {
+    if (teacherId !== undefined) {
       // Deactivate old active assignments
       await query(
-        `UPDATE supervisor_assignments 
+        `UPDATE teacher_assignments 
          SET is_active = FALSE, unassigned_at = NOW(), unassigned_by = $2 
-         WHERE employee_id = $1 AND is_active = TRUE`,
+         WHERE student_id = $1 AND is_active = TRUE`,
         [empId, req.user.id]
       );
       
-      // If we have a new supervisor ID, insert/activate it
+      // If we have a new teacher ID, insert/activate it
       if (targetSupId) {
         await query(
-          `INSERT INTO supervisor_assignments (supervisor_id, employee_id, assigned_by, assigned_at, is_active)
+          `INSERT INTO teacher_assignments (teacher_id, student_id, assigned_by, assigned_at, is_active)
            VALUES ($1, $2, $3, NOW(), TRUE)
-           ON CONFLICT (supervisor_id, employee_id) DO UPDATE
+           ON CONFLICT (teacher_id, student_id) DO UPDATE
            SET is_active = TRUE, assigned_at = NOW(), assigned_by = $3, unassigned_at = NULL, unassigned_by = NULL`,
           [targetSupId, empId, req.user.id]
         );
@@ -355,9 +355,9 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'employee.update',
-      resourceType: 'employee',
+      actorStudentId: req.user.studentId,
+      action: 'student.update',
+      resourceType: 'student',
       resourceId: String(empId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
@@ -366,41 +366,41 @@ router.put('/employees/:employeeId', requireRole('admin'), async (req, res) => {
 
     res.json({
       success: true,
-      data: updatedEmployee,
-      message: 'Employee updated successfully'
+      data: updatedStudent,
+      message: 'Student updated successfully'
     });
   } catch (error) {
-    logger.error('Employee update error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to update employee' });
+    logger.error('Student update error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to update student' });
   }
 });
 
 /**
- * DELETE /api/admin/employees/:employeeId
- * Soft-delete employee (set is_active = false)
+ * DELETE /api/admin/students/:studentId
+ * Soft-delete student (set is_active = false)
  * Admin only
  */
-router.delete('/employees/:employeeId', requireRole('admin'), async (req, res) => {
+router.delete('/students/:studentId', requireRole('admin'), async (req, res) => {
   try {
-    const { employeeId } = req.params;
+    const { studentId } = req.params;
 
     const empResult = await query(
-      'SELECT id, employee_id FROM employees WHERE id = $1 OR employee_id = $2',
-      [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
+      'SELECT id, student_id FROM students WHERE id = $1 OR student_id = $2',
+      [isNaN(studentId) ? null : parseInt(studentId, 10), studentId]
     );
 
     if (empResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return res.status(404).json({ error: 'Student not found' });
     }
 
     const empId = empResult.rows[0].id;
-    const empIdStr = empResult.rows[0].employee_id;
+    const empIdStr = empResult.rows[0].student_id;
 
-    // Start transaction for clean hard deletion of the employee and all their references
+    // Start transaction for clean hard deletion of the student and all their references
     await query('BEGIN');
     try {
-      // 1. Delete or nullify records where employee is creator/approver/lead/head/supervisor
-      await query('UPDATE employees SET supervisor_id = NULL WHERE supervisor_id = $1', [empId]);
+      // 1. Delete or nullify records where student is creator/approver/lead/head/teacher
+      await query('UPDATE students SET teacher_id = NULL WHERE teacher_id = $1', [empId]);
       await query('UPDATE department_config SET department_head_id = NULL WHERE department_head_id = $1', [empId]);
       await query('UPDATE team_config SET team_lead_id = NULL WHERE team_lead_id = $1', [empId]);
       await query('UPDATE office_locations SET created_by = NULL WHERE created_by = $1', [empId]);
@@ -411,50 +411,50 @@ router.delete('/employees/:employeeId', requireRole('admin'), async (req, res) =
       await query('UPDATE account_recovery_requests SET reviewed_by = NULL WHERE reviewed_by = $1', [empId]);
       await query('UPDATE account_recovery_requests SET completed_by = NULL WHERE completed_by = $1', [empId]);
       
-      // 2. Delete employee specific records (the employee is the main actor/target)
-      await query('DELETE FROM supervisor_assignments WHERE employee_id = $1 OR supervisor_id = $1', [empId]);
-      await query('DELETE FROM employee_relationships WHERE employee_id = $1 OR supervisor_id = $1', [empId]);
-      await query('DELETE FROM team_members WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM role_assignments WHERE employee_id = $1 OR assigned_by = $1', [empId]);
+      // 2. Delete student specific records (the student is the main actor/target)
+      await query('DELETE FROM teacher_assignments WHERE student_id = $1 OR teacher_id = $1', [empId]);
+      await query('DELETE FROM student_relationships WHERE student_id = $1 OR teacher_id = $1', [empId]);
+      await query('DELETE FROM team_members WHERE student_id = $1', [empId]);
+      await query('DELETE FROM role_assignments WHERE student_id = $1 OR assigned_by = $1', [empId]);
       await query('DELETE FROM face_update_requests WHERE requester_id = $1', [empId]);
       await query('DELETE FROM password_reset_requests WHERE requester_id = $1', [empId]);
-      await query('DELETE FROM account_recovery_requests WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM account_recovery_requests WHERE student_id = $1', [empId]);
       await query('DELETE FROM account_recovery_audit_log WHERE actor_id = $1', [empId]);
-      await query('DELETE FROM attendance_records WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM leave_requests WHERE employee_id = $1 OR supervisor_id = $1 OR approved_by = $1 OR approver_id = $1', [empId]);
-      await query('DELETE FROM work_reports WHERE employee_id = $1 OR supervisor_id = $1 OR approved_by = $1', [empId]);
-      await query('DELETE FROM login_logs WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM security_events WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM refresh_tokens WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM notifications WHERE employee_id = $1 OR recipient_id = $1 OR sender_id = $1', [empId]);
-      await query('DELETE FROM audit_logs WHERE user_id = $1 OR actor_employee_id = $1', [empId]);
-      await query('DELETE FROM work_timings WHERE employee_id = $1', [empId]);
+      await query('DELETE FROM student_attendance WHERE student_id = $1', [empId]);
+      await query('DELETE FROM leave_requests WHERE student_id = $1 OR teacher_id = $1 OR approved_by = $1 OR approver_id = $1', [empId]);
+      await query('DELETE FROM student_reports WHERE student_id = $1 OR teacher_id = $1 OR approved_by = $1', [empId]);
+      await query('DELETE FROM login_logs WHERE student_id = $1', [empId]);
+      await query('DELETE FROM security_events WHERE student_id = $1', [empId]);
+      await query('DELETE FROM refresh_tokens WHERE student_id = $1', [empId]);
+      await query('DELETE FROM notifications WHERE student_id = $1 OR recipient_id = $1 OR sender_id = $1', [empId]);
+      await query('DELETE FROM audit_logs WHERE user_id = $1 OR actor_student_id = $1', [empId]);
+      await query('DELETE FROM work_timings WHERE student_id = $1', [empId]);
       await query('DELETE FROM face_approval_history WHERE actioned_by = $1', [empId]);
-      await query('DELETE FROM leave_balance WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM face_embeddings WHERE employee_id = $1 OR enrolled_by = $1', [empId]);
-      await query('DELETE FROM face_enrollment_logs WHERE employee_id = $1 OR target_employee_id = $1', [empId]);
-      await query('DELETE FROM device_fingerprints WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM impossible_travel_events WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM employee_login_locations WHERE employee_id = $1', [empId]);
-      await query('DELETE FROM leave_approval_history WHERE actor_employee_id = $1', [empId]);
-      await query('DELETE FROM face_change_requests WHERE employee_id = $1 OR requested_by = $1', [empId]);
-      await query('DELETE FROM face_audit_logs WHERE employee_id = $1 OR performed_by = $1', [empId]);
-      await query('UPDATE employees SET supervisor_id = NULL, face_enrolled_by = NULL, deleted_by = NULL WHERE supervisor_id = $1 OR face_enrolled_by = $1 OR deleted_by = $1', [empId]);
+      await query('DELETE FROM leave_balance WHERE student_id = $1', [empId]);
+      await query('DELETE FROM face_embeddings WHERE student_id = $1 OR enrolled_by = $1', [empId]);
+      await query('DELETE FROM face_enrollment_logs WHERE student_id = $1 OR target_student_id = $1', [empId]);
+      await query('DELETE FROM device_fingerprints WHERE student_id = $1', [empId]);
+      await query('DELETE FROM impossible_travel_events WHERE student_id = $1', [empId]);
+      await query('DELETE FROM student_login_locations WHERE student_id = $1', [empId]);
+      await query('DELETE FROM leave_approval_history WHERE actor_student_id = $1', [empId]);
+      await query('DELETE FROM face_change_requests WHERE student_id = $1 OR requested_by = $1', [empId]);
+      await query('DELETE FROM face_audit_logs WHERE student_id = $1 OR performed_by = $1', [empId]);
+      await query('UPDATE students SET teacher_id = NULL, face_enrolled_by = NULL, deleted_by = NULL WHERE teacher_id = $1 OR face_enrolled_by = $1 OR deleted_by = $1', [empId]);
 
       // 3. Delete from face database tables using faceQuery
       try {
         await faceQuery('BEGIN');
         await faceQuery('DELETE FROM user_images WHERE user_id = $1', [empId]);
         await faceQuery('DELETE FROM users WHERE user_id = $1', [empId]);
-        await faceQuery('DELETE FROM face_embeddings WHERE employee_id = $1', [empId]);
+        await faceQuery('DELETE FROM face_embeddings WHERE student_id = $1', [empId]);
         await faceQuery('COMMIT');
       } catch (faceErr) {
         try { await faceQuery('ROLLBACK'); } catch (_) {}
-        logger.warn(`Failed to clean up face database for deleted employee ${empId}`, { error: faceErr.message });
+        logger.warn(`Failed to clean up face database for deleted student ${empId}`, { error: faceErr.message });
       }
 
-      // 4. Finally delete the employee record from main database
-      await query('DELETE FROM employees WHERE id = $1', [empId]);
+      // 4. Finally delete the student record from main database
+      await query('DELETE FROM students WHERE id = $1', [empId]);
       
       await query('COMMIT');
     } catch (txError) {
@@ -464,41 +464,41 @@ router.delete('/employees/:employeeId', requireRole('admin'), async (req, res) =
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'employee.remove',
-      resourceType: 'employee',
+      actorStudentId: req.user.studentId,
+      action: 'student.remove',
+      resourceType: 'student',
       resourceId: String(empId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { removedEmployeeId: empIdStr }
+      details: { removedStudentId: empIdStr }
     });
 
     res.json({
       success: true,
-      message: 'Employee removed successfully'
+      message: 'Student removed successfully'
     });
   } catch (error) {
-    logger.error('Employee delete error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to delete employee' });
+    logger.error('Student delete error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to delete student' });
   }
 });
 
 // ============================================================================
-// EMPLOYEE LOCATION MANAGEMENT
+// STUDENT LOCATION MANAGEMENT
 // ============================================================================
 
 /**
- * GET /api/admin/employees/locations
- * Bulk fetch: all employees with their assigned location (or null if unassigned)
- * Returns real-time data — new employees appear automatically as unassigned
+ * GET /api/admin/students/locations
+ * Bulk fetch: all students with their assigned location (or null if unassigned)
+ * Returns real-time data — new students appear automatically as unassigned
  * Admin only
  */
-router.get('/employees/locations', requireRole('admin'), async (req, res) => {
+router.get('/students/locations', requireRole('admin'), async (req, res) => {
   try {
     const result = await query(
       `SELECT
          e.id,
-         e.employee_id,
+         e.student_id,
          e.first_name,
          e.last_name,
          e.role,
@@ -514,16 +514,16 @@ router.get('/employees/locations', requireRole('admin'), async (req, res) => {
          wt.work_start_time,
          wt.work_end_time,
          wt.is_temporary   AS timing_is_temporary
-       FROM employees e
-       LEFT JOIN employee_locations el
-         ON el.employee_id = e.id AND el.is_active = TRUE
+       FROM students e
+       LEFT JOIN student_locations el
+         ON el.student_id = e.id AND el.is_active = TRUE
        LEFT JOIN (
-         SELECT DISTINCT ON (employee_id)
-           employee_id, work_start_time, work_end_time, is_temporary
+         SELECT DISTINCT ON (student_id)
+           student_id, work_start_time, work_end_time, is_temporary
          FROM work_timings
          WHERE is_active = TRUE
-         ORDER BY employee_id, is_temporary DESC, id DESC
-       ) wt ON wt.employee_id = e.id
+         ORDER BY student_id, is_temporary DESC, id DESC
+       ) wt ON wt.student_id = e.id
        ORDER BY e.first_name, e.last_name`
     );
 
@@ -532,36 +532,36 @@ router.get('/employees/locations', requireRole('admin'), async (req, res) => {
       data: result.rows
     });
   } catch (error) {
-    logger.error('Bulk employee locations error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to fetch employee locations' });
+    logger.error('Bulk student locations error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to fetch student locations' });
   }
 });
 
 /**
- * GET /api/admin/employees/:employeeId/location
- * Get the assigned work location for a specific employee
+ * GET /api/admin/students/:studentId/location
+ * Get the assigned work location for a specific student
  * Admin only
  */
-router.get('/employees/:employeeId/location', requireRole('admin'), async (req, res) => {
+router.get('/students/:studentId/location', requireRole('admin'), async (req, res) => {
 
   try {
-    const { employeeId } = req.params;
+    const { studentId } = req.params;
 
     const empResult = await query(
-      'SELECT id FROM employees WHERE id = $1 OR employee_id = $2',
-      [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
+      'SELECT id FROM students WHERE id = $1 OR student_id = $2',
+      [isNaN(studentId) ? null : parseInt(studentId, 10), studentId]
     );
 
     if (empResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return res.status(404).json({ error: 'Student not found' });
     }
 
     const empId = empResult.rows[0].id;
 
     const locResult = await query(
-      `SELECT id, employee_id, name, latitude, longitude, radius_meters, is_active, created_at, updated_at
-       FROM employee_locations
-       WHERE employee_id = $1 AND is_active = TRUE
+      `SELECT id, student_id, name, latitude, longitude, radius_meters, is_active, created_at, updated_at
+       FROM student_locations
+       WHERE student_id = $1 AND is_active = TRUE
        LIMIT 1`,
       [empId]
     );
@@ -571,20 +571,20 @@ router.get('/employees/:employeeId/location', requireRole('admin'), async (req, 
       data: locResult.rows[0] || null
     });
   } catch (error) {
-    logger.error('Get employee location error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to fetch employee location' });
+    logger.error('Get student location error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to fetch student location' });
   }
 });
 
 /**
- * POST /api/admin/employees/:employeeId/location
- * Assign or update a work location for a specific employee
+ * POST /api/admin/students/:studentId/location
+ * Assign or update a work location for a specific student
  * Body: { name, latitude, longitude, radiusMeters }
  * Admin only
  */
-router.post('/employees/:employeeId/location', requireRole('admin'), async (req, res) => {
+router.post('/students/:studentId/location', requireRole('admin'), async (req, res) => {
   try {
-    const { employeeId } = req.params;
+    const { studentId } = req.params;
     const { name, latitude, longitude, radiusMeters } = req.body;
 
     // Validate required fields
@@ -600,12 +600,12 @@ router.post('/employees/:employeeId/location', requireRole('admin'), async (req,
     }
 
     const empResult = await query(
-      'SELECT id, employee_id, first_name, last_name FROM employees WHERE id = $1 OR employee_id = $2',
-      [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
+      'SELECT id, student_id, first_name, last_name FROM students WHERE id = $1 OR student_id = $2',
+      [isNaN(studentId) ? null : parseInt(studentId, 10), studentId]
     );
 
     if (empResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return res.status(404).json({ error: 'Student not found' });
     }
 
     const empId = empResult.rows[0].id;
@@ -613,11 +613,11 @@ router.post('/employees/:employeeId/location', requireRole('admin'), async (req,
     const radius = parseInt(radiusMeters, 10) || 500;
 
 
-    // Upsert — insert or update if employee_id already exists
+    // Upsert — insert or update if student_id already exists
     const result = await query(
-      `INSERT INTO employee_locations (employee_id, name, latitude, longitude, radius_meters, is_active, updated_at)
+      `INSERT INTO student_locations (student_id, name, latitude, longitude, radius_meters, is_active, updated_at)
        VALUES ($1, $2, $3, $4, $5, TRUE, NOW())
-       ON CONFLICT (employee_id) DO UPDATE
+       ON CONFLICT (student_id) DO UPDATE
          SET name = EXCLUDED.name,
              latitude = EXCLUDED.latitude,
              longitude = EXCLUDED.longitude,
@@ -630,20 +630,20 @@ router.post('/employees/:employeeId/location', requireRole('admin'), async (req,
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'employee.location.assign',
-      resourceType: 'employee_location',
+      actorStudentId: req.user.studentId,
+      action: 'student.location.assign',
+      resourceType: 'student_location',
       resourceId: String(empId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { employeeId: empResult.rows[0].employee_id, latitude: lat, longitude: lng, radius }
+      details: { studentId: empResult.rows[0].student_id, latitude: lat, longitude: lng, radius }
     });
 
     // Broadcast live WebSocket update
     try {
       const io = req.app.get('io');
       if (io) {
-        io.notifyEmployee(empResult.rows[0].employee_id, 'location_timing_update', { type: 'location' });
+        io.notifyStudent(empResult.rows[0].student_id, 'location_timing_update', { type: 'location' });
       }
     } catch (wsErr) {
       logger.warn('Failed to broadcast location assignment WS alert', { error: wsErr.message });
@@ -655,52 +655,52 @@ router.post('/employees/:employeeId/location', requireRole('admin'), async (req,
       message: 'Work location assigned successfully'
     });
   } catch (error) {
-    logger.error('Assign employee location error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to assign employee location' });
+    logger.error('Assign student location error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to assign student location' });
   }
 });
 
 /**
- * DELETE /api/admin/employees/:employeeId/location
- * Remove the assigned work location for an employee (fall back to global office)
+ * DELETE /api/admin/students/:studentId/location
+ * Remove the assigned work location for an student (fall back to global office)
  * Admin only
  */
-router.delete('/employees/:employeeId/location', requireRole('admin'), async (req, res) => {
+router.delete('/students/:studentId/location', requireRole('admin'), async (req, res) => {
   try {
-    const { employeeId } = req.params;
+    const { studentId } = req.params;
 
     const empResult = await query(
-      'SELECT id, employee_id FROM employees WHERE id = $1 OR employee_id = $2',
-      [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
+      'SELECT id, student_id FROM students WHERE id = $1 OR student_id = $2',
+      [isNaN(studentId) ? null : parseInt(studentId, 10), studentId]
     );
 
     if (empResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return res.status(404).json({ error: 'Student not found' });
     }
 
     const empId = empResult.rows[0].id;
 
     await query(
-      'UPDATE employee_locations SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1',
+      'UPDATE student_locations SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1',
       [empId]
     );
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'employee.location.remove',
-      resourceType: 'employee_location',
+      actorStudentId: req.user.studentId,
+      action: 'student.location.remove',
+      resourceType: 'student_location',
       resourceId: String(empId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { employeeId: empResult.rows[0].employee_id }
+      details: { studentId: empResult.rows[0].student_id }
     });
 
     // Broadcast live WebSocket update
     try {
       const io = req.app.get('io');
       if (io) {
-        io.notifyEmployee(empResult.rows[0].employee_id, 'location_timing_update', { type: 'location' });
+        io.notifyStudent(empResult.rows[0].student_id, 'location_timing_update', { type: 'location' });
       }
     } catch (wsErr) {
       logger.warn('Failed to broadcast location removal WS alert', { error: wsErr.message });
@@ -708,110 +708,110 @@ router.delete('/employees/:employeeId/location', requireRole('admin'), async (re
 
     res.json({
       success: true,
-      message: 'Work location removed. Employee will use global office location.'
+      message: 'Work location removed. Student will use global office location.'
     });
   } catch (error) {
-    logger.error('Remove employee location error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to remove employee location' });
+    logger.error('Remove student location error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to remove student location' });
   }
 });
 
 // ============================================================================
-// SUPERVISOR ASSIGNMENT MANAGEMENT
+// TEACHER ASSIGNMENT MANAGEMENT
 // ============================================================================
 
 /**
- * POST /api/admin/supervisors/:supervisorId/assign-employees
- * Assign employees to a supervisor
+ * POST /api/admin/teachers/:teacherId/assign-students
+ * Assign students to a teacher
  * Admin only
  */
-router.post('/supervisors/:supervisorId/assign-employees', requireRole('admin'), async (req, res) => {
+router.post('/teachers/:teacherId/assign-students', requireRole('admin'), async (req, res) => {
   try {
-    const { supervisorId } = req.params;
-    const { employeeIds } = req.body;
+    const { teacherId } = req.params;
+    const { studentIds } = req.body;
 
-    if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
-      return res.status(400).json({ error: 'employeeIds must be a non-empty array' });
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ error: 'studentIds must be a non-empty array' });
     }
 
-    // Verify supervisor exists and is actually a supervisor or admin
+    // Verify teacher exists and is actually a teacher or admin
     const supResult = await query(
-      'SELECT id, role FROM employees WHERE id = $1 OR employee_id = $2',
-      [isNaN(supervisorId) ? null : parseInt(supervisorId, 10), supervisorId]
+      'SELECT id, role FROM students WHERE id = $1 OR student_id = $2',
+      [isNaN(teacherId) ? null : parseInt(teacherId, 10), teacherId]
     );
 
     if (supResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Supervisor not found' });
+      return res.status(404).json({ error: 'Teacher not found' });
     }
 
     const supId = supResult.rows[0].id;
     const supRole = supResult.rows[0].role;
 
-    if (!['supervisor', 'admin'].includes(supRole)) {
-      return res.status(400).json({ error: 'User is not a supervisor or admin' });
+    if (!['teacher', 'admin'].includes(supRole)) {
+      return res.status(400).json({ error: 'User is not a teacher or admin' });
     }
 
     // Clear existing assignments and create new ones
     await query(
-      'DELETE FROM supervisor_assignments WHERE supervisor_id = $1 AND is_active = TRUE',
+      'DELETE FROM teacher_assignments WHERE teacher_id = $1 AND is_active = TRUE',
       [supId]
     );
 
     let assignedCount = 0;
-    for (const empId of employeeIds) {
+    for (const empId of studentIds) {
       try {
         await query(
-          `INSERT INTO supervisor_assignments (supervisor_id, employee_id, assigned_by, assigned_at)
+          `INSERT INTO teacher_assignments (teacher_id, student_id, assigned_by, assigned_at)
            VALUES ($1, $2, $3, NOW())
-           ON CONFLICT (supervisor_id, employee_id) DO UPDATE
+           ON CONFLICT (teacher_id, student_id) DO UPDATE
            SET is_active = TRUE, assigned_at = NOW()`,
           [supId, empId, req.user.id]
         );
         assignedCount++;
       } catch (e) {
-        logger.warn(`Failed to assign employee ${empId}`, { error: e.message });
+        logger.warn(`Failed to assign student ${empId}`, { error: e.message });
       }
     }
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'supervisor.assign-employees',
-      resourceType: 'supervisor_assignment',
+      actorStudentId: req.user.studentId,
+      action: 'teacher.assign-students',
+      resourceType: 'teacher_assignment',
       resourceId: String(supId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { employeeCount: assignedCount }
+      details: { studentCount: assignedCount }
     });
 
     res.json({
       success: true,
-      message: `Assigned ${assignedCount} employees to supervisor`,
+      message: `Assigned ${assignedCount} students to teacher`,
       assignedCount
     });
   } catch (error) {
-    logger.error('Supervisor assignment error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to assign employees' });
+    logger.error('Teacher assignment error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to assign students' });
   }
 });
 
 /**
- * GET /api/admin/supervisors/:supervisorId/employees
- * Get employees assigned to a supervisor
+ * GET /api/admin/teachers/:teacherId/students
+ * Get students assigned to a teacher
  * Admin only
  */
-router.get('/supervisors/:supervisorId/employees', requireRole('admin'), async (req, res) => {
+router.get('/teachers/:teacherId/students', requireRole('admin'), async (req, res) => {
   try {
-    const { supervisorId } = req.params;
+    const { teacherId } = req.params;
 
     const result = await query(
-      `SELECT e.id, e.employee_id, e.first_name, e.last_name, e.email,
+      `SELECT e.id, e.student_id, e.first_name, e.last_name, e.email,
               e.department, e.position, e.role, e.is_active
-       FROM employees e
-       INNER JOIN supervisor_assignments sa ON e.id = sa.employee_id
-       WHERE sa.supervisor_id = $1 AND sa.is_active = TRUE
+       FROM students e
+       INNER JOIN teacher_assignments sa ON e.id = sa.student_id
+       WHERE sa.teacher_id = $1 AND sa.is_active = TRUE
        ORDER BY e.first_name, e.last_name`,
-      [supervisorId]
+      [teacherId]
     );
 
     res.json({
@@ -819,40 +819,40 @@ router.get('/supervisors/:supervisorId/employees', requireRole('admin'), async (
       data: result.rows
     });
   } catch (error) {
-    logger.error('Get supervised employees error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to fetch assigned employees' });
+    logger.error('Get supervised students error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to fetch assigned students' });
   }
 });
 
 /**
- * DELETE /api/admin/supervisors/:supervisorId/employees/:employeeId
- * Remove employee from supervisor
+ * DELETE /api/admin/teachers/:teacherId/students/:studentId
+ * Remove student from teacher
  * Admin only
  */
-router.delete('/supervisors/:supervisorId/employees/:employeeId', requireRole('admin'), async (req, res) => {
+router.delete('/teachers/:teacherId/students/:studentId', requireRole('admin'), async (req, res) => {
   try {
-    const { supervisorId, employeeId } = req.params;
+    const { teacherId, studentId } = req.params;
 
     await query(
-      `UPDATE supervisor_assignments
+      `UPDATE teacher_assignments
        SET is_active = FALSE, unassigned_at = NOW(), unassigned_by = $3
-       WHERE supervisor_id = $1 AND employee_id = $2`,
-      [supervisorId, employeeId, req.user.id]
+       WHERE teacher_id = $1 AND student_id = $2`,
+      [teacherId, studentId, req.user.id]
     );
 
     await query(
-      `UPDATE employees
-       SET supervisor_id = NULL
+      `UPDATE students
+       SET teacher_id = NULL
        WHERE id = $1`,
-      [employeeId]
+      [studentId]
     );
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'supervisor.unassign-employee',
-      resourceType: 'supervisor_assignment',
-      resourceId: `${supervisorId}-${employeeId}`,
+      actorStudentId: req.user.studentId,
+      action: 'teacher.unassign-student',
+      resourceType: 'teacher_assignment',
+      resourceId: `${teacherId}-${studentId}`,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
       details: {}
@@ -860,11 +860,11 @@ router.delete('/supervisors/:supervisorId/employees/:employeeId', requireRole('a
 
     res.json({
       success: true,
-      message: 'Employee removed from supervisor'
+      message: 'Student removed from teacher'
     });
   } catch (error) {
-    logger.error('Unassign employee error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to remove employee' });
+    logger.error('Unassign student error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to remove student' });
   }
 });
 
@@ -880,7 +880,7 @@ router.delete('/supervisors/:supervisorId/employees/:employeeId', requireRole('a
 router.get('/departments', requireRole('admin'), async (req, res) => {
   try {
     const result = await query(
-      `SELECT id, department_name, department_head_id, max_employees, is_active, created_at
+      `SELECT id, department_name, department_head_id, max_students, is_active, created_at
        FROM department_config
        ORDER BY department_name`
     );
@@ -902,22 +902,22 @@ router.get('/departments', requireRole('admin'), async (req, res) => {
  */
 router.post('/departments', requireRole('admin'), async (req, res) => {
   try {
-    const { departmentName, departmentHeadId, maxEmployees } = req.body;
+    const { departmentName, departmentHeadId, maxStudents } = req.body;
 
     if (!departmentName) {
       return res.status(400).json({ error: 'Department name is required' });
     }
 
     const result = await query(
-      `INSERT INTO department_config (department_name, department_head_id, max_employees)
+      `INSERT INTO department_config (department_name, department_head_id, max_students)
        VALUES ($1, $2, $3)
-       RETURNING id, department_name, department_head_id, max_employees`,
-      [departmentName, departmentHeadId || null, maxEmployees || null]
+       RETURNING id, department_name, department_head_id, max_students`,
+      [departmentName, departmentHeadId || null, maxStudents || null]
     );
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'department.create',
       resourceType: 'department',
       resourceId: String(result.rows[0].id),
@@ -944,7 +944,7 @@ router.post('/departments', requireRole('admin'), async (req, res) => {
 router.put('/departments/:departmentId', requireRole('admin'), async (req, res) => {
   try {
     const { departmentId } = req.params;
-    const { departmentName, departmentHeadId, maxEmployees, isActive } = req.body;
+    const { departmentName, departmentHeadId, maxStudents, isActive } = req.body;
 
     // Check if department exists
     const deptResult = await query(
@@ -970,10 +970,10 @@ router.put('/departments/:departmentId', requireRole('admin'), async (req, res) 
       updates.push(`department_head_id = $${paramCount}`);
       values.push(departmentHeadId || null);
     }
-    if (maxEmployees !== undefined) {
+    if (maxStudents !== undefined) {
       paramCount++;
-      updates.push(`max_employees = $${paramCount}`);
-      values.push(maxEmployees || null);
+      updates.push(`max_students = $${paramCount}`);
+      values.push(maxStudents || null);
     }
     if (isActive !== undefined) {
       paramCount++;
@@ -996,7 +996,7 @@ router.put('/departments/:departmentId', requireRole('admin'), async (req, res) 
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'department.update',
       resourceType: 'department',
       resourceId: String(departmentId),
@@ -1044,7 +1044,7 @@ router.delete('/departments/:departmentId', requireRole('admin'), async (req, re
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'department.deactivate',
       resourceType: 'department',
       resourceId: String(departmentId),
@@ -1070,19 +1070,19 @@ router.delete('/departments/:departmentId', requireRole('admin'), async (req, re
 /**
  * GET /api/admin/work-timings
  * List all work timing configurations
- * Admin or Supervisor
+ * Admin or Teacher
  */
-router.get('/work-timings', requireRole('supervisor'), async (req, res) => {
+router.get('/work-timings', requireRole('teacher'), async (req, res) => {
   try {
     const result = await query(
-      `SELECT wt.id, wt.employee_id, e.employee_id AS employee_code, e.first_name, e.last_name,
+      `SELECT wt.id, wt.student_id, e.student_id AS student_code, e.first_name, e.last_name,
               wt.department, wt.work_start_time, wt.work_end_time,
               wt.lunch_start_time, wt.lunch_end_time, wt.is_active,
               wt.is_temporary, wt.start_date, wt.end_date
        FROM work_timings wt
-       LEFT JOIN employees e ON wt.employee_id = e.id
+       LEFT JOIN students e ON wt.student_id = e.id
        WHERE wt.is_active = TRUE
-       ORDER BY wt.department, e.employee_id`
+       ORDER BY wt.department, e.student_id`
     );
 
     res.json({
@@ -1103,7 +1103,7 @@ router.get('/work-timings', requireRole('supervisor'), async (req, res) => {
 router.post('/work-timings', requireRole('admin'), async (req, res) => {
   try {
     const {
-      employeeId,
+      studentId,
       department,
       workStartTime,
       workEndTime,
@@ -1122,37 +1122,37 @@ router.post('/work-timings', requireRole('admin'), async (req, res) => {
       return res.status(400).json({ error: 'Start and end dates are required for temporary timings' });
     }
 
-    // Deactivate conflicting timings for the target employee
-    if (employeeId) {
+    // Deactivate conflicting timings for the target student
+    if (studentId) {
       if (isTemporary) {
-        // Deactivate overlapping temporary timings for this employee
+        // Deactivate overlapping temporary timings for this student
         await query(
           `UPDATE work_timings
            SET is_active = FALSE
-           WHERE employee_id = $1 AND is_temporary = TRUE AND is_active = TRUE
+           WHERE student_id = $1 AND is_temporary = TRUE AND is_active = TRUE
              AND (start_date <= $3 AND end_date >= $2)`,
-          [employeeId, startDate, endDate]
+          [studentId, startDate, endDate]
         );
       } else {
-        // Deactivate existing permanent timings for this employee
+        // Deactivate existing permanent timings for this student
         await query(
           `UPDATE work_timings
            SET is_active = FALSE
-           WHERE employee_id = $1 AND is_temporary = FALSE AND is_active = TRUE`,
-          [employeeId]
+           WHERE student_id = $1 AND is_temporary = FALSE AND is_active = TRUE`,
+          [studentId]
         );
       }
     }
 
     const result = await query(
       `INSERT INTO work_timings (
-        employee_id, department, work_start_time, work_end_time,
+        student_id, department, work_start_time, work_end_time,
         lunch_start_time, lunch_end_time, is_temporary, start_date, end_date
        )
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, employee_id, department, work_start_time, work_end_time, is_temporary, start_date, end_date`,
+       RETURNING id, student_id, department, work_start_time, work_end_time, is_temporary, start_date, end_date`,
       [
-        employeeId || null,
+        studentId || null,
         department || null,
         workStartTime,
         workEndTime,
@@ -1166,7 +1166,7 @@ router.post('/work-timings', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'work-timing.create',
       resourceType: 'work_timing',
       resourceId: String(result.rows[0].id),
@@ -1176,13 +1176,13 @@ router.post('/work-timings', requireRole('admin'), async (req, res) => {
     });
 
     // Broadcast live WebSocket update
-    if (employeeId) {
+    if (studentId) {
       try {
-        const empCodeRes = await query('SELECT employee_id FROM employees WHERE id = $1', [employeeId]);
+        const empCodeRes = await query('SELECT student_id FROM students WHERE id = $1', [studentId]);
         if (empCodeRes.rows.length > 0) {
           const io = req.app.get('io');
           if (io) {
-            io.notifyEmployee(empCodeRes.rows[0].employee_id, 'location_timing_update', { type: 'timing' });
+            io.notifyStudent(empCodeRes.rows[0].student_id, 'location_timing_update', { type: 'timing' });
           }
         }
       } catch (wsErr) {
@@ -1222,7 +1222,7 @@ router.delete('/work-timings/:id', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'work-timing.delete',
       resourceType: 'work_timing',
       resourceId: String(id),
@@ -1232,13 +1232,13 @@ router.delete('/work-timings/:id', requireRole('admin'), async (req, res) => {
     });
 
     // Broadcast live WebSocket update
-    if (deletedTiming.employee_id) {
+    if (deletedTiming.student_id) {
       try {
-        const empCodeRes = await query('SELECT employee_id FROM employees WHERE id = $1', [deletedTiming.employee_id]);
+        const empCodeRes = await query('SELECT student_id FROM students WHERE id = $1', [deletedTiming.student_id]);
         if (empCodeRes.rows.length > 0) {
           const io = req.app.get('io');
           if (io) {
-            io.notifyEmployee(empCodeRes.rows[0].employee_id, 'location_timing_update', { type: 'timing' });
+            io.notifyStudent(empCodeRes.rows[0].student_id, 'location_timing_update', { type: 'timing' });
           }
         }
       } catch (wsErr) {
@@ -1263,42 +1263,42 @@ router.delete('/work-timings/:id', requireRole('admin'), async (req, res) => {
 /**
  * GET /api/admin/hierarchy
  * Get complete organizational hierarchy (Admin only)
- * Returns: Array of supervisors with their assigned employees
+ * Returns: Array of teachers with their assigned students
  * Admin only
  */
 router.get('/hierarchy', requireRole('admin'), async (req, res) => {
   try {
-    // Fetch all supervisors with their assigned employees (checking both direct field and assignments table)
-    const supervisorHierarchy = await query(
+    // Fetch all teachers with their assigned students (checking both direct field and assignments table)
+    const teacherHierarchy = await query(
       `SELECT 
-         s.id, s.employee_id, s.first_name, s.last_name, s.email, s.department,
+         s.id, s.student_id, s.first_name, s.last_name, s.email, s.department,
          json_agg(
            json_build_object(
-             'id', e.id, 'employee_id', e.employee_id, 'first_name', e.first_name,
+             'id', e.id, 'student_id', e.student_id, 'first_name', e.first_name,
              'last_name', e.last_name, 'email', e.email, 'position', e.position,
              'department', e.department, 'is_active', e.is_active
            ) ORDER BY e.first_name, e.last_name
-         ) FILTER (WHERE e.id IS NOT NULL) AS assigned_employees,
-         COUNT(DISTINCT e.id) FILTER (WHERE e.is_active = TRUE) AS active_employee_count
-       FROM employees s
-       LEFT JOIN employees e ON ((s.id = e.supervisor_id OR EXISTS (
-         SELECT 1 FROM supervisor_assignments sa 
-         WHERE sa.supervisor_id = s.id AND sa.employee_id = e.id AND sa.is_active = TRUE
-       )) OR (s.role = 'admin' AND e.role = 'supervisor')) AND e.is_active = TRUE
-       WHERE s.role IN ('supervisor', 'admin') AND s.is_active = TRUE
-       GROUP BY s.id, s.employee_id, s.first_name, s.last_name, s.email, s.department
+         ) FILTER (WHERE e.id IS NOT NULL) AS assigned_students,
+         COUNT(DISTINCT e.id) FILTER (WHERE e.is_active = TRUE) AS active_student_count
+       FROM students s
+       LEFT JOIN students e ON ((s.id = e.teacher_id OR EXISTS (
+         SELECT 1 FROM teacher_assignments sa 
+         WHERE sa.teacher_id = s.id AND sa.student_id = e.id AND sa.is_active = TRUE
+       )) OR (s.role = 'admin' AND e.role = 'teacher')) AND e.is_active = TRUE
+       WHERE s.role IN ('teacher', 'admin') AND s.is_active = TRUE
+       GROUP BY s.id, s.student_id, s.first_name, s.last_name, s.email, s.department
        ORDER BY s.first_name, s.last_name`
     );
 
-    // Fetch unassigned employees (those without supervisors in both fields)
-    const unassignedEmployees = await query(
-      `SELECT id, employee_id, first_name, last_name, email, position, department, is_active
-       FROM employees
-       WHERE role = 'employee' 
-         AND supervisor_id IS NULL 
+    // Fetch unassigned students (those without teachers in both fields)
+    const unassignedStudents = await query(
+      `SELECT id, student_id, first_name, last_name, email, position, department, is_active
+       FROM students
+       WHERE role = 'student' 
+         AND teacher_id IS NULL 
          AND NOT EXISTS (
-           SELECT 1 FROM supervisor_assignments sa 
-           WHERE sa.employee_id = employees.id AND sa.is_active = TRUE
+           SELECT 1 FROM teacher_assignments sa 
+           WHERE sa.student_id = students.id AND sa.is_active = TRUE
          )
          AND is_active = TRUE
        ORDER BY first_name, last_name`
@@ -1307,11 +1307,11 @@ router.get('/hierarchy', requireRole('admin'), async (req, res) => {
     res.json({
       success: true,
       data: {
-        supervisors: supervisorHierarchy.rows,
-        unassignedEmployees: unassignedEmployees.rows,
-        totalSupervisors: supervisorHierarchy.rows.length,
-        totalUnassignedEmployees: unassignedEmployees.rows.length,
-        totalActiveEmployees: supervisorHierarchy.rows.reduce((sum, s) => sum + (s.active_employee_count || 0), 0)
+        teachers: teacherHierarchy.rows,
+        unassignedStudents: unassignedStudents.rows,
+        totalTeachers: teacherHierarchy.rows.length,
+        totalUnassignedStudents: unassignedStudents.rows.length,
+        totalActiveStudents: teacherHierarchy.rows.reduce((sum, s) => sum + (s.active_student_count || 0), 0)
       }
     });
   } catch (error) {
@@ -1321,40 +1321,40 @@ router.get('/hierarchy', requireRole('admin'), async (req, res) => {
 });
 
 // ============================================================================
-// SUPERVISOR TEAM MANAGEMENT (Supervisor-facing endpoints)
+// TEACHER TEAM MANAGEMENT (Teacher-facing endpoints)
 // ============================================================================
 
 /**
- * GET /api/supervisor/team
- * Get supervisor's assigned employees (Supervisor only)
- * Returns: List of employees assigned to requesting supervisor
- * Supervisor+ only
+ * GET /api/teacher/team
+ * Get teacher's assigned students (Teacher only)
+ * Returns: List of students assigned to requesting teacher
+ * Teacher+ only
  */
-router.get('/supervisor/team', requireRole('supervisor'), async (req, res) => {
+router.get('/teacher/team', requireRole('teacher'), async (req, res) => {
   try {
-    const supervisorId = req.user.id;
+    const teacherId = req.user.id;
     const userRole = req.user.role;
 
     let queryText = `
-      SELECT e.id, e.employee_id, e.first_name, e.last_name, e.email,
+      SELECT e.id, e.student_id, e.first_name, e.last_name, e.email,
               e.phone_number, e.department, e.position, e.hire_date, e.is_active, e.role,
-              (SELECT COUNT(*) FROM attendance_records 
-               WHERE employee_id = e.id AND check_in_time::DATE = CURRENT_DATE) AS checked_in_today,
+              (SELECT COUNT(*) FROM student_attendance 
+               WHERE student_id = e.id AND check_in_time::DATE = CURRENT_DATE) AS checked_in_today,
               (SELECT status FROM leave_requests 
-               WHERE employee_id = e.id AND status = 'pending' LIMIT 1) AS pending_leave_status
-       FROM employees e
-       WHERE (e.supervisor_id = $1 OR EXISTS (
-         SELECT 1 FROM supervisor_assignments sa 
-         WHERE sa.supervisor_id = $1 AND sa.employee_id = e.id AND sa.is_active = TRUE
+               WHERE student_id = e.id AND status = 'pending' LIMIT 1) AS pending_leave_status
+       FROM students e
+       WHERE (e.teacher_id = $1 OR EXISTS (
+         SELECT 1 FROM teacher_assignments sa 
+         WHERE sa.teacher_id = $1 AND sa.student_id = e.id AND sa.is_active = TRUE
        )) AND e.is_active = TRUE
     `;
 
-    const params = [supervisorId];
+    const params = [teacherId];
 
     if (userRole === 'admin') {
-      queryText += ` AND e.role = 'supervisor'`;
-    } else if (userRole === 'supervisor') {
-      queryText += ` AND e.role = 'employee'`;
+      queryText += ` AND e.role = 'teacher'`;
+    } else if (userRole === 'teacher') {
+      queryText += ` AND e.role = 'student'`;
     }
 
     queryText += ` ORDER BY e.first_name, e.last_name`;
@@ -1367,34 +1367,34 @@ router.get('/supervisor/team', requireRole('supervisor'), async (req, res) => {
       count: result.rows.length
     });
   } catch (error) {
-    logger.error('Supervisor team fetch error', { error: error.message, userId: req.user?.id });
+    logger.error('Teacher team fetch error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch team members' });
   }
 });
 
 /**
- * GET /api/supervisor/team/:employeeId/attendance
- * Get attendance history for one of supervisor's employees
- * Supervisor+ only
+ * GET /api/teacher/team/:studentId/attendance
+ * Get attendance history for one of teacher's students
+ * Teacher+ only
  */
-router.get('/supervisor/team/:employeeId/attendance', requireRole('supervisor'), async (req, res) => {
+router.get('/teacher/team/:studentId/attendance', requireRole('teacher'), async (req, res) => {
   try {
-    const supervisorId = req.user.id;
-    const { employeeId } = req.params;
+    const teacherId = req.user.id;
+    const { studentId } = req.params;
     const { startDate, endDate, limit = 30, offset = 0 } = req.query;
 
-    // Verify employee belongs to supervisor
+    // Verify student belongs to teacher
     const empCheck = await query(
-      'SELECT id FROM employees WHERE id = $1 AND supervisor_id = $2',
-      [employeeId, supervisorId]
+      'SELECT id FROM students WHERE id = $1 AND teacher_id = $2',
+      [studentId, teacherId]
     );
 
     if (empCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Access denied. Employee not in your team.' });
+      return res.status(403).json({ error: 'Access denied. Student not in your team.' });
     }
 
     let dateFilter = '';
-    const params = [employeeId];
+    const params = [studentId];
     let paramCount = 1;
 
     if (startDate && endDate) {
@@ -1412,8 +1412,8 @@ router.get('/supervisor/team/:employeeId/attendance', requireRole('supervisor'),
     const result = await query(
       `SELECT id, check_in_time, check_out_time, work_hours, location,
               geo_fence_status, distance_from_office
-       FROM attendance_records
-       WHERE employee_id = $1 ${dateFilter}
+       FROM student_attendance
+       WHERE student_id = $1 ${dateFilter}
        ORDER BY check_in_time DESC
        LIMIT $${limitParam} OFFSET $${offsetParam}`,
       params
@@ -1433,33 +1433,33 @@ router.get('/supervisor/team/:employeeId/attendance', requireRole('supervisor'),
       offset
     });
   } catch (error) {
-    logger.error('Supervisor employee attendance fetch error', { error: error.message, userId: req.user?.id });
+    logger.error('Teacher student attendance fetch error', { error: error.message, userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch attendance' });
   }
 });
 
 /**
- * POST /api/admin/employees/:employeeId/mfa/reset
- * Reset/disable MFA for a specific employee
+ * POST /api/admin/students/:studentId/mfa/reset
+ * Reset/disable MFA for a specific student
  * Admin only
  */
-router.post('/employees/:employeeId/mfa/reset', requireRole('admin'), async (req, res) => {
+router.post('/students/:studentId/mfa/reset', requireRole('admin'), async (req, res) => {
   try {
-    const { employeeId } = req.params;
+    const { studentId } = req.params;
 
     const empResult = await query(
-      'SELECT id, employee_id, first_name, last_name FROM employees WHERE id = $1 OR employee_id = $2',
-      [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
+      'SELECT id, student_id, first_name, last_name FROM students WHERE id = $1 OR student_id = $2',
+      [isNaN(studentId) ? null : parseInt(studentId, 10), studentId]
     );
 
     if (empResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return res.status(404).json({ error: 'Student not found' });
     }
 
     const emp = empResult.rows[0];
 
     await query(
-      `UPDATE employees 
+      `UPDATE students 
        SET mfa_secret = NULL, 
            mfa_enabled = false, 
            mfa_pending_secret = NULL,
@@ -1471,13 +1471,13 @@ router.post('/employees/:employeeId/mfa/reset', requireRole('admin'), async (req
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'employee.mfa.reset',
-      resourceType: 'employee_mfa',
+      actorStudentId: req.user.studentId,
+      action: 'student.mfa.reset',
+      resourceType: 'student_mfa',
       resourceId: String(emp.id),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { resetEmployeeId: emp.employee_id }
+      details: { resetStudentId: emp.student_id }
     });
 
     res.json({
@@ -1485,21 +1485,21 @@ router.post('/employees/:employeeId/mfa/reset', requireRole('admin'), async (req
       message: `MFA reset successfully for ${emp.first_name} ${emp.last_name}`
     });
   } catch (error) {
-    logger.error('Employee MFA reset error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to reset employee MFA' });
+    logger.error('Student MFA reset error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to reset student MFA' });
   }
 });
 
 /**
- * POST /api/admin/employees/:employeeId/reset-password
- * Reset employee or supervisor password (accessible to Admin and Supervisor)
+ * POST /api/admin/students/:studentId/reset-password
+ * Reset student or teacher password (accessible to Admin and Teacher)
  * Hierarchy checks:
  *   - Admin: can reset anyone's password
- *   - Supervisor: can ONLY reset passwords of employees assigned to them
+ *   - Teacher: can ONLY reset passwords of students assigned to them
  */
-router.post('/employees/:employeeId/reset-password', requireRole('supervisor'), async (req, res) => {
+router.post('/students/:studentId/reset-password', requireRole('teacher'), async (req, res) => {
   try {
-    const { employeeId } = req.params;
+    const { studentId } = req.params;
     const { newPassword } = req.body;
     const actorId = req.user.id;
     const actorRole = req.user.role;
@@ -1509,28 +1509,28 @@ router.post('/employees/:employeeId/reset-password', requireRole('supervisor'), 
     }
 
     const empResult = await query(
-      'SELECT id, employee_id, role, supervisor_id FROM employees WHERE id = $1 OR employee_id = $2',
-      [isNaN(employeeId) ? null : parseInt(employeeId, 10), employeeId]
+      'SELECT id, student_id, role, teacher_id FROM students WHERE id = $1 OR student_id = $2',
+      [isNaN(studentId) ? null : parseInt(studentId, 10), studentId]
     );
 
     if (empResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return res.status(404).json({ error: 'Student not found' });
     }
 
-    const targetEmployee = empResult.rows[0];
+    const targetStudent = empResult.rows[0];
 
     // Check hierarchy permissions
     let isAuthorized = false;
     if (actorRole === 'admin') {
       isAuthorized = true;
-    } else if (actorRole === 'supervisor') {
-      // Supervisor can ONLY reset password of employees (not admin or supervisor)
-      if (targetEmployee.role === 'employee') {
-        // Must supervise this employee
-        const isSupervised = targetEmployee.supervisor_id === actorId || await query(
-          `SELECT id FROM supervisor_assignments
-           WHERE supervisor_id = $1 AND employee_id = $2 AND is_active = TRUE`,
-          [actorId, targetEmployee.id]
+    } else if (actorRole === 'teacher') {
+      // Teacher can ONLY reset password of students (not admin or teacher)
+      if (targetStudent.role === 'student') {
+        // Must supervise this student
+        const isSupervised = targetStudent.teacher_id === actorId || await query(
+          `SELECT id FROM teacher_assignments
+           WHERE teacher_id = $1 AND student_id = $2 AND is_active = TRUE`,
+          [actorId, targetStudent.id]
         ).then(r => r.rows.length > 0);
         
         if (isSupervised) {
@@ -1545,23 +1545,23 @@ router.post('/employees/:employeeId/reset-password', requireRole('supervisor'), 
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await query(
-      `UPDATE employees 
+      `UPDATE students 
        SET password_hash = $1, 
            password_changed_at = NOW(),
            updated_at = NOW() 
        WHERE id = $2`,
-      [hashedPassword, targetEmployee.id]
+      [hashedPassword, targetStudent.id]
     );
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'employee.password_reset',
-      resourceType: 'employee_password',
-      resourceId: String(targetEmployee.id),
+      actorStudentId: req.user.studentId,
+      action: 'student.password_reset',
+      resourceType: 'student_password',
+      resourceId: String(targetStudent.id),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { resetEmployeeId: targetEmployee.employee_id }
+      details: { resetStudentId: targetStudent.student_id }
     });
 
     res.json({
@@ -1569,27 +1569,27 @@ router.post('/employees/:employeeId/reset-password', requireRole('supervisor'), 
       message: 'Password reset successfully'
     });
   } catch (error) {
-    logger.error('Employee password reset error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to reset employee password' });
+    logger.error('Student password reset error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to reset student password' });
   }
 });
 
 /**
- * POST /api/admin/supervisor/create-employee
- * Create employee under the supervisor's supervision
- * Supervisor/Admin only
+ * POST /api/admin/teacher/create-student
+ * Create student under the teacher's supervision
+ * Teacher/Admin only
  */
-router.post('/supervisor/create-employee', requireRole('supervisor'), async (req, res) => {
+router.post('/teacher/create-student', requireRole('teacher'), async (req, res) => {
   try {
     const {
-      employeeId, firstName, lastName, email, phoneNumber,
+      studentId, firstName, lastName, email, phoneNumber,
       department, position, hireDate, password
     } = req.body;
 
-    const supervisorId = req.user.id; // Requesting supervisor's employee primary ID
+    const teacherId = req.user.id; // Requesting teacher's student primary ID
 
     // Validation
-    if (!employeeId || !firstName || !lastName || !email || !department || !position || !hireDate) {
+    if (!studentId || !firstName || !lastName || !email || !department || !position || !hireDate) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -1597,14 +1597,14 @@ router.post('/supervisor/create-employee', requireRole('supervisor'), async (req
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    // Check if employee_id or email already exists
+    // Check if student_id or email already exists
     const existsResult = await query(
-      'SELECT id FROM employees WHERE employee_id = $1 OR email = $2',
-      [employeeId, email]
+      'SELECT id FROM students WHERE student_id = $1 OR email = $2',
+      [studentId, email]
     );
 
     if (existsResult.rows.length > 0) {
-      return res.status(409).json({ error: 'Employee ID or email already exists' });
+      return res.status(409).json({ error: 'Student ID or email already exists' });
     }
 
     // Hash password
@@ -1614,65 +1614,65 @@ router.post('/supervisor/create-employee', requireRole('supervisor'), async (req
 
     await query('BEGIN');
 
-    // Insert employee (force supervisor_id to requesting supervisor's ID)
+    // Insert student (force teacher_id to requesting teacher's ID)
     const result = await query(
-      `INSERT INTO employees (
-        employee_id, first_name, last_name, email, phone_number,
-        department, position, role, supervisor_id, hire_date,
+      `INSERT INTO students (
+        student_id, first_name, last_name, email, phone_number,
+        department, position, role, teacher_id, hire_date,
         password_hash, is_active, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'employee', $8, $9, $10, TRUE, NOW(), NOW())
-      RETURNING id, employee_id, first_name, last_name, email, role, supervisor_id`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'student', $8, $9, $10, TRUE, NOW(), NOW())
+      RETURNING id, student_id, first_name, last_name, email, role, teacher_id`,
       [
-        employeeId, firstName, lastName, email, phoneNumber || null,
-        department, position, supervisorId, hireDate, passwordHash
+        studentId, firstName, lastName, email, phoneNumber || null,
+        department, position, teacherId, hireDate, passwordHash
       ]
     );
 
-    const newEmployee = result.rows[0];
+    const newStudent = result.rows[0];
 
-    // Create entry in supervisor_assignments
+    // Create entry in teacher_assignments
     await query(
-      `INSERT INTO supervisor_assignments (supervisor_id, employee_id, department, assigned_by, is_active)
+      `INSERT INTO teacher_assignments (teacher_id, student_id, department, assigned_by, is_active)
        VALUES ($1, $2, $3, $4, TRUE)
-       ON CONFLICT (supervisor_id, employee_id) DO UPDATE SET is_active = TRUE`,
-      [supervisorId, newEmployee.id, department, supervisorId]
+       ON CONFLICT (teacher_id, student_id) DO UPDATE SET is_active = TRUE`,
+      [teacherId, newStudent.id, department, teacherId]
     );
 
     await query('COMMIT');
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'supervisor.employee.create',
-      resourceType: 'employee',
-      resourceId: String(newEmployee.id),
+      actorStudentId: req.user.studentId,
+      action: 'teacher.student.create',
+      resourceType: 'student',
+      resourceId: String(newStudent.id),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { employeeId: newEmployee.employee_id, supervisorId: req.user.employeeId }
+      details: { studentId: newStudent.student_id, teacherId: req.user.studentId }
     });
 
     res.status(201).json({
       success: true,
-      data: newEmployee,
-      message: 'Employee created and assigned to supervisor successfully'
+      data: newStudent,
+      message: 'Student created and assigned to teacher successfully'
     });
   } catch (error) {
     await query('ROLLBACK').catch(() => {});
-    logger.error('Supervisor employee create error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to create employee' });
+    logger.error('Teacher student create error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to create student' });
   }
 });
 
 // ============================================================================
-// SUPERVISOR MANAGEMENT (CRUD - Dedicated Supervisor Operations)
+// TEACHER MANAGEMENT (CRUD - Dedicated Teacher Operations)
 // ============================================================================
 
 /**
- * GET /api/admin/supervisors
- * List all supervisors with optional filtering and pagination
+ * GET /api/admin/teachers
+ * List all teachers with optional filtering and pagination
  * Admin only
  */
-router.get('/supervisors', requireRole('admin'), async (req, res) => {
+router.get('/teachers', requireRole('admin'), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, parseInt(req.query.limit, 10) || 50);
@@ -1680,7 +1680,7 @@ router.get('/supervisors', requireRole('admin'), async (req, res) => {
     const department = req.query.department ? req.query.department.toString() : null;
     const isActive = req.query.isActive !== undefined ? req.query.isActive === 'true' : null;
 
-    let filterQuery = 'WHERE role = \'supervisor\' AND is_active = TRUE';
+    let filterQuery = 'WHERE role = \'teacher\' AND is_active = TRUE';
     const params = [];
     let paramCount = 0;
 
@@ -1697,17 +1697,17 @@ router.get('/supervisors', requireRole('admin'), async (req, res) => {
     }
 
     const countResult = await query(
-      `SELECT COUNT(*) FROM employees ${filterQuery}`,
+      `SELECT COUNT(*) FROM students ${filterQuery}`,
       params
     );
 
     const result = await query(
       `SELECT 
-        id, employee_id, first_name, last_name, email, phone_number,
+        id, student_id, first_name, last_name, email, phone_number,
         department, position, role, hire_date, is_active,
-        (SELECT COUNT(*) FROM employees WHERE supervisor_id = employees.id AND is_active = TRUE) AS managed_employee_count,
+        (SELECT COUNT(*) FROM students WHERE teacher_id = students.id AND is_active = TRUE) AS managed_student_count,
         created_at, updated_at
-       FROM employees
+       FROM students
        ${filterQuery}
        ORDER BY first_name, last_name
        LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
@@ -1725,25 +1725,25 @@ router.get('/supervisors', requireRole('admin'), async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Supervisor list error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to fetch supervisors' });
+    logger.error('Teacher list error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to fetch teachers' });
   }
 });
 
 /**
- * POST /api/admin/supervisors
- * Create new supervisor
+ * POST /api/admin/teachers
+ * Create new teacher
  * Admin only
  */
-router.post('/supervisors', requireRole('admin'), async (req, res) => {
+router.post('/teachers', requireRole('admin'), async (req, res) => {
   try {
     const {
-      employeeId, firstName, lastName, email, phoneNumber,
+      studentId, firstName, lastName, email, phoneNumber,
       department, position, hireDate, password
     } = req.body;
 
     // Validation
-    if (!employeeId || !firstName || !lastName || !email || !department || !position || !hireDate) {
+    if (!studentId || !firstName || !lastName || !email || !department || !position || !hireDate) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -1751,14 +1751,14 @@ router.post('/supervisors', requireRole('admin'), async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    // Check if employee_id or email already exists
+    // Check if student_id or email already exists
     const existsResult = await query(
-      'SELECT id FROM employees WHERE employee_id = $1 OR email = $2',
-      [employeeId, email]
+      'SELECT id FROM students WHERE student_id = $1 OR email = $2',
+      [studentId, email]
     );
 
     if (existsResult.rows.length > 0) {
-      return res.status(409).json({ error: 'Employee ID or email already exists' });
+      return res.status(409).json({ error: 'Student ID or email already exists' });
     }
 
     // Hash password
@@ -1766,65 +1766,65 @@ router.post('/supervisors', requireRole('admin'), async (req, res) => {
       ? await bcrypt.hash(password, 10)
       : await bcrypt.hash(uuidv4().slice(0, 16), 10); // Generate random if not provided
 
-    // Insert supervisor (automatically report to admin)
+    // Insert teacher (automatically report to admin)
     const result = await query(
-      `INSERT INTO employees (
-        employee_id, first_name, last_name, email, phone_number,
-        department, position, role, supervisor_id, hire_date,
+      `INSERT INTO students (
+        student_id, first_name, last_name, email, phone_number,
+        department, position, role, teacher_id, hire_date,
         password_hash, is_active, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'supervisor', (SELECT id FROM employees WHERE role = 'admin' LIMIT 1), $8, $9, TRUE, NOW(), NOW())
-      RETURNING id, employee_id, first_name, last_name, email, department, role`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'teacher', (SELECT id FROM students WHERE role = 'admin' LIMIT 1), $8, $9, TRUE, NOW(), NOW())
+      RETURNING id, student_id, first_name, last_name, email, department, role`,
       [
-        employeeId, firstName, lastName, email, phoneNumber || null,
+        studentId, firstName, lastName, email, phoneNumber || null,
         department, position, hireDate, passwordHash
       ]
     );
 
-    const newSupervisor = result.rows[0];
+    const newTeacher = result.rows[0];
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'supervisor.create',
-      resourceType: 'supervisor',
-      resourceId: String(newSupervisor.id),
+      actorStudentId: req.user.studentId,
+      action: 'teacher.create',
+      resourceType: 'teacher',
+      resourceId: String(newTeacher.id),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { supervisorId: newSupervisor.employee_id, department }
+      details: { teacherId: newTeacher.student_id, department }
     });
 
     res.status(201).json({
       success: true,
-      data: newSupervisor,
-      message: 'Supervisor created successfully'
+      data: newTeacher,
+      message: 'Teacher created successfully'
     });
   } catch (error) {
-    logger.error('Supervisor create error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to create supervisor' });
+    logger.error('Teacher create error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to create teacher' });
   }
 });
 
 /**
- * PUT /api/admin/supervisors/:supervisorId
- * Update supervisor details
+ * PUT /api/admin/teachers/:teacherId
+ * Update teacher details
  * Admin only
  */
-router.put('/supervisors/:supervisorId', requireRole('admin'), async (req, res) => {
+router.put('/teachers/:teacherId', requireRole('admin'), async (req, res) => {
   try {
-    const { supervisorId } = req.params;
+    const { teacherId } = req.params;
     const {
       firstName, lastName, email, phoneNumber,
       department, position, isActive
     } = req.body;
 
-    // Fetch existing supervisor
+    // Fetch existing teacher
     const supResult = await query(
-      'SELECT id, role FROM employees WHERE (id = $1 OR employee_id = $2) AND role = \'supervisor\'',
-      [isNaN(supervisorId) ? null : parseInt(supervisorId, 10), supervisorId]
+      'SELECT id, role FROM students WHERE (id = $1 OR student_id = $2) AND role = \'teacher\'',
+      [isNaN(teacherId) ? null : parseInt(teacherId, 10), teacherId]
     );
 
     if (supResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Supervisor not found' });
+      return res.status(404).json({ error: 'Teacher not found' });
     }
 
     const supId = supResult.rows[0].id;
@@ -1880,17 +1880,17 @@ router.put('/supervisors/:supervisorId', requireRole('admin'), async (req, res) 
     }
 
     const updateResult = await query(
-      `UPDATE employees SET ${updates.join(', ')} WHERE id = $1 RETURNING id, employee_id, first_name, last_name, department, role`,
+      `UPDATE students SET ${updates.join(', ')} WHERE id = $1 RETURNING id, student_id, first_name, last_name, department, role`,
       values
     );
 
-    const updatedSupervisor = updateResult.rows[0];
+    const updatedTeacher = updateResult.rows[0];
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'supervisor.update',
-      resourceType: 'supervisor',
+      actorStudentId: req.user.studentId,
+      action: 'teacher.update',
+      resourceType: 'teacher',
       resourceId: String(supId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
@@ -1899,60 +1899,60 @@ router.put('/supervisors/:supervisorId', requireRole('admin'), async (req, res) 
 
     res.json({
       success: true,
-      data: updatedSupervisor,
-      message: 'Supervisor updated successfully'
+      data: updatedTeacher,
+      message: 'Teacher updated successfully'
     });
   } catch (error) {
-    logger.error('Supervisor update error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to update supervisor' });
+    logger.error('Teacher update error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to update teacher' });
   }
 });
 
 /**
- * DELETE /api/admin/supervisors/:supervisorId
- * Soft-delete supervisor (set is_active = false)
+ * DELETE /api/admin/teachers/:teacherId
+ * Soft-delete teacher (set is_active = false)
  * Admin only
  */
-router.delete('/supervisors/:supervisorId', requireRole('admin'), async (req, res) => {
+router.delete('/teachers/:teacherId', requireRole('admin'), async (req, res) => {
   try {
-    const { supervisorId } = req.params;
+    const { teacherId } = req.params;
 
     const supResult = await query(
-      'SELECT id, employee_id, role FROM employees WHERE (id = $1 OR employee_id = $2) AND role = \'supervisor\'',
-      [isNaN(supervisorId) ? null : parseInt(supervisorId, 10), supervisorId]
+      'SELECT id, student_id, role FROM students WHERE (id = $1 OR student_id = $2) AND role = \'teacher\'',
+      [isNaN(teacherId) ? null : parseInt(teacherId, 10), teacherId]
     );
 
     if (supResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Supervisor not found' });
+      return res.status(404).json({ error: 'Teacher not found' });
     }
 
     const supId = supResult.rows[0].id;
-    const supIdStr = supResult.rows[0].employee_id;
+    const supIdStr = supResult.rows[0].student_id;
 
-    // Soft delete supervisor
+    // Soft delete teacher
     await query(
-      'UPDATE employees SET is_active = FALSE, updated_at = NOW() WHERE id = $1',
+      'UPDATE students SET is_active = FALSE, updated_at = NOW() WHERE id = $1',
       [supId]
     );
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
-      action: 'supervisor.deactivate',
-      resourceType: 'supervisor',
+      actorStudentId: req.user.studentId,
+      action: 'teacher.deactivate',
+      resourceType: 'teacher',
       resourceId: String(supId),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      details: { deactivatedSupervisorId: supIdStr }
+      details: { deactivatedTeacherId: supIdStr }
     });
 
     res.json({
       success: true,
-      message: 'Supervisor deactivated successfully'
+      message: 'Teacher deactivated successfully'
     });
   } catch (error) {
-    logger.error('Supervisor delete error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to delete supervisor' });
+    logger.error('Teacher delete error', { error: error.message, userId: req.user?.id });
+    res.status(500).json({ error: 'Failed to delete teacher' });
   }
 });
 
@@ -2022,7 +2022,7 @@ router.post('/teams', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'team.create',
       resourceType: 'team',
       resourceId: String(newTeam.id),
@@ -2102,7 +2102,7 @@ router.put('/teams/:teamId', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'team.update',
       resourceType: 'team',
       resourceId: String(teamId),
@@ -2150,7 +2150,7 @@ router.delete('/teams/:teamId', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'team.deactivate',
       resourceType: 'team',
       resourceId: String(teamId),
@@ -2173,7 +2173,7 @@ router.delete('/teams/:teamId', requireRole('admin'), async (req, res) => {
  * GET /api/admin/contact-info
  * WEBSITECHK_ADMIN_CONTACT — Public endpoint (no auth required).
  * Returns admin contact details from database for Login page "Contact Administrator" links.
- * Falls back to employees table if admin_configuration row doesn't exist yet.
+ * Falls back to students table if admin_configuration row doesn't exist yet.
  */
 router.get('/contact-info', async (req, res) => {
   try {
@@ -2184,22 +2184,22 @@ router.get('/contact-info', async (req, res) => {
         `SELECT ac.admin_name as name, ac.admin_email as email,
                 ac.admin_phone as phone, ac.admin_designation as designation
          FROM admin_configuration ac
-         JOIN employees e ON ac.admin_employee_id = e.id
+         JOIN students e ON ac.admin_student_id = e.id
          WHERE e.is_active = TRUE
          ORDER BY ac.updated_at DESC
          LIMIT 1`
       );
     } catch (tableErr) {
       // admin_configuration table may not exist yet (pre-bootstrap)
-      logger.debug('admin_configuration table not found, falling back to employees table');
+      logger.debug('admin_configuration table not found, falling back to students table');
     }
 
-    // Fallback: pull from employees table directly
+    // Fallback: pull from students table directly
     if (!result || result.rows.length === 0) {
       result = await query(
         `SELECT CONCAT(first_name, ' ', last_name) as name, email,
                 phone_number as phone, position as designation
-         FROM employees
+         FROM students
          WHERE role = 'admin' AND is_active = TRUE
          LIMIT 1`
       );
@@ -2260,7 +2260,7 @@ router.post('/reset/initiate', requireRole('admin'), async (req, res) => {
 
     // Step 1: Verify password
     const adminResult = await query(
-      "SELECT id, password_hash, employee_id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, password_hash, student_id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminResult.rows.length === 0) {
       return res.status(404).json({ error: 'System administrator account not found.' });
@@ -2290,7 +2290,7 @@ router.post('/reset/initiate', requireRole('admin'), async (req, res) => {
         embeddingResult = await faceQuery(
           `SELECT embedding_vector
            FROM face_embeddings
-           WHERE employee_id = $1 AND is_active = TRUE
+           WHERE student_id = $1 AND is_active = TRUE
            ORDER BY created_at DESC
            LIMIT 1`,
           [admin.id]
@@ -2316,8 +2316,8 @@ router.post('/reset/initiate', requireRole('admin'), async (req, res) => {
           `${faceAIServiceUrl}/api/face-login`,
           {
             frames,
-            employeeId: admin.employee_id,
-            employee_id: admin.employee_id,
+            studentId: admin.student_id,
+            student_id: admin.student_id,
             stored_embedding: storedEmbeddingVector,
           },
           { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
@@ -2341,7 +2341,7 @@ router.post('/reset/initiate', requireRole('admin'), async (req, res) => {
 
     // Step 3: Verify recovery email OTP (Initiation: send OTP)
     const configResult = await query(
-      "SELECT recovery_email FROM admin_configuration WHERE admin_employee_id = $1",
+      "SELECT recovery_email FROM admin_configuration WHERE admin_student_id = $1",
       [admin.id]
     );
     const recoveryEmail = configResult.rows[0]?.recovery_email;
@@ -2380,7 +2380,7 @@ router.post('/reset/verify-otp', requireRole('admin'), async (req, res) => {
     }
 
     const adminResult = await query(
-      "SELECT id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     const admin = adminResult.rows[0];
 
@@ -2411,17 +2411,17 @@ router.post('/reset/verify-otp', requireRole('admin'), async (req, res) => {
 router.post('/reset/replace', requireRole('admin'), async (req, res) => {
   try {
     const {
-      adminName, adminEmployeeId, adminEmail, adminPhone,
+      adminName, adminStudentId, adminEmail, adminPhone,
       adminAddress, adminDesignation, password, frames,
       recoveryEmail, recoveryPhone,
     } = req.body;
 
-    if (!adminEmployeeId || !adminName || !adminEmail || !password || !Array.isArray(frames) || frames.length === 0) {
+    if (!adminStudentId || !adminName || !adminEmail || !password || !Array.isArray(frames) || frames.length === 0) {
       return res.status(400).json({ error: 'Missing required admin replacement fields' });
     }
 
     const oldAdminResult = await query(
-      "SELECT id, employee_id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, student_id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     const oldAdmin = oldAdminResult.rows[0];
 
@@ -2439,14 +2439,14 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
       });
     }
 
-    // Check if new adminEmployeeId is already occupied
-    if (adminEmployeeId !== oldAdmin.employee_id) {
+    // Check if new adminStudentId is already occupied
+    if (adminStudentId !== oldAdmin.student_id) {
       const exists = await query(
-        "SELECT id FROM employees WHERE employee_id = $1 AND role <> 'admin'",
-        [adminEmployeeId]
+        "SELECT id FROM students WHERE student_id = $1 AND role <> 'admin'",
+        [adminStudentId]
       );
       if (exists.rows.length > 0) {
-        return res.status(400).json({ error: 'The requested Employee ID is already in use by another user.' });
+        return res.status(400).json({ error: 'The requested Student ID is already in use by another user.' });
       }
     }
 
@@ -2459,7 +2459,7 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
     try {
       const aiResponse = await axios.post(
         `${faceAIServiceUrl}/api/register-face`,
-        { frames, employeeId: adminEmployeeId, employee_id: adminEmployeeId },
+        { frames, studentId: adminStudentId, student_id: adminStudentId },
         { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
       );
       if (aiResponse.data.success || aiResponse.data.registered) {
@@ -2494,10 +2494,10 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
       await query('BEGIN');
       mainTxBegun = true;
 
-      // Update employees table details for administrator
+      // Update students table details for administrator
       await query(
-        `UPDATE employees
-         SET employee_id = $1,
+        `UPDATE students
+         SET student_id = $1,
              first_name = $2,
              last_name = $3,
              email = $4,
@@ -2511,19 +2511,19 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
              locked_until = NULL,
              updated_at = NOW()
          WHERE id = $8`,
-        [adminEmployeeId, firstName, lastName, adminEmail, adminPhone || null, adminDesignation || null, hashedPassword, oldAdmin.id]
+        [adminStudentId, firstName, lastName, adminEmail, adminPhone || null, adminDesignation || null, hashedPassword, oldAdmin.id]
       );
 
       // Deactivate old face embeddings
       await faceQuery(
-        'UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1',
+        'UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1',
         [oldAdmin.id]
       );
 
       // Insert new face embedding
       await faceQuery(
         `INSERT INTO face_embeddings (
-           employee_id, embedding_vector, embedding_version, confidence_score, enrolled_by
+           student_id, embedding_vector, embedding_version, confidence_score, enrolled_by
          ) VALUES ($1, $2, $3, $4, $5)`,
         [oldAdmin.id, embeddingVector, modelVersion, confidenceScore, oldAdmin.id]
       );
@@ -2573,7 +2573,7 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
              recovery_email = $6,
              recovery_phone = $7,
              updated_at = NOW()
-         WHERE admin_employee_id = $8`,
+         WHERE admin_student_id = $8`,
         [adminName, adminEmail, adminPhone || null, adminAddress || null, adminDesignation || null, recoveryEmail || null, recoveryPhone || null, oldAdmin.id]
       );
 
@@ -2589,15 +2589,15 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
 
     // Step 7: Create immutable audit log
     await logAuditEvent({
-      actorEmployeeId: adminEmployeeId,
+      actorStudentId: adminStudentId,
       action: 'admin.reset.replace',
       resourceType: 'admin_configuration',
       resourceId: String(oldAdmin.id),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
       details: {
-        previousAdminId: oldAdmin.employee_id,
-        newAdminId: adminEmployeeId,
+        previousAdminId: oldAdmin.student_id,
+        newAdminId: adminStudentId,
         newAdminName: adminName,
         newAdminEmail: adminEmail,
       },
@@ -2624,7 +2624,7 @@ router.post('/reset/replace', requireRole('admin'), async (req, res) => {
 router.get('/configuration', requireRole('admin'), async (req, res) => {
   try {
     const adminResult = await query(
-      "SELECT id, employee_id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, student_id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminResult.rows.length === 0) {
       return res.status(404).json({ error: 'System administrator account not found.' });
@@ -2634,7 +2634,7 @@ router.get('/configuration', requireRole('admin'), async (req, res) => {
     const configResult = await query(
       `SELECT admin_name, admin_email, admin_phone, admin_address, admin_designation, recovery_email, recovery_phone
        FROM admin_configuration
-       WHERE admin_employee_id = $1`,
+       WHERE admin_student_id = $1`,
       [admin.id]
     );
 
@@ -2644,7 +2644,7 @@ router.get('/configuration', requireRole('admin'), async (req, res) => {
       success: true,
       data: {
         adminName: config.admin_name || '',
-        adminEmployeeId: admin.employee_id || '',
+        adminStudentId: admin.student_id || '',
         adminEmail: config.admin_email || '',
         adminPhone: config.admin_phone || '',
         adminAddress: config.admin_address || '',
@@ -2672,7 +2672,7 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
     } = req.body;
 
     const adminResult = await query(
-      "SELECT id, employee_id FROM employees WHERE employee_id = 'admin' AND is_active = TRUE LIMIT 1"
+      "SELECT id, student_id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
     );
     if (adminResult.rows.length === 0) {
       return res.status(404).json({ error: 'System administrator account not found.' });
@@ -2691,7 +2691,7 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
     await query('BEGIN');
 
     const exists = await query(
-      "SELECT 1 FROM admin_configuration WHERE admin_employee_id = $1",
+      "SELECT 1 FROM admin_configuration WHERE admin_student_id = $1",
       [admin.id]
     );
 
@@ -2706,7 +2706,7 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
              recovery_email = $6,
              recovery_phone = $7,
              updated_at = NOW()
-         WHERE admin_employee_id = $8`,
+         WHERE admin_student_id = $8`,
         [
           adminName || null,
           adminEmail || null,
@@ -2721,7 +2721,7 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
     } else {
       await query(
         `INSERT INTO admin_configuration (
-           admin_employee_id, admin_name, admin_email, admin_phone, admin_address,
+           admin_student_id, admin_name, admin_email, admin_phone, admin_address,
            admin_designation, recovery_email, recovery_phone
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
@@ -2737,7 +2737,7 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
       );
     }
 
-    // Propagate to legacy employees table fields
+    // Propagate to legacy students table fields
     if (adminName || adminEmail || adminPhone || adminDesignation) {
       const firstName = adminName ? splitName(adminName)[0] : undefined;
       const lastName = adminName ? splitName(adminName)[1] : undefined;
@@ -2776,7 +2776,7 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
 
       if (updates.length > 1) {
         await query(
-          `UPDATE employees SET ${updates.join(', ')} WHERE id = $1`,
+          `UPDATE students SET ${updates.join(', ')} WHERE id = $1`,
           values
         );
       }
@@ -2786,7 +2786,7 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'admin.configuration.update',
       resourceType: 'admin_configuration',
       resourceId: String(admin.id),
@@ -2812,9 +2812,9 @@ router.post('/configuration', requireRole('admin'), async (req, res) => {
 router.get('/location-timing-requests', requireRole('admin'), async (req, res) => {
   try {
     const result = await query(
-      `SELECT r.*, e.first_name, e.last_name, e.employee_id AS employee_id_code, e.department, e.role 
+      `SELECT r.*, e.first_name, e.last_name, e.student_id AS student_id_code, e.department, e.role 
        FROM location_timing_requests r
-       JOIN employees e ON r.employee_id = e.id
+       JOIN students e ON r.student_id = e.id
        ORDER BY r.created_at DESC`
     );
     res.json({ success: true, data: result.rows });
@@ -2847,17 +2847,17 @@ router.put('/location-timing-requests/:requestId', requireRole('admin'), async (
 
     const updatedRequest = result.rows[0];
 
-    // Fetch employee details to attach to socket notification
+    // Fetch student details to attach to socket notification
     const empResult = await query(
-      'SELECT first_name, last_name, employee_id, department, role FROM employees WHERE id = $1',
-      [updatedRequest.employee_id]
+      'SELECT first_name, last_name, student_id, department, role FROM students WHERE id = $1',
+      [updatedRequest.student_id]
     );
     let payload = { ...updatedRequest };
     if (empResult.rows.length > 0) {
       const emp = empResult.rows[0];
       payload.first_name = emp.first_name;
       payload.last_name = emp.last_name;
-      payload.employee_id_code = emp.employee_id;
+      payload.student_id_code = emp.student_id;
       payload.department = emp.department;
       payload.role = emp.role;
     }
@@ -2868,10 +2868,10 @@ router.put('/location-timing-requests/:requestId', requireRole('admin'), async (
       if (io) {
         // Emit to admin room
         io.to('admin').emit('location_timing_request_updated', payload);
-        // Emit to supervisors room
-        io.to('supervisors').emit('location_timing_request_updated', payload);
-        // Also notify the specific employee
-        io.notifyEmployee(payload.employee_id_code, 'location_timing_request_updated', payload);
+        // Emit to teachers room
+        io.to('teachers').emit('location_timing_request_updated', payload);
+        // Also notify the specific student
+        io.notifyStudent(payload.student_id_code, 'location_timing_request_updated', payload);
       }
     } catch (wsErr) {
       logger.warn('Failed to broadcast location timing request status update WS alert', { error: wsErr.message });

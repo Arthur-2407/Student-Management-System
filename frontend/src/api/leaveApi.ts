@@ -3,8 +3,8 @@ import { AxiosResponse } from 'axios';
 
 export interface LeaveRequest {
   id: number;
-  employee_id: number;
-  supervisor_id: number | null;
+  student_id: number;
+  teacher_id: number | null;
   leave_type: 'vacation' | 'sick' | 'personal' | 'maternity' | 'paternity';
   start_date: string;
   end_date: string;
@@ -17,14 +17,14 @@ export interface LeaveRequest {
   updated_at: string;
   attachment_data?: string | null;
   attachment_name?: string | null;
-  employee?: {
-    employee_id: string;
+  student?: {
+    student_id: string;
     first_name: string;
     last_name: string;
     department: string;
   };
-  supervisor?: {
-    employee_id: string;
+  teacher?: {
+    student_id: string;
     first_name: string;
     last_name: string;
   };

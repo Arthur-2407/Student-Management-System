@@ -1,5 +1,5 @@
 -- Migration 014: Enterprise Compliance Schema Mapping
--- Purpose: Add administrators, employee_relationships, face_update_requests,
+-- Purpose: Add administrators, student_relationships, face_update_requests,
 --          and password_reset_requests tables per schema spec, and keep them
 --          synced with existing tables via triggers.
 -- Safety: Checked table presence, idempotent trigger creations. Uses text for face embeddings.
@@ -7,55 +7,55 @@
 BEGIN;
 
 -- ============================================================================
--- 1. EMPLOYEE_RELATIONSHIPS TABLE
+-- 1. STUDENT_RELATIONSHIPS TABLE
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS employee_relationships (
+CREATE TABLE IF NOT EXISTS student_relationships (
   id BIGSERIAL PRIMARY KEY,
-  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-  supervisor_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  teacher_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (employee_id, supervisor_id)
+  UNIQUE (student_id, teacher_id)
 );
 
--- Seed employee_relationships from existing supervisor associations
-INSERT INTO employee_relationships (employee_id, supervisor_id)
-SELECT id, supervisor_id FROM employees
-WHERE supervisor_id IS NOT NULL
+-- Seed student_relationships from existing teacher associations
+INSERT INTO student_relationships (student_id, teacher_id)
+SELECT id, teacher_id FROM students
+WHERE teacher_id IS NOT NULL
 ON CONFLICT DO NOTHING;
 
--- Triggers for bidirectional sync of supervisor_id
-CREATE OR REPLACE FUNCTION sync_employee_relationship()
+-- Triggers for bidirectional sync of teacher_id
+CREATE OR REPLACE FUNCTION sync_student_relationship()
 RETURNS TRIGGER AS $$
 BEGIN
-  UPDATE employees
-  SET supervisor_id = NEW.supervisor_id
-  WHERE id = NEW.employee_id;
+  UPDATE students
+  SET teacher_id = NEW.teacher_id
+  WHERE id = NEW.student_id;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trg_sync_employee_relationship
-AFTER INSERT OR UPDATE ON employee_relationships
-FOR EACH ROW EXECUTE FUNCTION sync_employee_relationship();
+CREATE OR REPLACE TRIGGER trg_sync_student_relationship
+AFTER INSERT OR UPDATE ON student_relationships
+FOR EACH ROW EXECUTE FUNCTION sync_student_relationship();
 
-CREATE OR REPLACE FUNCTION sync_employees_to_relationship()
+CREATE OR REPLACE FUNCTION sync_students_to_relationship()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.supervisor_id IS NOT NULL THEN
-    INSERT INTO employee_relationships (employee_id, supervisor_id)
-    VALUES (NEW.id, NEW.supervisor_id)
-    ON CONFLICT (employee_id) DO UPDATE
-    SET supervisor_id = EXCLUDED.supervisor_id;
+  IF NEW.teacher_id IS NOT NULL THEN
+    INSERT INTO student_relationships (student_id, teacher_id)
+    VALUES (NEW.id, NEW.teacher_id)
+    ON CONFLICT (student_id) DO UPDATE
+    SET teacher_id = EXCLUDED.teacher_id;
   ELSE
-    DELETE FROM employee_relationships WHERE employee_id = NEW.id;
+    DELETE FROM student_relationships WHERE student_id = NEW.id;
   END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trg_sync_employees_to_relationship
-AFTER INSERT OR UPDATE OF supervisor_id ON employees
-FOR EACH ROW EXECUTE FUNCTION sync_employees_to_relationship();
+CREATE OR REPLACE TRIGGER trg_sync_students_to_relationship
+AFTER INSERT OR UPDATE OF teacher_id ON students
+FOR EACH ROW EXECUTE FUNCTION sync_students_to_relationship();
 
 
 -- ============================================================================
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS administrators (
 -- Seed administrators from current config
 INSERT INTO administrators (admin_id, name, email, phone, address, designation, password_hash, recovery_email, recovery_phone, created_at, updated_at)
 SELECT 
-  e.employee_id, 
+  e.student_id, 
   ac.admin_name, 
   ac.admin_email, 
   ac.admin_phone, 
@@ -93,7 +93,7 @@ SELECT
   ac.created_at,
   ac.updated_at
 FROM admin_configuration ac
-JOIN employees e ON ac.admin_employee_id = e.id
+JOIN students e ON ac.admin_student_id = e.id
 ON CONFLICT (admin_id) DO NOTHING;
 
 -- Triggers for bidirectional sync of administrators
@@ -102,14 +102,14 @@ RETURNS TRIGGER AS $$
 DECLARE
   v_emp_id INT;
 BEGIN
-  SELECT id INTO v_emp_id FROM employees WHERE employee_id = NEW.admin_id;
+  SELECT id INTO v_emp_id FROM students WHERE student_id = NEW.admin_id;
   
   IF v_emp_id IS NULL THEN
-    INSERT INTO employees (employee_id, first_name, last_name, email, password_hash, role, is_active)
+    INSERT INTO students (student_id, first_name, last_name, email, password_hash, role, is_active)
     VALUES (NEW.admin_id, split_part(NEW.name, ' ', 1), COALESCE(split_part(NEW.name, ' ', 2), 'Admin'), NEW.email, NEW.password_hash, 'admin', TRUE)
     RETURNING id INTO v_emp_id;
   ELSE
-    UPDATE employees
+    UPDATE students
     SET password_hash = NEW.password_hash,
         email = NEW.email,
         first_name = split_part(NEW.name, ' ', 1),
@@ -117,9 +117,9 @@ BEGIN
     WHERE id = v_emp_id;
   END IF;
 
-  INSERT INTO admin_configuration (admin_employee_id, admin_name, admin_email, admin_phone, admin_address, admin_designation, recovery_email, recovery_phone, created_at, updated_at)
+  INSERT INTO admin_configuration (admin_student_id, admin_name, admin_email, admin_phone, admin_address, admin_designation, recovery_email, recovery_phone, created_at, updated_at)
   VALUES (v_emp_id, NEW.name, NEW.email, NEW.phone, NEW.address, NEW.designation, NEW.recovery_email, NEW.recovery_phone, NEW.created_at, NEW.updated_at)
-  ON CONFLICT (admin_employee_id) DO UPDATE
+  ON CONFLICT (admin_student_id) DO UPDATE
   SET admin_name = EXCLUDED.admin_name,
       admin_email = EXCLUDED.admin_email,
       admin_phone = EXCLUDED.admin_phone,
@@ -143,8 +143,8 @@ DECLARE
   v_admin_id VARCHAR(50);
   v_password_hash VARCHAR(255);
 BEGIN
-  SELECT employee_id, password_hash INTO v_admin_id, v_password_hash
-  FROM employees WHERE id = NEW.admin_employee_id;
+  SELECT student_id, password_hash INTO v_admin_id, v_password_hash
+  FROM students WHERE id = NEW.admin_student_id;
 
   IF v_admin_id IS NOT NULL THEN
     INSERT INTO administrators (admin_id, name, email, phone, address, designation, password_hash, recovery_email, recovery_phone, created_at, updated_at)
@@ -173,8 +173,8 @@ FOR EACH ROW EXECUTE FUNCTION sync_admin_config_to_administrators();
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS face_update_requests (
   id BIGSERIAL PRIMARY KEY,
-  requester_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-  approver_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+  requester_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  approver_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'pending',
   request_type VARCHAR(20) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS face_update_requests (
 INSERT INTO face_update_requests (id, requester_id, approver_id, status, request_type, created_at, approved_at)
 SELECT 
   fcr.id, 
-  fcr.employee_id, 
+  fcr.student_id, 
   (SELECT actioned_by FROM face_approval_history WHERE request_id = fcr.id AND action = 'APPROVE' LIMIT 1), 
   LOWER(fcr.status), 
   fcr.request_type, 
@@ -200,8 +200,8 @@ ON CONFLICT (id) DO NOTHING;
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS password_reset_requests (
   id BIGSERIAL PRIMARY KEY,
-  requester_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-  approver_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+  requester_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  approver_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'pending',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   approved_at TIMESTAMPTZ
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS password_reset_requests (
 INSERT INTO password_reset_requests (id, requester_id, approver_id, status, created_at, approved_at)
 SELECT 
   arr.id, 
-  arr.employee_id, 
+  arr.student_id, 
   arr.reviewed_by, 
   LOWER(arr.status), 
   arr.created_at, 

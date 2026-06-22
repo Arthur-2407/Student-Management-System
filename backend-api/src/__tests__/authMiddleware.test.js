@@ -15,9 +15,9 @@ describe('auth token hardening', () => {
   test('generates typed access and refresh tokens with issuer and audience', () => {
     const tokens = generateTokens({
       id: 7,
-      employee_id: 'EMP-007',
+      student_id: 'EMP-007',
       email: 'emp007@example.com',
-      role: 'employee',
+      role: 'student',
       department: 'Operations',
     });
 
@@ -26,14 +26,14 @@ describe('auth token hardening', () => {
 
     expect(accessPayload).toMatchObject({
       id: 7,
-      employeeId: 'EMP-007',
+      studentId: 'EMP-007',
       email: 'emp007@example.com',
-      role: 'employee',
+      role: 'student',
       department: 'Operations',
     });
     expect(refreshPayload).toMatchObject({
       id: 7,
-      employeeId: 'EMP-007',
+      studentId: 'EMP-007',
       type: 'refresh',
       tokenFamily: tokens.tokenFamily,
     });
@@ -44,9 +44,9 @@ describe('auth token hardening', () => {
   test('does not accept refresh tokens as access tokens', () => {
     const tokens = generateTokens({
       id: 8,
-      employee_id: 'EMP-008',
+      student_id: 'EMP-008',
       email: 'emp008@example.com',
-      role: 'employee',
+      role: 'student',
       department: 'Finance',
     });
 

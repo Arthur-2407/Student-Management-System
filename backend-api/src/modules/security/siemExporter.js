@@ -62,7 +62,7 @@ class SiemExporter {
       'event.severity': SEVERITY_MAP[event.severity] || 5,
       'source.ip': event.ip || null,
       'user.id': event.userId || null,
-      'user.name': event.employeeId || null,
+      'user.name': event.studentId || null,
       'message': event.message || event.eventType || '',
       'trace.id': event.requestId || null,
       'service.name': 'attendance-backend',

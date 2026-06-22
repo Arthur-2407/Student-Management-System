@@ -11,13 +11,13 @@
 --   - Contact Administrator email/phone links
 --   - Password reset routing
 --   - Face update routing
---   - Leave approval routing (supervisor requests)
+--   - Leave approval routing (teacher requests)
 --   - Notification delivery
 --   - Recovery workflow (OTP to recovery_email)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS admin_configuration (
   id                  BIGSERIAL PRIMARY KEY,
-  admin_employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+  admin_student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE RESTRICT,
   admin_name          VARCHAR(100),
   admin_email         VARCHAR(200),
   admin_phone         VARCHAR(50),
@@ -30,15 +30,15 @@ CREATE TABLE IF NOT EXISTS admin_configuration (
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   -- Only one active admin configuration row
-  UNIQUE (admin_employee_id)
+  UNIQUE (admin_student_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_admin_configuration_employee ON admin_configuration(admin_employee_id);
+CREATE INDEX IF NOT EXISTS idx_admin_configuration_student ON admin_configuration(admin_student_id);
 
 -- ============================================================================
 -- UPSERT DEFAULT ADMIN CONFIGURATION
--- If admin employee exists but no admin_configuration row, create one.
--- Uses current admin email from employees table as baseline.
+-- If admin student exists but no admin_configuration row, create one.
+-- Uses current admin email from students table as baseline.
 -- ============================================================================
 DO $$
 DECLARE
@@ -48,16 +48,16 @@ DECLARE
 BEGIN
   SELECT id, email, CONCAT(first_name, ' ', last_name)
     INTO v_admin_emp_id, v_admin_email, v_admin_name
-    FROM employees
-   WHERE employee_id = 'admin' AND is_active = TRUE
+    FROM students
+   WHERE student_id = 'admin' AND is_active = TRUE
    LIMIT 1;
 
   IF v_admin_emp_id IS NOT NULL THEN
     INSERT INTO admin_configuration
-      (admin_employee_id, admin_name, admin_email, admin_designation, created_at, updated_at)
+      (admin_student_id, admin_name, admin_email, admin_designation, created_at, updated_at)
     VALUES
       (v_admin_emp_id, v_admin_name, v_admin_email, 'System Administrator', NOW(), NOW())
-    ON CONFLICT (admin_employee_id) DO NOTHING;
+    ON CONFLICT (admin_student_id) DO NOTHING;
   END IF;
 END $$;
 
@@ -67,7 +67,7 @@ END $$;
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS role_permissions (
   id          BIGSERIAL PRIMARY KEY,
-  role        VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'supervisor', 'employee')),
+  role        VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'teacher', 'student')),
   permission  VARCHAR(100) NOT NULL,
   granted     BOOLEAN NOT NULL DEFAULT TRUE,
   description TEXT,
@@ -85,59 +85,59 @@ CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role);
 -- ============================================================================
 INSERT INTO role_permissions (role, permission, description) VALUES
   -- Dashboard
-  ('employee',   'view:dashboard',      'View own dashboard'),
-  ('supervisor', 'view:dashboard',      'View supervisor dashboard'),
+  ('student',   'view:dashboard',      'View own dashboard'),
+  ('teacher', 'view:dashboard',      'View teacher dashboard'),
   ('admin',      'view:dashboard',      'View admin dashboard'),
   -- Attendance
-  ('employee',   'attendance.view.own',    'View own attendance records'),
-  ('supervisor', 'attendance.view.own',    'View own attendance records'),
+  ('student',   'attendance.view.own',    'View own attendance records'),
+  ('teacher', 'attendance.view.own',    'View own attendance records'),
   ('admin',      'attendance.view.own',    'View own attendance records'),
-  ('supervisor', 'attendance.view.team',   'View team attendance records'),
+  ('teacher', 'attendance.view.team',   'View team attendance records'),
   ('admin',      'attendance.view.team',   'View team attendance records'),
   ('admin',      'attendance.view.global', 'View all attendance records'),
-  ('supervisor', 'manage:attendance',   'Manage team attendance'),
+  ('teacher', 'manage:attendance',   'Manage team attendance'),
   ('admin',      'manage:attendance',   'Manage all attendance'),
   -- Leave
-  ('employee',   'leave.create',               'Submit leave requests'),
-  ('supervisor', 'leave.create',               'Submit leave requests'),
+  ('student',   'leave.create',               'Submit leave requests'),
+  ('teacher', 'leave.create',               'Submit leave requests'),
   ('admin',      'leave.create',               'Submit leave requests'),
-  ('employee',   'view:leave',                 'View own leave requests'),
-  ('supervisor', 'view:leave',                 'View leave requests'),
+  ('student',   'view:leave',                 'View own leave requests'),
+  ('teacher', 'view:leave',                 'View leave requests'),
   ('admin',      'view:leave',                 'View all leave requests'),
-  ('supervisor', 'leave.approve.employee',     'Approve employee leave requests'),
-  ('admin',      'leave.approve.employee',     'Approve employee leave requests'),
-  ('admin',      'leave.approve.supervisor',   'Approve supervisor leave requests'),
-  ('supervisor', 'manage:leave',               'Manage team leave'),
+  ('teacher', 'leave.approve.student',     'Approve student leave requests'),
+  ('admin',      'leave.approve.student',     'Approve student leave requests'),
+  ('admin',      'leave.approve.teacher',   'Approve teacher leave requests'),
+  ('teacher', 'manage:leave',               'Manage team leave'),
   ('admin',      'manage:leave',               'Manage all leave'),
   -- Face management
-  ('employee',   'face.update.request',        'Request face update'),
-  ('supervisor', 'face.update.request',        'Request face update for team'),
+  ('student',   'face.update.request',        'Request face update'),
+  ('teacher', 'face.update.request',        'Request face update for team'),
   ('admin',      'face.update.request',        'Request/manage face updates'),
-  ('supervisor', 'face.update.approve',        'Approve employee face update requests'),
+  ('teacher', 'face.update.approve',        'Approve student face update requests'),
   ('admin',      'face.update.approve',        'Approve all face update requests'),
   -- Password reset
-  ('employee',   'password.reset.request',     'Request password reset'),
-  ('supervisor', 'password.reset.request',     'Request password reset'),
+  ('student',   'password.reset.request',     'Request password reset'),
+  ('teacher', 'password.reset.request',     'Request password reset'),
   ('admin',      'password.reset.request',     'Request password reset'),
-  ('supervisor', 'password.reset.approve',     'Approve employee password reset requests'),
+  ('teacher', 'password.reset.approve',     'Approve student password reset requests'),
   ('admin',      'password.reset.approve',     'Approve all password reset requests'),
   -- Reports
-  ('employee',   'view:reports',        'View own reports'),
-  ('supervisor', 'view:reports',        'View team reports'),
+  ('student',   'view:reports',        'View own reports'),
+  ('teacher', 'view:reports',        'View team reports'),
   ('admin',      'view:reports',        'View all reports'),
   -- Security & System
-  ('supervisor', 'view:security',       'View security events'),
+  ('teacher', 'view:security',       'View security events'),
   ('admin',      'view:security',       'View all security events'),
   ('admin',      'manage:security',     'Manage security settings'),
-  ('supervisor', 'view:telemetry',      'View telemetry data'),
+  ('teacher', 'view:telemetry',      'View telemetry data'),
   ('admin',      'view:telemetry',      'View all telemetry data'),
   ('admin',      'manage:system',       'Configure system settings'),
   ('admin',      'manage:users',        'Manage all users'),
   ('admin',      'system.configure',    'System configuration access'),
-  ('supervisor', 'view:system-status',  'View system status'),
+  ('teacher', 'view:system-status',  'View system status'),
   ('admin',      'view:system-status',  'View system status'),
   -- MFA
-  ('employee',   'manage:mfa',          'Manage own MFA settings'),
-  ('supervisor', 'manage:mfa',          'Manage own MFA settings'),
+  ('student',   'manage:mfa',          'Manage own MFA settings'),
+  ('teacher', 'manage:mfa',          'Manage own MFA settings'),
   ('admin',      'manage:mfa',          'Manage all MFA settings')
 ON CONFLICT (role, permission) DO NOTHING;

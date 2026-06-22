@@ -4,8 +4,8 @@ import { useAuth } from '@contexts/AuthContext';
 
 interface ProtectedRouteProps {
   element: ReactElement;
-  requiredRole?: 'admin' | 'supervisor' | 'employee';
-  requiredRoles?: ('admin' | 'supervisor' | 'employee')[];
+  requiredRole?: 'admin' | 'teacher' | 'student';
+  requiredRoles?: ('admin' | 'teacher' | 'student')[];
 }
 
 /**
@@ -58,12 +58,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
  * Role Hierarchy Helper
  * 
  * Determines if a user can access content for a specific role
- * Hierarchy: admin > supervisor > employee
+ * Hierarchy: admin > teacher > student
  */
 export function canAccessRole(userRole: string, requiredRole: string): boolean {
   const roleHierarchy: Record<string, number> = {
-    employee: 1,
-    supervisor: 2,
+    student: 1,
+    teacher: 2,
     admin: 3,
   };
 
@@ -74,10 +74,10 @@ export function canAccessRole(userRole: string, requiredRole: string): boolean {
 }
 
 /**
- * Check if user is supervisor or above
+ * Check if user is teacher or above
  */
-export function isSupervisorOrAbove(role: string): boolean {
-  return role === 'supervisor' || role === 'admin';
+export function isTeacherOrAbove(role: string): boolean {
+  return role === 'teacher' || role === 'admin';
 }
 
 /**
@@ -88,8 +88,8 @@ export function isAdmin(role: string): boolean {
 }
 
 /**
- * Check if user is employee only
+ * Check if user is student only
  */
-export function isEmployeeOnly(role: string): boolean {
-  return role === 'employee';
+export function isStudentOnly(role: string): boolean {
+  return role === 'student';
 }

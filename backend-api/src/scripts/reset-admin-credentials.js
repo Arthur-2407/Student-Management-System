@@ -16,7 +16,7 @@ async function main() {
     
     console.log('Updating Admin password and face enrollment flags in main DB...');
     await dbClient.query(
-      `UPDATE employees 
+      `UPDATE students 
        SET password_hash = $1, 
            face_enrolled = FALSE, 
            face_enrolled_at = NULL, 
@@ -24,7 +24,7 @@ async function main() {
            failed_login_count = 0, 
            locked_until = NULL, 
            updated_at = NOW() 
-       WHERE employee_id = 'admin'`,
+       WHERE student_id = 'admin'`,
       [hash]
     );
     
@@ -36,9 +36,9 @@ async function main() {
     
     console.log('Clearing Admin face embeddings and images in Face DB...');
     
-    // Delete face_embeddings for admin (employee_id = 1)
+    // Delete face_embeddings for admin (student_id = 1)
     const delEmbed = await faceClient.query(
-      'DELETE FROM face_embeddings WHERE employee_id = 1'
+      'DELETE FROM face_embeddings WHERE student_id = 1'
     );
     console.log(`Deleted ${delEmbed.rowCount} face embeddings.`);
     
@@ -50,7 +50,7 @@ async function main() {
     
     // Delete face_enrollment_logs for admin
     const delLogs = await faceClient.query(
-      'DELETE FROM face_enrollment_logs WHERE target_employee_id = 1 OR employee_id = 1'
+      'DELETE FROM face_enrollment_logs WHERE target_student_id = 1 OR student_id = 1'
     );
     console.log(`Deleted ${delLogs.rowCount} face enrollment logs.`);
     

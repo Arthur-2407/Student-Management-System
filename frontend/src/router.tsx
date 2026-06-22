@@ -28,7 +28,7 @@ const DashboardPage = safeLazy(() => import('@pages/DashboardPage'));
 const AttendancePage = safeLazy(() => import('@pages/AttendancePage'));
 const LeavePage = safeLazy(() => import('@pages/LeavePage'));
 const ReportsPage = safeLazy(() => import('@pages/ReportsPage'));
-const SupervisorDashboard = safeLazy(() => import('@pages/SupervisorDashboard'));
+const TeacherDashboard = safeLazy(() => import('@pages/TeacherDashboard'));
 const SecurityDashboard = safeLazy(() => import('@pages/SecurityDashboard'));
 const SystemStatusDashboard = safeLazy(() => import('@pages/SystemStatusDashboard'));
 const AdminPage = safeLazy(() => import('@pages/AdminPage'));
@@ -104,10 +104,10 @@ export const router = createBrowserRouter([
         path: 'reports',
         element: withSuspense(<ReportsPage />),
       },
-      // SUPERVISOR-ONLY ROUTES
+      // TEACHER-ONLY ROUTES
       {
-        path: 'supervisor',
-        element: <ProtectedRoute element={withSuspense(<SupervisorDashboard />)} requiredRole="supervisor" />,
+        path: 'teacher',
+        element: <ProtectedRoute element={withSuspense(<TeacherDashboard />)} requiredRole="teacher" />,
       },
       // ADMIN-ONLY ROUTES
       {

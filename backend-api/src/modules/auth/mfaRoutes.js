@@ -36,7 +36,7 @@ router.post('/enroll', async (req, res) => {
 
     // Check if already enrolled
     const existing = await query(
-      'SELECT mfa_secret FROM employees WHERE id = $1', [userId]
+      'SELECT mfa_secret FROM students WHERE id = $1', [userId]
     );
     if (existing.rows[0]?.mfa_secret) {
       return res.status(409).json({
@@ -54,7 +54,7 @@ router.post('/enroll', async (req, res) => {
 
     // Store pending secret (not confirmed yet)
     await query(
-      'UPDATE employees SET mfa_pending_secret = $1, mfa_backup_codes = $2 WHERE id = $3',
+      'UPDATE students SET mfa_pending_secret = $1, mfa_backup_codes = $2 WHERE id = $3',
       [secret, JSON.stringify(hashedBackupCodes), userId]
     );
 
@@ -84,7 +84,7 @@ router.post('/verify', async (req, res) => {
 
     // Get pending secret
     const result = await query(
-      'SELECT mfa_pending_secret FROM employees WHERE id = $1', [userId]
+      'SELECT mfa_pending_secret FROM students WHERE id = $1', [userId]
     );
     const pendingSecret = result.rows[0]?.mfa_pending_secret;
 
@@ -98,7 +98,7 @@ router.post('/verify', async (req, res) => {
 
     // Confirm enrollment
     await query(
-      `UPDATE employees 
+      `UPDATE students 
        SET mfa_secret = mfa_pending_secret, 
            mfa_enabled = true, 
            mfa_pending_secret = NULL 
@@ -127,7 +127,7 @@ router.post('/validate', mfaValidationLimiter, async (req, res) => {
     }
 
     const result = await query(
-      'SELECT mfa_secret, mfa_backup_codes FROM employees WHERE id = $1', [userId]
+      'SELECT mfa_secret, mfa_backup_codes FROM students WHERE id = $1', [userId]
     );
     const { mfa_secret, mfa_backup_codes } = result.rows[0] || {};
 
@@ -153,7 +153,7 @@ router.post('/validate', mfaValidationLimiter, async (req, res) => {
     if (matchedIdx !== -1) {
       backups.splice(matchedIdx, 1);
       await query(
-        'UPDATE employees SET mfa_backup_codes = $1 WHERE id = $2',
+        'UPDATE students SET mfa_backup_codes = $1 WHERE id = $2',
         [JSON.stringify(backups), userId]
       );
       logger.warn('[MFA] Backup code used', { userId, remaining: backups.length });
@@ -175,7 +175,7 @@ router.post('/disable', async (req, res) => {
 
     // Require valid TOTP code to disable
     const result = await query(
-      'SELECT mfa_secret FROM employees WHERE id = $1', [userId]
+      'SELECT mfa_secret FROM students WHERE id = $1', [userId]
     );
     const { mfa_secret } = result.rows[0] || {};
 
@@ -188,7 +188,7 @@ router.post('/disable', async (req, res) => {
     }
 
     await query(
-      `UPDATE employees 
+      `UPDATE students 
        SET mfa_secret = NULL, 
            mfa_enabled = false, 
            mfa_pending_secret = NULL,
@@ -209,7 +209,7 @@ router.post('/disable', async (req, res) => {
 router.get('/status', async (req, res) => {
   try {
     const result = await query(
-      'SELECT mfa_enabled, mfa_pending_secret IS NOT NULL as pending FROM employees WHERE id = $1',
+      'SELECT mfa_enabled, mfa_pending_secret IS NOT NULL as pending FROM students WHERE id = $1',
       [req.user.id]
     );
     const row = result.rows[0] || {};

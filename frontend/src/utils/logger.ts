@@ -9,7 +9,7 @@
  * Usage:
  *   import { logger } from '@utils/logger';
  *
- *   logger.info('User logged in', { employeeId, role });
+ *   logger.info('User logged in', { studentId, role });
  *   logger.warn('Slow API response', { url, responseTimeMs });
  *   logger.error('Component crashed', { error: err.message });
  *   logger.apiError({ url, method, status, retryCount, errorMessage });

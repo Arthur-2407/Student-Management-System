@@ -12,12 +12,12 @@ cur = conn.cursor()
 
 print("=== AVAILABLE TEST ACCOUNTS ===")
 cur.execute("""
-SELECT id, employee_id, role, account_locked, password
-FROM employees
+SELECT id, student_id, role, account_locked, password
+FROM students
 LIMIT 10
 """)
 
-print(f"{'ID':<5} {'Employee ID':<25} {'Role':<15} {'Locked':<10}")
+print(f"{'ID':<5} {'Student ID':<25} {'Role':<15} {'Locked':<10}")
 print("-" * 55)
 for row in cur.fetchall():
     emp_id, emp_name, role, locked, pwd = row
@@ -25,7 +25,7 @@ for row in cur.fetchall():
 
 # Try to unlock admin account
 print("\n=== ATTEMPTING TO UNLOCK ADMIN ===")
-cur.execute("UPDATE employees SET account_locked = FALSE WHERE employee_id = 'admin'")
+cur.execute("UPDATE students SET account_locked = FALSE WHERE student_id = 'admin'")
 conn.commit()
 print("✓ Admin account unlocked")
 

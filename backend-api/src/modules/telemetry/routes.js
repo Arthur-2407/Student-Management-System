@@ -6,7 +6,7 @@
  *   GET /api/telemetry/health       — Service health summary
  *   GET /api/telemetry/metrics      — Raw metrics snapshot
  *
- * Protected by supervisor/admin role check.
+ * Protected by teacher/admin role check.
  */
 const express = require('express');
 const { telemetry } = require('./collector');

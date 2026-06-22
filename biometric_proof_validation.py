@@ -4,7 +4,7 @@ REAL BIOMETRIC PROOF VALIDATION
 Mandatory certification test using actual face enrollment and verification.
 
 Requirements:
-- Real enrolled employee
+- Real enrolled student
 - Real face capture (webcam or images)
 - Database evidence
 - Encryption proof
@@ -44,12 +44,12 @@ class BiometricProofValidator:
             "database_proof": {},
             "encryption_proof": {}
         }
-        self.test_employee_id = None
+        self.test_student_id = None
         self.jwt_token = None
         self.captured_frames = []
         
     def test_1_correct_face_acceptance(self):
-        """TEST 1: Real enrolled employee acceptance"""
+        """TEST 1: Real enrolled student acceptance"""
         print("\n" + "="*80)
         print("TEST 1 — CORRECT FACE ACCEPTANCE")
         print("="*80)
@@ -59,7 +59,7 @@ class BiometricProofValidator:
             print("\n[1.0] Authenticating...")
             auth_resp = requests.post(f"{self.base_url}/api/auth/login",
                 json={
-                    "employeeId": "admin",
+                    "studentId": "admin",
                     "password": "admin123"
                 },
                 timeout=10)
@@ -75,29 +75,29 @@ class BiometricProofValidator:
                 return False
             print(f"✓ Authenticated as admin")
             
-            # Step 1: Create test employee
-            print("\n[1.1] Creating test employee...")
-            employee_data = {
-                "employeeId": f"BIOMETRIC_TEST_{int(time.time())}",
+            # Step 1: Create test student
+            print("\n[1.1] Creating test student...")
+            student_data = {
+                "studentId": f"BIOMETRIC_TEST_{int(time.time())}",
                 "name": "Biometric Test User",
                 "email": f"biotest_{int(time.time())}@test.local",
                 "department": "Testing",
-                "role": "employee",
+                "role": "student",
                 "password": "TestBio@123456"
             }
             
-            # Register employee with proper auth
-            reg_resp = requests.post(f"{self.base_url}/api/admin/employees", 
-                json=employee_data,
+            # Register student with proper auth
+            reg_resp = requests.post(f"{self.base_url}/api/admin/students", 
+                json=student_data,
                 headers={"Authorization": f"Bearer {self.jwt_token}"},
                 timeout=10)
             
             if reg_resp.status_code not in [200, 201, 409]:
-                print(f"✗ Employee creation failed: {reg_resp.status_code}")
+                print(f"✗ Student creation failed: {reg_resp.status_code}")
                 return False
             
-            self.test_employee_id = employee_data["employeeId"]
-            print(f"✓ Test employee created: {self.test_employee_id}")
+            self.test_student_id = student_data["studentId"]
+            print(f"✓ Test student created: {self.test_student_id}")
             
             # Step 2: Capture real face frames
             print("\n[1.2] Capturing real face frames for enrollment...")
@@ -111,8 +111,8 @@ class BiometricProofValidator:
             print("\n[1.3] Performing face enrollment...")
             enroll_resp = requests.post(f"{self.base_url}/api/auth/register-face", 
                 json={
-                    "employeeId": self.test_employee_id,
-                    "password": employee_data["password"],
+                    "studentId": self.test_student_id,
+                    "password": student_data["password"],
                     "frames": frames
                 },
                 timeout=30)
@@ -128,7 +128,7 @@ class BiometricProofValidator:
             
             # Step 4: Query database to verify embeddings stored
             print("\n[1.4] Verifying embeddings in database...")
-            db_result = self._query_face_embeddings(self.test_employee_id)
+            db_result = self._query_face_embeddings(self.test_student_id)
             if not db_result:
                 print("✗ No embeddings found in database")
                 return False
@@ -145,8 +145,8 @@ class BiometricProofValidator:
             
             login_resp = requests.post(f"{self.base_url}/api/auth/face-login",
                 json={
-                    "employeeId": self.test_employee_id,
-                    "password": employee_data["password"],
+                    "studentId": self.test_student_id,
+                    "password": student_data["password"],
                     "frames": login_frames
                 },
                 timeout=30)
@@ -171,7 +171,7 @@ class BiometricProofValidator:
             # Record results
             self.results["test_results"]["test_1_correct_acceptance"] = {
                 "status": "PASSED" if authenticated else "FAILED",
-                "employee_id": self.test_employee_id,
+                "student_id": self.test_student_id,
                 "stored_embeddings": stored_embeddings,
                 "similarity_score": similarity_score,
                 "threshold": threshold,
@@ -196,7 +196,7 @@ class BiometricProofValidator:
         print("TEST 2 — WRONG FACE REJECTION")
         print("="*80)
         
-        if not self.test_employee_id:
+        if not self.test_student_id:
             print("✗ Test 1 must pass first")
             return False
         
@@ -212,7 +212,7 @@ class BiometricProofValidator:
             print("[2.2] Attempting face login with wrong face...")
             login_resp = requests.post(f"{self.base_url}/api/auth/face-login",
                 json={
-                    "employeeId": self.test_employee_id,
+                    "studentId": self.test_student_id,
                     "password": "WrongPassword123",
                     "frames": different_frames
                 },
@@ -260,23 +260,23 @@ class BiometricProofValidator:
         print("="*80)
         
         try:
-            print("\n[3.1] Creating random test employee...")
-            random_employee = {
-                "employeeId": f"RANDOM_FACE_{int(time.time())}",
+            print("\n[3.1] Creating random test student...")
+            random_student = {
+                "studentId": f"RANDOM_FACE_{int(time.time())}",
                 "name": "Random Test User",
                 "email": f"random_{int(time.time())}@test.local",
                 "department": "Testing",
-                "role": "employee",
+                "role": "student",
                 "password": "Random@123456"
             }
             
-            # Register random employee
-            reg_resp = requests.post(f"{self.base_url}/api/admin/employees",
-                json=random_employee,
+            # Register random student
+            reg_resp = requests.post(f"{self.base_url}/api/admin/students",
+                json=random_student,
                 headers={"Authorization": "Bearer test_token"},
                 timeout=10)
             
-            print("[3.2] Capturing face frames for random employee...")
+            print("[3.2] Capturing face frames for random student...")
             random_frames = self._capture_real_face_frames(num_frames=10)
             if not random_frames:
                 print("✗ Could not capture frames")
@@ -286,8 +286,8 @@ class BiometricProofValidator:
             print("[3.3] Attempting face login without enrollment...")
             login_resp = requests.post(f"{self.base_url}/api/auth/face-login",
                 json={
-                    "employeeId": random_employee["employeeId"],
-                    "password": random_employee["password"],
+                    "studentId": random_student["studentId"],
+                    "password": random_student["password"],
                     "frames": random_frames
                 },
                 timeout=30)
@@ -330,20 +330,20 @@ class BiometricProofValidator:
             print("\n[4.1] Querying multi-embedding database...")
             print("\nExecuting SQL:")
             print("""
-            SELECT employee_id, COUNT(*) as embedding_count
+            SELECT student_id, COUNT(*) as embedding_count
             FROM face_embeddings
             WHERE is_active = TRUE
-            GROUP BY employee_id
+            GROUP BY student_id
             HAVING COUNT(*) > 1
             ORDER BY embedding_count DESC;
             """)
             
             # Connect and query
             result = self._execute_db_query("""
-                SELECT employee_id, COUNT(*) as embedding_count
+                SELECT student_id, COUNT(*) as embedding_count
                 FROM face_embeddings
                 WHERE is_active = TRUE
-                GROUP BY employee_id
+                GROUP BY student_id
                 HAVING COUNT(*) > 1
                 ORDER BY embedding_count DESC
                 LIMIT 20;
@@ -358,25 +358,25 @@ class BiometricProofValidator:
                 return False
             
             print(f"\n✓ Multi-embedding database evidence found:")
-            print(f"{'Employee ID':<30} {'Embedding Count':<20}")
+            print(f"{'Student ID':<30} {'Embedding Count':<20}")
             print("-" * 50)
             
-            multi_emb_employees = []
+            multi_emb_students = []
             for row in result:
                 emp_id, count = row
                 print(f"{emp_id:<30} {count:<20}")
-                multi_emb_employees.append({
-                    "employee_id": emp_id,
+                multi_emb_students.append({
+                    "student_id": emp_id,
                     "embedding_count": count
                 })
             
             self.results["database_proof"]["multi_embedding"] = {
-                "status": "PASSED" if multi_emb_employees else "FAILED",
-                "employees_with_multi_embeddings": multi_emb_employees,
-                "total_multi_embedding_employees": len(multi_emb_employees)
+                "status": "PASSED" if multi_emb_students else "FAILED",
+                "students_with_multi_embeddings": multi_emb_students,
+                "total_multi_embedding_students": len(multi_emb_students)
             }
             
-            return len(multi_emb_employees) > 0
+            return len(multi_emb_students) > 0
             
         except Exception as e:
             print(f"✗ Test 4 failed: {e}")
@@ -456,7 +456,7 @@ class BiometricProofValidator:
         print("TEST 6 — FALSE ACCEPTANCE RATE CHECK")
         print("="*80)
         
-        if not self.test_employee_id:
+        if not self.test_student_id:
             print("✗ Test 1 must pass first")
             return False
         
@@ -479,7 +479,7 @@ class BiometricProofValidator:
                 frames = self._capture_real_face_frames(num_frames=5)
                 resp = requests.post(f"{self.base_url}/api/auth/face-login",
                     json={
-                        "employeeId": self.test_employee_id,
+                        "studentId": self.test_student_id,
                         "password": "TestBio@123456",
                         "frames": frames
                     },
@@ -506,7 +506,7 @@ class BiometricProofValidator:
                 frames = self._capture_real_face_frames(num_frames=5, variation=True)
                 resp = requests.post(f"{self.base_url}/api/auth/face-login",
                     json={
-                        "employeeId": self.test_employee_id,
+                        "studentId": self.test_student_id,
                         "password": "WrongPassword",
                         "frames": frames
                     },
@@ -534,7 +534,7 @@ class BiometricProofValidator:
                 frames = self._capture_real_face_frames(num_frames=5)
                 resp = requests.post(f"{self.base_url}/api/auth/face-login",
                     json={
-                        "employeeId": random_emp_id,
+                        "studentId": random_emp_id,
                         "password": "Random@123456",
                         "frames": frames
                     },
@@ -639,13 +639,13 @@ class BiometricProofValidator:
         
         return frames
     
-    def _query_face_embeddings(self, employee_id):
-        """Query face embeddings for employee"""
+    def _query_face_embeddings(self, student_id):
+        """Query face embeddings for student"""
         try:
             result = self._execute_db_query(f"""
                 SELECT id, is_active, created_at
                 FROM face_embeddings
-                WHERE employee_id = '{employee_id}' AND is_active = TRUE
+                WHERE student_id = '{student_id}' AND is_active = TRUE
                 ORDER BY created_at DESC;
             """)
             return result

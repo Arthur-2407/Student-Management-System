@@ -1,5 +1,5 @@
 @echo off
-echo 🚀 Starting Employee Attendance System...
+echo 🚀 Starting Student Attendance System...
 echo.
 
 REM Check if Node.js is installed

@@ -4,7 +4,7 @@ const { wsTelemetry } = require('../telemetry/wsTelemetry');
 
 function setupWebSocket(io) {
   const attendanceNS = io.of('/');
-  const connectedEmployees = new Map();
+  const connectedStudents = new Map();
 
   attendanceNS.use((socket, next) => {
     const rawToken = socket.handshake.auth?.token
@@ -31,16 +31,16 @@ function setupWebSocket(io) {
   attendanceNS.on('connection', (socket) => {
     logger.info('WebSocket client connected', {
       socketId: socket.id,
-      employeeId: socket.user.employeeId,
+      studentId: socket.user.studentId,
     });
     wsTelemetry.onConnect(socket.id);
 
-    socket.join(`employee:${socket.user.employeeId}`);
-    connectedEmployees.set(socket.user.employeeId, socket.id);
-    socket.emit('joined', { status: 'connected', employeeId: socket.user.employeeId });
+    socket.join(`student:${socket.user.studentId}`);
+    connectedStudents.set(socket.user.studentId, socket.id);
+    socket.emit('joined', { status: 'connected', studentId: socket.user.studentId });
 
-    if (socket.user.role === 'supervisor' || socket.user.role === 'admin') {
-      socket.join('supervisors');
+    if (socket.user.role === 'teacher' || socket.user.role === 'admin') {
+      socket.join('teachers');
       if (socket.user.role === 'admin') {
         socket.join('admin');
       }
@@ -48,18 +48,18 @@ function setupWebSocket(io) {
     }
 
     socket.on('join', () => {
-      socket.emit('joined', { status: 'connected', employeeId: socket.user.employeeId });
+      socket.emit('joined', { status: 'connected', studentId: socket.user.studentId });
     });
 
-    socket.on('join-supervisor', () => {
-      if (socket.user.role === 'supervisor' || socket.user.role === 'admin') {
-        socket.join('supervisors');
+    socket.on('join-teacher', () => {
+      if (socket.user.role === 'teacher' || socket.user.role === 'admin') {
+        socket.join('teachers');
         if (socket.user.role === 'admin') {
           socket.join('admin');
         }
         socket.emit('joined', { status: 'connected', role: socket.user.role });
       } else {
-        socket.emit('error', { code: 'FORBIDDEN', message: 'Supervisor role required' });
+        socket.emit('error', { code: 'FORBIDDEN', message: 'Teacher role required' });
       }
     });
 
@@ -71,7 +71,7 @@ function setupWebSocket(io) {
     socket.on('attendance_ack', (data) => {
       logger.debug('Attendance event acknowledged', {
         socketId: socket.id,
-        employeeId: socket.user.employeeId,
+        studentId: socket.user.studentId,
         timestamp: data?.timestamp,
       });
     });
@@ -80,7 +80,7 @@ function setupWebSocket(io) {
     let lastActivity = Date.now();
     const staleCheckInterval = setInterval(() => {
       if (Date.now() - lastActivity > 90_000) {
-        logger.warn('Disconnecting stale socket', { socketId: socket.id, employeeId: socket.user.employeeId });
+        logger.warn('Disconnecting stale socket', { socketId: socket.id, studentId: socket.user.studentId });
         socket.disconnect(true);
       }
     }, 30_000);
@@ -90,26 +90,26 @@ function setupWebSocket(io) {
 
     socket.on('disconnect', () => {
       clearInterval(staleCheckInterval);
-      connectedEmployees.delete(socket.user.employeeId);
+      connectedStudents.delete(socket.user.studentId);
       wsTelemetry.onDisconnect(socket.id);
       logger.info('WebSocket client disconnected', {
         socketId: socket.id,
-        employeeId: socket.user.employeeId,
+        studentId: socket.user.studentId,
       });
     });
   });
 
-  function notifyEmployee(employeeId, event, data) {
-    attendanceNS.to(`employee:${employeeId}`).emit(event, data);
+  function notifyStudent(studentId, event, data) {
+    attendanceNS.to(`student:${studentId}`).emit(event, data);
   }
 
-  function notifySupervisors(event, data) {
-    attendanceNS.to('supervisors').emit(event, data);
+  function notifyTeachers(event, data) {
+    attendanceNS.to('teachers').emit(event, data);
   }
 
-  io.notifyEmployee = notifyEmployee;
-  io.notifySupervisors = notifySupervisors;
-  io.connectedEmployees = connectedEmployees;
+  io.notifyStudent = notifyStudent;
+  io.notifyTeachers = notifyTeachers;
+  io.connectedStudents = connectedStudents;
 
   logger.info('WebSocket handler initialized');
 }

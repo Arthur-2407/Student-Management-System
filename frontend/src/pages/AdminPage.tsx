@@ -25,7 +25,7 @@ import {
   FaKey,
   FaMapMarkerAlt,
 } from 'react-icons/fa';
-import { adminApi, Employee, Supervisor, WorkTiming, EmployeeLocation, EmployeeLocationRow } from '@api/adminApi';
+import { adminApi, Student, Teacher, WorkTiming, StudentLocation, StudentLocationRow } from '@api/adminApi';
 import { faceManagementApi, FaceChangeRequest, FaceAuditLog } from '@api/faceManagementApi';
 import { leaveApi, LeaveRequest } from '@api/leaveApi';
 import FaceCamera from '@components/camera/FaceCamera';
@@ -35,34 +35,34 @@ import { websocketService } from '@services/websocketService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Tab = 'hierarchy' | 'employees' | 'supervisors' | 'timings' | 'mfa' | 'approvals' | 'leaves' | 'system';
+type Tab = 'hierarchy' | 'students' | 'teachers' | 'timings' | 'mfa' | 'approvals' | 'leaves' | 'system';
 
-interface CreateEmployeeForm {
-  employeeId: string;
+interface CreateStudentForm {
+  studentId: string;
   firstName: string;
   lastName: string;
   email: string;
   phoneNumber: string;
   department: string;
   position: string;
-  role: 'employee' | 'supervisor' | 'admin';
-  supervisorId: string;
+  role: 'student' | 'teacher' | 'admin';
+  teacherId: string;
   hireDate: string;
   password: string;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const INITIAL_FORM: CreateEmployeeForm = {
-  employeeId: '',
+const INITIAL_FORM: CreateStudentForm = {
+  studentId: '',
   firstName: '',
   lastName: '',
   email: '',
   phoneNumber: '',
   department: '',
   position: '',
-  role: 'employee',
-  supervisorId: '',
+  role: 'student',
+  teacherId: '',
   hireDate: new Date().toISOString().split('T')[0],
   password: '',
 };
@@ -72,11 +72,11 @@ const INITIAL_FORM: CreateEmployeeForm = {
 const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
   const colors: Record<string, string> = {
     admin: 'bg-purple-100 text-purple-800',
-    supervisor: 'bg-blue-100 text-blue-800',
-    employee: 'bg-gray-100 text-gray-700',
+    teacher: 'bg-blue-100 text-blue-800',
+    student: 'bg-gray-100 text-gray-700',
   };
   return (
-    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${colors[role] || colors.employee}`}>
+    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${colors[role] || colors.student}`}>
       {role}
     </span>
   );
@@ -100,7 +100,7 @@ const SystemSettingsTab: React.FC = () => {
   const [adminDesignation, setAdminDesignation] = useState('');
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryPhone, setRecoveryPhone] = useState('');
-  const [adminEmployeeId, setAdminEmployeeId] = useState('');
+  const [adminStudentId, setAdminStudentId] = useState('');
   const [isFetching, setIsFetching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -143,7 +143,7 @@ const SystemSettingsTab: React.FC = () => {
         setAdminDesignation(config.adminDesignation || '');
         setRecoveryEmail(config.recoveryEmail || '');
         setRecoveryPhone(config.recoveryPhone || '');
-        setAdminEmployeeId(config.adminEmployeeId || '');
+        setAdminStudentId(config.adminStudentId || '');
       }
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to load system configuration.');
@@ -243,7 +243,7 @@ const SystemSettingsTab: React.FC = () => {
   // Step 3: Replace Admin Details
   const handleReplaceAdmin = async () => {
     if (!newName || !newEmpId || !newEmail || !newPassword) {
-      showError('Name, Employee ID, Email, and Password are required.');
+      showError('Name, Student ID, Email, and Password are required.');
       return;
     }
     if (newPassword !== newPasswordConfirm) {
@@ -264,7 +264,7 @@ const SystemSettingsTab: React.FC = () => {
     try {
       const res = await adminApi.replaceAdmin({
         adminName: newName,
-        adminEmployeeId: newEmpId,
+        adminStudentId: newEmpId,
         adminEmail: newEmail,
         adminPhone: newPhone,
         adminAddress: newAddress,
@@ -321,10 +321,10 @@ const SystemSettingsTab: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Admin Employee ID (Read-only)</label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Admin Student ID (Read-only)</label>
               <input
                 type="text"
-                value={adminEmployeeId}
+                value={adminStudentId}
                 disabled
                 className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-500 cursor-not-allowed"
               />
@@ -577,7 +577,7 @@ const SystemSettingsTab: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">New Admin Employee ID *</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">New Admin Student ID *</label>
                     <input
                       type="text"
                       value={newEmpId}
@@ -731,15 +731,15 @@ const AdminPage: React.FC = () => {
   }, []);
 
   // Data state
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
-  const [unassignedEmployees, setUnassignedEmployees] = useState<Employee[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [unassignedStudents, setUnassignedStudents] = useState<Student[]>([]);
   const [workTimings, setWorkTimings] = useState<WorkTiming[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Supervisors interactive features state
-  const [expandedSupervisorsTab, setExpandedSupervisorsTab] = useState<Set<number>>(new Set());
-  const [selectedDetailEmployee, setSelectedDetailEmployee] = useState<Employee | null>(null);
+  // Teachers interactive features state
+  const [expandedTeachersTab, setExpandedTeachersTab] = useState<Set<number>>(new Set());
+  const [selectedDetailStudent, setSelectedDetailStudent] = useState<Student | null>(null);
 
   // Timing configuration modal states
   const [isAssignTimingModalOpen, setIsAssignTimingModalOpen] = useState(false);
@@ -749,14 +749,14 @@ const AdminPage: React.FC = () => {
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState<number | null>(null);
   const [pendingLocationData, setPendingLocationData] = useState<{
-    employeeId: number;
+    studentId: number;
     locName: string;
     lat: number;
     lng: number;
     radius: number;
   } | null>(null);
   const [timingModalType, setTimingModalType] = useState<'permanent' | 'temporary'>('permanent');
-  const [selectedEmployeeIdForTiming, setSelectedEmployeeIdForTiming] = useState<string>('');
+  const [selectedStudentIdForTiming, setSelectedStudentIdForTiming] = useState<string>('');
   const [timingWorkStart, setTimingWorkStart] = useState('09:00');
   const [timingWorkEnd, setTimingWorkEnd] = useState('18:00');
   const [timingLunchStart, setTimingLunchStart] = useState('12:00');
@@ -767,8 +767,8 @@ const AdminPage: React.FC = () => {
 
   const handleAssignWorkTiming = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEmployeeIdForTiming) {
-      showError('Please select an employee');
+    if (!selectedStudentIdForTiming) {
+      showError('Please select an student');
       return;
     }
     if (!timingWorkStart || !timingWorkEnd) {
@@ -783,7 +783,7 @@ const AdminPage: React.FC = () => {
     setTimingSubmitting(true);
     try {
       const payload = {
-        employeeId: parseInt(selectedEmployeeIdForTiming, 10),
+        studentId: parseInt(selectedStudentIdForTiming, 10),
         workStartTime: timingWorkStart.includes(':') && timingWorkStart.split(':').length === 2 ? `${timingWorkStart}:00` : timingWorkStart,
         workEndTime: timingWorkEnd.includes(':') && timingWorkEnd.split(':').length === 2 ? `${timingWorkEnd}:00` : timingWorkEnd,
         lunchStartTime: timingLunchStart ? (timingLunchStart.includes(':') && timingLunchStart.split(':').length === 2 ? `${timingLunchStart}:00` : timingLunchStart) : undefined,
@@ -804,7 +804,7 @@ const AdminPage: React.FC = () => {
 
         if (processingRequestId) {
           if (pendingLocationData) {
-            const empToLoc = employees.find(e => e.id === pendingLocationData.employeeId);
+            const empToLoc = students.find(e => e.id === pendingLocationData.studentId);
             if (empToLoc) {
               setSelectedEmpForLocation(empToLoc);
               setLocationName(pendingLocationData.locName);
@@ -877,9 +877,9 @@ const AdminPage: React.FC = () => {
   };
 
   const handleAcceptRequest = (req: any) => {
-    const emp = employees.find(e => e.id === req.employee_id);
+    const emp = students.find(e => e.id === req.student_id);
     if (!emp) {
-      showError('Employee not found in registry');
+      showError('Student not found in registry');
       return;
     }
 
@@ -887,7 +887,7 @@ const AdminPage: React.FC = () => {
 
     if (req.request_type === 'timing') {
       setTimingModalType(req.requested_is_temporary ? 'temporary' : 'permanent');
-      setSelectedEmployeeIdForTiming(String(emp.id));
+      setSelectedStudentIdForTiming(String(emp.id));
       setTimingWorkStart(req.requested_work_start_time ? req.requested_work_start_time.substring(0, 5) : '09:00');
       setTimingWorkEnd(req.requested_work_end_time ? req.requested_work_end_time.substring(0, 5) : '18:00');
       setTimingLunchStart('12:00');
@@ -907,7 +907,7 @@ const AdminPage: React.FC = () => {
       setIsLocationModalOpen(true);
     } else if (req.request_type === 'both') {
       setPendingLocationData({
-        employeeId: emp.id,
+        studentId: emp.id,
         locName: req.requested_location_name || 'Assigned Location',
         lat: req.requested_latitude || 0,
         lng: req.requested_longitude || 0,
@@ -915,7 +915,7 @@ const AdminPage: React.FC = () => {
       });
 
       setTimingModalType(req.requested_is_temporary ? 'temporary' : 'permanent');
-      setSelectedEmployeeIdForTiming(String(emp.id));
+      setSelectedStudentIdForTiming(String(emp.id));
       setTimingWorkStart(req.requested_work_start_time ? req.requested_work_start_time.substring(0, 5) : '09:00');
       setTimingWorkEnd(req.requested_work_end_time ? req.requested_work_end_time.substring(0, 5) : '18:00');
       setTimingLunchStart('12:00');
@@ -929,7 +929,7 @@ const AdminPage: React.FC = () => {
   };
 
   // Direct Face Management State
-  const [selectedEmpForFace, setSelectedEmpForFace] = useState<Employee | null>(null);
+  const [selectedEmpForFace, setSelectedEmpForFace] = useState<Student | null>(null);
   const [isDirectFaceModalOpen, setIsDirectFaceModalOpen] = useState(false);
   const [directFaceFrames, setDirectFaceFrames] = useState<{ data: string; timestamp: number }[]>([]);
   const [isDirectFaceSubmitting, setIsDirectFaceSubmitting] = useState(false);
@@ -955,55 +955,55 @@ const AdminPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDept, setFilterDept] = useState('');
   const [filterRole, setFilterRole] = useState('');
-  const [expandedSupervisors, setExpandedSupervisors] = useState<Set<number>>(new Set());
+  const [expandedTeachers, setExpandedTeachers] = useState<Set<number>>(new Set());
 
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState<CreateEmployeeForm>(INITIAL_FORM);
+  const [createForm, setCreateForm] = useState<CreateStudentForm>(INITIAL_FORM);
   const [formLoading, setFormLoading] = useState(false);
 
   // Assignment modal
-  const [assignTargetEmployee, setAssignTargetEmployee] = useState<Employee | null>(null);
-  const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>('');
+  const [assignTargetStudent, setAssignTargetStudent] = useState<Student | null>(null);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
   const [assignLoading, setAssignLoading] = useState(false);
 
-  const handleAssignSupervisor = async () => {
-    if (!assignTargetEmployee) return;
-    if (!selectedSupervisorId) {
-      showError('Please select a supervisor');
+  const handleAssignTeacher = async () => {
+    if (!assignTargetStudent) return;
+    if (!selectedTeacherId) {
+      showError('Please select a teacher');
       return;
     }
 
     setAssignLoading(true);
     try {
-      const response = await adminApi.updateEmployee(assignTargetEmployee.id, {
-        supervisorId: parseInt(selectedSupervisorId, 10)
+      const response = await adminApi.updateStudent(assignTargetStudent.id, {
+        teacherId: parseInt(selectedTeacherId, 10)
       });
 
       if (response.data.success || response.status === 200) {
-        showSuccess(`Successfully assigned ${assignTargetEmployee.first_name} ${assignTargetEmployee.last_name} to supervisor`);
-        setAssignTargetEmployee(null);
-        setSelectedSupervisorId('');
+        showSuccess(`Successfully assigned ${assignTargetStudent.first_name} ${assignTargetStudent.last_name} to teacher`);
+        setAssignTargetStudent(null);
+        setSelectedTeacherId('');
         fetchData();
       }
     } catch (err: any) {
       console.error(err);
-      showError(err.response?.data?.error || 'Failed to assign supervisor');
+      showError(err.response?.data?.error || 'Failed to assign teacher');
     } finally {
       setAssignLoading(false);
     }
   };
 
   // Change Password Modal States
-  const [selectedEmpForPassword, setSelectedEmpForPassword] = useState<Employee | null>(null);
+  const [selectedEmpForPassword, setSelectedEmpForPassword] = useState<Student | null>(null);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
   // Location Assignment Modal States
-  const [selectedEmpForLocation, setSelectedEmpForLocation] = useState<Employee | null>(null);
+  const [selectedEmpForLocation, setSelectedEmpForLocation] = useState<Student | null>(null);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState<EmployeeLocation | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<StudentLocation | null>(null);
   const [locationName, setLocationName] = useState('');
   const [locationLat, setLocationLat] = useState('');
   const [locationLng, setLocationLng] = useState('');
@@ -1011,22 +1011,22 @@ const AdminPage: React.FC = () => {
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationFetching, setLocationFetching] = useState(false);
 
-  // Bulk location rows: keyed by employee numeric id for O(1) lookup in table
-  const [employeeLocationRows, setEmployeeLocationRows] = useState<Record<number, EmployeeLocationRow>>({}); 
+  // Bulk location rows: keyed by student numeric id for O(1) lookup in table
+  const [studentLocationRows, setStudentLocationRows] = useState<Record<number, StudentLocationRow>>({}); 
   const [locationRowsLoading, setLocationRowsLoading] = useState(false);
 
-  // Fetch ALL employee locations from bulk endpoint — call after tab switch & after mutations
+  // Fetch ALL student locations from bulk endpoint — call after tab switch & after mutations
   const fetchAllLocations = async (silent: boolean | React.MouseEvent<any> = false) => {
     const isSilent = typeof silent === 'boolean' ? silent : false;
     if (!isSilent) setLocationRowsLoading(true);
     try {
-      const res = await adminApi.getAllEmployeeLocations();
+      const res = await adminApi.getAllStudentLocations();
       const rows = res.data.data || [];
-      const map: Record<number, EmployeeLocationRow> = {};
+      const map: Record<number, StudentLocationRow> = {};
       rows.forEach((row) => { map[row.id] = row; });
-      setEmployeeLocationRows(map);
+      setStudentLocationRows(map);
     } catch (err) {
-      console.error('Failed to load employee locations:', err);
+      console.error('Failed to load student locations:', err);
     } finally {
       if (!isSilent) setLocationRowsLoading(false);
     }
@@ -1041,7 +1041,7 @@ const AdminPage: React.FC = () => {
 
     setPasswordLoading(true);
     try {
-      const response = await adminApi.updateEmployee(selectedEmpForPassword.id, {
+      const response = await adminApi.updateStudent(selectedEmpForPassword.id, {
         password: newPassword
       });
 
@@ -1060,7 +1060,7 @@ const AdminPage: React.FC = () => {
     }
   };
 
-  const openLocationModal = async (emp: Employee) => {
+  const openLocationModal = async (emp: Student) => {
     setSelectedEmpForLocation(emp);
     setLocationName('');
     setLocationLat('');
@@ -1070,7 +1070,7 @@ const AdminPage: React.FC = () => {
     setIsLocationModalOpen(true);
     setLocationFetching(true);
     try {
-      const res = await adminApi.getEmployeeLocation(emp.id);
+      const res = await adminApi.getStudentLocation(emp.id);
       if (res.data.data) {
         const loc = res.data.data;
         setCurrentLocation(loc);
@@ -1080,7 +1080,7 @@ const AdminPage: React.FC = () => {
         setLocationRadius(String(loc.radius_meters));
       }
     } catch (err) {
-      console.error('Failed to fetch employee location:', err);
+      console.error('Failed to fetch student location:', err);
     } finally {
       setLocationFetching(false);
     }
@@ -1101,7 +1101,7 @@ const AdminPage: React.FC = () => {
     }
     setLocationLoading(true);
     try {
-      await adminApi.assignEmployeeLocation(selectedEmpForLocation.id, {
+      await adminApi.assignStudentLocation(selectedEmpForLocation.id, {
         name: locationName.trim(),
         latitude: lat,
         longitude: lng,
@@ -1133,7 +1133,7 @@ const AdminPage: React.FC = () => {
     if (!window.confirm(`Remove work location for ${selectedEmpForLocation.first_name} ${selectedEmpForLocation.last_name}? They will fall back to the global office location.`)) return;
     setLocationLoading(true);
     try {
-      await adminApi.removeEmployeeLocation(selectedEmpForLocation.id);
+      await adminApi.removeStudentLocation(selectedEmpForLocation.id);
       showSuccess('Work location removed successfully');
       setIsLocationModalOpen(false);
       setSelectedEmpForLocation(null);
@@ -1152,7 +1152,7 @@ const AdminPage: React.FC = () => {
     if (!isSilent) setLoading(true);
     try {
       const [empResult, hierarchyResult, timingsResult, pendingResult, logsResult, leaveResult, recoveryResult] = await Promise.allSettled([
-        adminApi.getEmployees({ limit: 200 }),
+        adminApi.getStudents({ limit: 200 }),
         adminApi.getHierarchy(),
         adminApi.getWorkTimings(),
         faceManagementApi.getPendingRequests(),
@@ -1162,13 +1162,13 @@ const AdminPage: React.FC = () => {
       ]);
 
       if (empResult.status === 'fulfilled') {
-        setEmployees(empResult.value.data.data || []);
+        setStudents(empResult.value.data.data || []);
       }
 
       if (hierarchyResult.status === 'fulfilled') {
         const data = hierarchyResult.value.data.data;
-        setSupervisors(data.supervisors || []);
-        setUnassignedEmployees(data.unassignedEmployees || []);
+        setTeachers(data.teachers || []);
+        setUnassignedStudents(data.unassignedStudents || []);
       }
 
       if (timingsResult.status === 'fulfilled') {
@@ -1263,7 +1263,7 @@ const AdminPage: React.FC = () => {
     try {
       setIsDirectFaceSubmitting(true);
       const response = await faceManagementApi.adminRegister(
-        selectedEmpForFace.employee_id,
+        selectedEmpForFace.student_id,
         directFaceFrames.map(f => f.data)
       );
 
@@ -1283,10 +1283,10 @@ const AdminPage: React.FC = () => {
     }
   };
 
-  const handleDirectFaceDelete = async (emp: Employee) => {
+  const handleDirectFaceDelete = async (emp: Student) => {
     if (!window.confirm(`Are you sure you want to delete the face profile for ${emp.first_name} ${emp.last_name}?`)) return;
     try {
-      const response = await faceManagementApi.adminDelete(emp.employee_id);
+      const response = await faceManagementApi.adminDelete(emp.student_id);
       if (response.data.success) {
         showSuccess(`Face profile deleted for ${emp.first_name} ${emp.last_name}`);
         fetchData();
@@ -1402,20 +1402,20 @@ const AdminPage: React.FC = () => {
     };
   }, []);
 
-  // Filter employees
-  const filteredEmployees = employees.filter(emp => {
+  // Filter students
+  const filteredStudents = students.filter(emp => {
     const matchesSearch = !searchQuery
-      || `${emp.first_name} ${emp.last_name} ${emp.employee_id} ${emp.email}`.toLowerCase().includes(searchQuery.toLowerCase());
+      || `${emp.first_name} ${emp.last_name} ${emp.student_id} ${emp.email}`.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesDept = !filterDept || emp.department === filterDept;
     const matchesRole = !filterRole || emp.role === filterRole;
     return matchesSearch && matchesDept && matchesRole;
   });
 
-  const departments = [...new Set(employees.map(e => e.department).filter(Boolean))].sort();
+  const departments = [...new Set(students.map(e => e.department).filter(Boolean))].sort();
 
-  // Toggle supervisor expansion in hierarchy
-  const toggleSupervisor = (id: number) => {
-    setExpandedSupervisors(prev => {
+  // Toggle teacher expansion in hierarchy
+  const toggleTeacher = (id: number) => {
+    setExpandedTeachers(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -1426,9 +1426,9 @@ const AdminPage: React.FC = () => {
     });
   };
 
-  // Toggle supervisor expansion in Supervisors management tab
-  const toggleSupervisorTab = (id: number) => {
-    setExpandedSupervisorsTab(prev => {
+  // Toggle teacher expansion in Teachers management tab
+  const toggleTeacherTab = (id: number) => {
+    setExpandedTeachersTab(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -1439,31 +1439,31 @@ const AdminPage: React.FC = () => {
     });
   };
 
-  // Helper to get supervisor name from id
-  const getSupervisorName = (supervisorId?: number | null) => {
-    if (!supervisorId) return 'None';
-    const sup = employees.find(e => e.id === supervisorId);
-    return sup ? `${sup.first_name} ${sup.last_name} (${sup.employee_id})` : `ID: ${supervisorId}`;
+  // Helper to get teacher name from id
+  const getTeacherName = (teacherId?: number | null) => {
+    if (!teacherId) return 'None';
+    const sup = students.find(e => e.id === teacherId);
+    return sup ? `${sup.first_name} ${sup.last_name} (${sup.student_id})` : `ID: ${teacherId}`;
   };
 
-  // Create employee handler
-  const handleCreateEmployee = async () => {
+  // Create student handler
+  const handleCreateStudent = async () => {
     if (
-      !createForm.employeeId ||
+      !createForm.studentId ||
       !createForm.firstName ||
       !createForm.lastName ||
       !createForm.email ||
       !createForm.department ||
       !createForm.position
     ) {
-      showError('Employee ID, name, email, department, and position are required');
+      showError('Student ID, name, email, department, and position are required');
       return;
     }
 
     setFormLoading(true);
     try {
-      await adminApi.createEmployee({
-        employeeId: createForm.employeeId,
+      await adminApi.createStudent({
+        studentId: createForm.studentId,
         firstName: createForm.firstName,
         lastName: createForm.lastName,
         email: createForm.email,
@@ -1471,61 +1471,61 @@ const AdminPage: React.FC = () => {
         department: createForm.department,
         position: createForm.position,
         role: createForm.role,
-        supervisorId: createForm.supervisorId ? parseInt(createForm.supervisorId) : undefined,
+        teacherId: createForm.teacherId ? parseInt(createForm.teacherId) : undefined,
         hireDate: createForm.hireDate,
         password: createForm.password || undefined,
       });
-      showSuccess(`Employee ${createForm.firstName} ${createForm.lastName} created successfully`);
+      showSuccess(`Student ${createForm.firstName} ${createForm.lastName} created successfully`);
       setShowCreateModal(false);
       setCreateForm(INITIAL_FORM);
       fetchData();
     } catch (err: any) {
-      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to create employee');
+      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to create student');
     } finally {
       setFormLoading(false);
     }
   };
 
-  // Deactivate employee
-  const handleDeactivate = async (emp: Employee) => {
+  // Deactivate student
+  const handleDeactivate = async (emp: Student) => {
     if (!window.confirm(`Deactivate ${emp.first_name} ${emp.last_name}? They will no longer be able to log in.`)) return;
     try {
-      await adminApi.updateEmployee(emp.id, { isActive: false });
+      await adminApi.updateStudent(emp.id, { isActive: false });
       showSuccess(`${emp.first_name} ${emp.last_name} has been deactivated`);
       fetchData();
     } catch (err: any) {
-      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to deactivate employee');
+      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to deactivate student');
     }
   };
 
-  // Activate employee
-  const handleActivate = async (emp: Employee) => {
+  // Activate student
+  const handleActivate = async (emp: Student) => {
     try {
-      await adminApi.updateEmployee(emp.id, { isActive: true });
+      await adminApi.updateStudent(emp.id, { isActive: true });
       showSuccess(`${emp.first_name} ${emp.last_name} has been activated successfully`);
       fetchData();
     } catch (err: any) {
-      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to activate employee');
+      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to activate student');
     }
   };
 
-  // Remove employee (hard delete)
-  const handleRemoveEmployee = async (emp: Employee) => {
-    if (!window.confirm(`Are you sure you want to PERMANENTLY remove employee ${emp.first_name} ${emp.last_name} and all their records from the database? This action cannot be undone.`)) return;
+  // Remove student (hard delete)
+  const handleRemoveStudent = async (emp: Student) => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY remove student ${emp.first_name} ${emp.last_name} and all their records from the database? This action cannot be undone.`)) return;
     try {
-      await adminApi.deactivateEmployee(emp.id);
-      showSuccess(`Employee ${emp.first_name} ${emp.last_name} removed successfully`);
+      await adminApi.deactivateStudent(emp.id);
+      showSuccess(`Student ${emp.first_name} ${emp.last_name} removed successfully`);
       fetchData();
     } catch (err: any) {
-      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to remove employee');
+      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to remove student');
     }
   };
 
   // Tabs configuration
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'hierarchy', label: 'Org Hierarchy', icon: <FaBuilding /> },
-    { id: 'employees', label: 'All Employees', icon: <FaUsers /> },
-    { id: 'supervisors', label: 'Supervisors', icon: <FaShieldAlt /> },
+    { id: 'students', label: 'All Students', icon: <FaUsers /> },
+    { id: 'teachers', label: 'Teachers', icon: <FaShieldAlt /> },
     { id: 'timings', label: 'Work Timings', icon: <FaClock /> },
     { id: 'mfa', label: 'MFA Status', icon: <FaLock /> },
     { id: 'approvals', label: 'Face Approvals', icon: <FaCheck /> },
@@ -1552,10 +1552,10 @@ const AdminPage: React.FC = () => {
             whileTap={{ scale: 0.98 }}
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 font-medium text-sm"
-            id="create-employee-btn"
+            id="create-student-btn"
           >
             <FaUserPlus />
-            Add Employee
+            Add Student
           </motion.button>
         </div>
       </header>
@@ -1599,22 +1599,22 @@ const AdminPage: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <h2 className="text-lg font-semibold text-gray-900">Organizational Hierarchy</h2>
                   <div className="text-sm text-gray-500">
-                    {supervisors.length} supervisors · {unassignedEmployees.length} unassigned employees
+                    {teachers.length} teachers · {unassignedStudents.length} unassigned students
                   </div>
                 </div>
 
-                {/* Supervisors with their teams */}
-                {supervisors.length === 0 ? (
+                {/* Teachers with their teams */}
+                {teachers.length === 0 ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
                     <FaUsers className="mx-auto text-4xl text-gray-300 mb-3" />
-                    <p className="text-gray-500">No supervisors found. Add a supervisor to build the hierarchy.</p>
+                    <p className="text-gray-500">No teachers found. Add a teacher to build the hierarchy.</p>
                   </div>
                 ) : (
-                  supervisors.map(sup => (
+                  teachers.map(sup => (
                     <div key={sup.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                       <div
                         className="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
-                        onClick={() => toggleSupervisor(sup.id)}
+                        onClick={() => toggleTeacher(sup.id)}
                       >
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm">
@@ -1622,15 +1622,15 @@ const AdminPage: React.FC = () => {
                           </div>
                           <div>
                             <p className="font-semibold text-gray-900">{sup.first_name} {sup.last_name}</p>
-                            <p className="text-sm text-gray-500">{sup.department} · {sup.employee_id}</p>
+                            <p className="text-sm text-gray-500">{sup.department} · {sup.student_id}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-sm text-gray-600 bg-blue-50 px-3 py-1 rounded-full">
-                            {(sup.assigned_employees || []).length} team member{(sup.assigned_employees || []).length !== 1 ? 's' : ''}
+                            {(sup.assigned_students || []).length} team member{(sup.assigned_students || []).length !== 1 ? 's' : ''}
                           </span>
                           <RoleBadge role={sup.role} />
-                          {expandedSupervisors.has(sup.id) ? (
+                          {expandedTeachers.has(sup.id) ? (
                             <FaChevronDown className="text-gray-400" />
                           ) : (
                             <FaChevronRight className="text-gray-400" />
@@ -1639,7 +1639,7 @@ const AdminPage: React.FC = () => {
                       </div>
 
                       <AnimatePresence>
-                        {expandedSupervisors.has(sup.id) && (
+                        {expandedTeachers.has(sup.id) && (
                           <motion.div
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
@@ -1648,13 +1648,13 @@ const AdminPage: React.FC = () => {
                             className="overflow-hidden"
                           >
                             <div className="border-t border-gray-100">
-                              {(sup.assigned_employees || []).length === 0 ? (
+                              {(sup.assigned_students || []).length === 0 ? (
                                 <div className="px-6 py-4 text-sm text-gray-500 italic">
-                                  No employees assigned to this supervisor
+                                  No students assigned to this teacher
                                 </div>
                               ) : (
                                 <div className="divide-y divide-gray-100">
-                                  {(sup.assigned_employees || []).map(emp => (
+                                  {(sup.assigned_students || []).map(emp => (
                                     <div
                                       key={emp.id}
                                       className="px-6 py-3 flex items-center justify-between hover:bg-gray-50 pl-14"
@@ -1665,7 +1665,7 @@ const AdminPage: React.FC = () => {
                                         </div>
                                         <div>
                                           <p className="text-sm font-medium text-gray-900">{emp.first_name} {emp.last_name}</p>
-                                          <p className="text-xs text-gray-500">{emp.employee_id} · {emp.position}</p>
+                                          <p className="text-xs text-gray-500">{emp.student_id} · {emp.position}</p>
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-2">
@@ -1684,18 +1684,18 @@ const AdminPage: React.FC = () => {
                   ))
                 )}
 
-                {/* Unassigned employees */}
-                {unassignedEmployees.length > 0 && (
+                {/* Unassigned students */}
+                {unassignedStudents.length > 0 && (
                   <div className="bg-white rounded-xl border border-amber-200 shadow-sm">
                     <div className="px-6 py-4 border-b border-amber-100 flex items-center gap-2">
                       <FaUnlink className="text-amber-500" />
-                      <h3 className="font-semibold text-gray-900">Unassigned Employees</h3>
+                      <h3 className="font-semibold text-gray-900">Unassigned Students</h3>
                       <span className="ml-auto text-sm text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
-                        {unassignedEmployees.length} employee{unassignedEmployees.length !== 1 ? 's' : ''} need assignment
+                        {unassignedStudents.length} student{unassignedStudents.length !== 1 ? 's' : ''} need assignment
                       </span>
                     </div>
                     <div className="divide-y divide-gray-100">
-                      {unassignedEmployees.map(emp => (
+                      {unassignedStudents.map(emp => (
                         <div key={emp.id} className="px-6 py-3 flex items-center justify-between hover:bg-gray-50">
                           <div className="flex items-center gap-2">
                             <div className="h-8 w-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-xs font-medium">
@@ -1703,13 +1703,13 @@ const AdminPage: React.FC = () => {
                             </div>
                             <div>
                               <p className="text-sm font-medium text-gray-900">{emp.first_name} {emp.last_name}</p>
-                              <p className="text-xs text-gray-500">{emp.employee_id} · {emp.department} · {emp.position}</p>
+                              <p className="text-xs text-gray-500">{emp.student_id} · {emp.department} · {emp.position}</p>
                             </div>
                           </div>
                           <button
                             onClick={() => {
-                              setAssignTargetEmployee(emp);
-                              setSelectedSupervisorId('');
+                              setAssignTargetStudent(emp);
+                              setSelectedTeacherId('');
                             }}
                             className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
                           >
@@ -1724,15 +1724,15 @@ const AdminPage: React.FC = () => {
               </div>
             )}
 
-            {/* ── EMPLOYEES TAB ── */}
-            {activeTab === 'employees' && (
+            {/* ── STUDENTS TAB ── */}
+            {activeTab === 'students' && (
               <div className="space-y-5">
                 {/* Search & Filters */}
                 <div className="flex flex-wrap gap-3 items-center">
                   <div className="flex-1 min-w-64 relative">
                     <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                     <input
-                      id="employee-search"
+                      id="student-search"
                       type="text"
                       placeholder="Search by name, ID, or email..."
                       value={searchQuery}
@@ -1756,22 +1756,22 @@ const AdminPage: React.FC = () => {
                     className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">All Roles</option>
-                    <option value="employee">Employee</option>
-                    <option value="supervisor">Supervisor</option>
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
                     <option value="admin">Admin</option>
                   </select>
                   <span className="text-sm text-gray-500 ml-auto">
-                    {filteredEmployees.length} of {employees.length} employees
+                    {filteredStudents.length} of {students.length} students
                   </span>
                 </div>
 
-                {/* Employee Table */}
+                {/* Student Table */}
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Face Auth</th>
@@ -1780,14 +1780,14 @@ const AdminPage: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredEmployees.length === 0 ? (
+                        {filteredStudents.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">
-                              No employees found matching your filters
+                              No students found matching your filters
                             </td>
                           </tr>
                         ) : (
-                          filteredEmployees.map((emp) => (
+                          filteredStudents.map((emp) => (
                             <motion.tr
                               key={emp.id}
                               initial={{ opacity: 0 }}
@@ -1801,7 +1801,7 @@ const AdminPage: React.FC = () => {
                                   </div>
                                   <div>
                                     <p className="text-sm font-medium text-gray-900">{emp.first_name} {emp.last_name}</p>
-                                    <p className="text-xs text-gray-500">{emp.employee_id} · {emp.email}</p>
+                                    <p className="text-xs text-gray-500">{emp.student_id} · {emp.email}</p>
                                   </div>
                                 </div>
                               </td>
@@ -1855,7 +1855,7 @@ const AdminPage: React.FC = () => {
                                     >
                                       <FaMapMarkerAlt className="text-sm" />
                                     </button>
-                                    {emp.employee_id !== 'admin' && (
+                                    {emp.student_id !== 'admin' && (
                                       <>
                                         <button
                                           onClick={() => {
@@ -1872,7 +1872,7 @@ const AdminPage: React.FC = () => {
                                           <button
                                             onClick={() => handleDeactivate(emp)}
                                             className="p-1.5 text-orange-500 hover:bg-orange-50 rounded transition-colors"
-                                            title="Deactivate employee"
+                                            title="Deactivate student"
                                           >
                                             <FaUserSlash className="text-sm" />
                                           </button>
@@ -1880,15 +1880,15 @@ const AdminPage: React.FC = () => {
                                           <button
                                             onClick={() => handleActivate(emp)}
                                             className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
-                                            title="Activate employee"
+                                            title="Activate student"
                                           >
                                             <FaUserCheck className="text-sm" />
                                           </button>
                                         )}
                                         <button
-                                          onClick={() => handleRemoveEmployee(emp)}
+                                          onClick={() => handleRemoveStudent(emp)}
                                           className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                          title="Remove employee"
+                                          title="Remove student"
                                         >
                                           <FaUserMinus className="text-sm" />
                                         </button>
@@ -1906,38 +1906,38 @@ const AdminPage: React.FC = () => {
               </div>
             )}
 
-            {/* ── SUPERVISORS TAB ── */}
-            {activeTab === 'supervisors' && (
+            {/* ── TEACHERS TAB ── */}
+            {activeTab === 'teachers' && (
               <div className="space-y-5 animate-in fade-in duration-200">
                 <div className="flex justify-between items-center">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Supervisor Management</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Click on any supervisor card to view and manage their assigned employees.</p>
+                    <h2 className="text-xl font-bold text-gray-900">Teacher Management</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">Click on any teacher card to view and manage their assigned students.</p>
                   </div>
                   <div className="text-sm text-gray-500 font-medium">
-                    {supervisors.length} Supervisors
+                    {teachers.length} Teachers
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {supervisors.length === 0 ? (
+                  {teachers.length === 0 ? (
                     <div className="col-span-3 bg-white rounded-2xl border border-gray-200 p-12 text-center shadow-sm">
                       <FaUsers className="mx-auto text-5xl text-gray-300 mb-3" />
-                      <p className="text-gray-900 font-semibold text-lg">No supervisors configured yet.</p>
-                      <p className="text-sm text-gray-500 mt-1">Create a supervisor from the Add Employee modal.</p>
+                      <p className="text-gray-900 font-semibold text-lg">No teachers configured yet.</p>
+                      <p className="text-sm text-gray-500 mt-1">Create a teacher from the Add Student modal.</p>
                       <button
-                        onClick={() => { setCreateForm({ ...INITIAL_FORM, role: 'supervisor' }); setShowCreateModal(true); }}
+                        onClick={() => { setCreateForm({ ...INITIAL_FORM, role: 'teacher' }); setShowCreateModal(true); }}
                         className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm inline-flex items-center gap-2"
                       >
-                        <FaUserPlus /> Create Supervisor
+                        <FaUserPlus /> Create Teacher
                       </button>
                     </div>
                   ) : (
-                    supervisors.map(sup => {
-                      const isExpanded = expandedSupervisorsTab.has(sup.id);
+                    teachers.map(sup => {
+                      const isExpanded = expandedTeachersTab.has(sup.id);
                       return (
                         <div
                           key={sup.id}
-                          onClick={() => toggleSupervisorTab(sup.id)}
+                          onClick={() => toggleTeacherTab(sup.id)}
                           className={`cursor-pointer bg-white rounded-2xl border transition-all duration-300 p-5 shadow-sm hover:shadow-md select-none flex flex-col justify-between relative overflow-hidden group ${
                             isExpanded ? 'border-blue-500 ring-2 ring-blue-100 ring-offset-0' : 'border-gray-200 hover:border-blue-300'
                           }`}
@@ -1960,7 +1960,7 @@ const AdminPage: React.FC = () => {
                                   <p className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
                                     {sup.first_name} {sup.last_name}
                                   </p>
-                                  <p className="text-xs text-gray-500 font-medium font-mono">{sup.employee_id}</p>
+                                  <p className="text-xs text-gray-500 font-medium font-mono">{sup.student_id}</p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1971,7 +1971,7 @@ const AdminPage: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Supervisor Info Grid */}
+                            {/* Teacher Info Grid */}
                             <div className="grid grid-cols-1 gap-2.5 text-sm border-t border-b border-gray-100 py-3.5 my-3">
                               <div className="flex justify-between items-center">
                                 <span className="text-gray-500 font-medium">Department</span>
@@ -1989,23 +1989,23 @@ const AdminPage: React.FC = () => {
                                 <span className="text-gray-500 font-medium">Team Size</span>
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">
                                   <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                  {(sup.assigned_employees || []).length} active employees
+                                  {(sup.assigned_students || []).length} active students
                                 </span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Interactive Section: View Supervisor Profile Button */}
+                          {/* Interactive Section: View Teacher Profile Button */}
                           <div className="flex justify-between items-center pt-2">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const fullSup = employees.find(x => x.id === sup.id) || sup;
-                                setSelectedDetailEmployee(fullSup);
+                                const fullSup = students.find(x => x.id === sup.id) || sup;
+                                setSelectedDetailStudent(fullSup);
                               }}
                               className="text-xs text-gray-500 hover:text-blue-600 font-semibold flex items-center gap-1 transition-colors"
                             >
-                              <FaUsers className="text-gray-400 group-hover:text-blue-500" /> View Supervisor Profile
+                              <FaUsers className="text-gray-400 group-hover:text-blue-500" /> View Teacher Profile
                             </button>
                             <span className="text-xs text-blue-600 group-hover:underline font-semibold">
                               {isExpanded ? 'Hide Team' : 'Show Team'}
@@ -2024,22 +2024,22 @@ const AdminPage: React.FC = () => {
                               >
                                 <div className="border-t border-gray-100 mt-4 pt-4">
                                   <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                    Employees Under {sup.first_name}
+                                    Students Under {sup.first_name}
                                   </h4>
-                                  {(sup.assigned_employees || []).length === 0 ? (
+                                  {(sup.assigned_students || []).length === 0 ? (
                                     <div className="text-xs text-gray-400 italic py-2 text-center">
-                                      No employees currently assigned
+                                      No students currently assigned
                                     </div>
                                   ) : (
                                     <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                                      {(sup.assigned_employees || []).map(emp => (
+                                      {(sup.assigned_students || []).map(emp => (
                                         <div
                                           key={emp.id}
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            // Find the full employee from employees list
-                                            const fullEmp = employees.find(x => x.id === emp.id) || emp;
-                                            setSelectedDetailEmployee(fullEmp);
+                                            // Find the full student from students list
+                                            const fullEmp = students.find(x => x.id === emp.id) || emp;
+                                            setSelectedDetailStudent(fullEmp);
                                           }}
                                           className="flex items-center justify-between p-2 rounded-xl hover:bg-blue-50/60 border border-transparent hover:border-blue-100/50 transition-all cursor-pointer group/item"
                                         >
@@ -2051,7 +2051,7 @@ const AdminPage: React.FC = () => {
                                               <p className="text-xs font-bold text-gray-900 group-hover/item:text-blue-700 transition-colors">
                                                 {emp.first_name} {emp.last_name}
                                               </p>
-                                              <p className="text-[10px] text-gray-500 font-medium">{emp.position || 'Employee'}</p>
+                                              <p className="text-[10px] text-gray-500 font-medium">{emp.position || 'Student'}</p>
                                             </div>
                                           </div>
                                           <div className="flex items-center gap-1.5">
@@ -2084,12 +2084,12 @@ const AdminPage: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <div>
                       <h2 className="text-lg font-bold text-gray-900">Work Timings Configuration</h2>
-                      <p className="text-sm text-gray-500">Configure permanent working hours for employees and supervisors.</p>
+                      <p className="text-sm text-gray-500">Configure permanent working hours for students and teachers.</p>
                     </div>
                     <button
                       onClick={() => {
                         setTimingModalType('permanent');
-                        setSelectedEmployeeIdForTiming('');
+                        setSelectedStudentIdForTiming('');
                         setTimingWorkStart('09:00');
                         setTimingWorkEnd('18:00');
                         setTimingLunchStart('12:00');
@@ -2114,7 +2114,7 @@ const AdminPage: React.FC = () => {
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Hours</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lunch Break</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -2127,10 +2127,10 @@ const AdminPage: React.FC = () => {
                                 {timing.first_name ? (
                                   <div>
                                     <p className="font-semibold">{timing.first_name} {timing.last_name}</p>
-                                    <p className="text-xs text-gray-500 font-mono">{timing.employee_code}</p>
+                                    <p className="text-xs text-gray-500 font-mono">{timing.student_code}</p>
                                   </div>
                                 ) : (
-                                  timing.employee_id ? `Employee #${timing.employee_id}` : timing.department || 'Default (All)'
+                                  timing.student_id ? `Student #${timing.student_id}` : timing.department || 'Default (All)'
                                 )}
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-700 font-mono">
@@ -2167,7 +2167,7 @@ const AdminPage: React.FC = () => {
                     <button
                       onClick={() => {
                         setTimingModalType('temporary');
-                        setSelectedEmployeeIdForTiming('');
+                        setSelectedStudentIdForTiming('');
                         setTimingWorkStart('09:00');
                         setTimingWorkEnd('18:00');
                         setTimingLunchStart('12:00');
@@ -2194,7 +2194,7 @@ const AdminPage: React.FC = () => {
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date Range</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Hours</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lunch Break</th>
@@ -2208,10 +2208,10 @@ const AdminPage: React.FC = () => {
                                 {timing.first_name ? (
                                   <div>
                                     <p className="font-semibold">{timing.first_name} {timing.last_name}</p>
-                                    <p className="text-xs text-gray-500 font-mono">{timing.employee_code}</p>
+                                    <p className="text-xs text-gray-500 font-mono">{timing.student_code}</p>
                                   </div>
                                 ) : (
-                                  timing.employee_id ? `Employee #${timing.employee_id}` : timing.department || 'Default (All)'
+                                  timing.student_id ? `Student #${timing.student_id}` : timing.department || 'Default (All)'
                                 )}
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-700">
@@ -2247,8 +2247,8 @@ const AdminPage: React.FC = () => {
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-6">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h2 className="text-lg font-bold text-gray-900">Employee Work Location Assignment</h2>
-                      <p className="text-sm text-gray-500">Assign individual GPS work locations to employees and supervisors. These locations override the global office geo-fence during attendance check-in/check-out.</p>
+                      <h2 className="text-lg font-bold text-gray-900">Student Work Location Assignment</h2>
+                      <p className="text-sm text-gray-500">Assign individual GPS work locations to students and teachers. These locations override the global office geo-fence during attendance check-in/check-out.</p>
                     </div>
                     {locationRowsLoading && (
                       <div className="text-xs text-blue-500 flex items-center gap-1">
@@ -2258,18 +2258,18 @@ const AdminPage: React.FC = () => {
                     )}
                   </div>
 
-                  {employees.length === 0 ? (
+                  {students.length === 0 ? (
                     <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center">
                       <FaMapMarkerAlt className="mx-auto text-4xl text-gray-300 mb-3" />
-                      <p className="text-gray-900 font-semibold text-base">No employees found.</p>
-                      <p className="text-sm text-gray-500 mt-1">Add employees first to assign work locations.</p>
+                      <p className="text-gray-900 font-semibold text-base">No students found.</p>
+                      <p className="text-sm text-gray-500 mt-1">Add students first to assign work locations.</p>
                     </div>
                   ) : (
                     <div className="border border-gray-200 rounded-xl overflow-hidden">
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Timing</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Location</th>
@@ -2277,22 +2277,22 @@ const AdminPage: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {employees.map(emp => (
+                          {students.map(emp => (
                             <tr key={emp.id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 text-sm font-medium text-gray-900">
                                 <div>
                                   <p className="font-semibold">{emp.first_name} {emp.last_name}</p>
-                                  <p className="text-xs text-gray-500 font-mono">{emp.employee_id}</p>
+                                  <p className="text-xs text-gray-500 font-mono">{emp.student_id}</p>
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-700">
                                 <RoleBadge role={emp.role} />
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-700">
-                                {employeeLocationRows[emp.id]?.work_start_time ? (
-                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${employeeLocationRows[emp.id]?.timing_is_temporary ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
-                                      <FaClock className={employeeLocationRows[emp.id]?.timing_is_temporary ? 'text-purple-500' : 'text-blue-500'} />
-                                      {employeeLocationRows[emp.id]?.work_start_time?.substring(0, 5)} - {employeeLocationRows[emp.id]?.work_end_time?.substring(0, 5)} {employeeLocationRows[emp.id]?.timing_is_temporary ? '(Temp)' : ''}
+                                {studentLocationRows[emp.id]?.work_start_time ? (
+                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${studentLocationRows[emp.id]?.timing_is_temporary ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+                                      <FaClock className={studentLocationRows[emp.id]?.timing_is_temporary ? 'text-purple-500' : 'text-blue-500'} />
+                                      {studentLocationRows[emp.id]?.work_start_time?.substring(0, 5)} - {studentLocationRows[emp.id]?.work_end_time?.substring(0, 5)} {studentLocationRows[emp.id]?.timing_is_temporary ? '(Temp)' : ''}
                                     </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
@@ -2302,10 +2302,10 @@ const AdminPage: React.FC = () => {
                                 )}
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-700">
-                                {employeeLocationRows[emp.id]?.location_name ? (
+                                {studentLocationRows[emp.id]?.location_name ? (
                                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
                                     <FaMapMarkerAlt className="text-green-500" />
-                                    {employeeLocationRows[emp.id].location_name}
+                                    {studentLocationRows[emp.id].location_name}
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
@@ -2336,7 +2336,7 @@ const AdminPage: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <div>
                       <h2 className="text-lg font-bold text-gray-900">Location & Timing Assignment Requests</h2>
-                      <p className="text-sm text-gray-500">Approve or reject employee and supervisor requests for work timings and custom coordinates in real time.</p>
+                      <p className="text-sm text-gray-500">Approve or reject student and teacher requests for work timings and custom coordinates in real time.</p>
                     </div>
                     {requestsLoading && (
                       <div className="text-xs text-blue-500 flex items-center gap-1">
@@ -2350,14 +2350,14 @@ const AdminPage: React.FC = () => {
                     <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center">
                       <FaClock className="mx-auto text-4xl text-gray-300 mb-3" />
                       <p className="text-gray-900 font-semibold text-base">No requests found.</p>
-                      <p className="text-sm text-gray-500 mt-1">Pending requests from employees will appear here in real-time.</p>
+                      <p className="text-sm text-gray-500 mt-1">Pending requests from students will appear here in real-time.</p>
                     </div>
                   ) : (
                     <div className="border border-gray-200 rounded-xl overflow-hidden">
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested Details</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted At</th>
@@ -2371,7 +2371,7 @@ const AdminPage: React.FC = () => {
                               <td className="px-4 py-3 text-sm font-medium text-gray-900">
                                 <div>
                                   <p className="font-semibold">{req.first_name} {req.last_name}</p>
-                                  <p className="text-xs text-gray-500 font-mono">{req.employee_id_code}</p>
+                                  <p className="text-xs text-gray-500 font-mono">{req.student_id_code}</p>
                                   <p className="text-xs text-gray-400">{req.department}</p>
                                 </div>
                               </td>
@@ -2459,7 +2459,7 @@ const AdminPage: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <h2 className="text-lg font-semibold text-gray-900">MFA Status</h2>
                   <div className="text-sm text-gray-500">
-                    Manage Multi-Factor Authentication status for all employees
+                    Manage Multi-Factor Authentication status for all students
                   </div>
                 </div>
 
@@ -2468,7 +2468,7 @@ const AdminPage: React.FC = () => {
                   <div className="flex-1 min-w-64 relative">
                     <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                     <input
-                      id="mfa-employee-search"
+                      id="mfa-student-search"
                       type="text"
                       placeholder="Search by name, ID, or email..."
                       value={searchQuery}
@@ -2492,12 +2492,12 @@ const AdminPage: React.FC = () => {
                     className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">All Roles</option>
-                    <option value="employee">Employee</option>
-                    <option value="supervisor">Supervisor</option>
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
                     <option value="admin">Admin</option>
                   </select>
                   <span className="text-sm text-gray-500 ml-auto">
-                    {filteredEmployees.length} of {employees.length} employees
+                    {filteredStudents.length} of {students.length} students
                   </span>
                 </div>
 
@@ -2506,7 +2506,7 @@ const AdminPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">MFA Enabled</th>
@@ -2514,14 +2514,14 @@ const AdminPage: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredEmployees.length === 0 ? (
+                        {filteredStudents.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="px-4 py-12 text-center text-gray-500 text-sm">
-                              No employees found matching your filters
+                              No students found matching your filters
                             </td>
                           </tr>
                         ) : (
-                          filteredEmployees.map((emp) => (
+                          filteredStudents.map((emp) => (
                             <motion.tr
                               key={emp.id}
                               initial={{ opacity: 0 }}
@@ -2535,7 +2535,7 @@ const AdminPage: React.FC = () => {
                                   </div>
                                   <div>
                                     <p className="text-sm font-medium text-gray-900">{emp.first_name} {emp.last_name}</p>
-                                    <p className="text-xs text-gray-500">{emp.employee_id} · {emp.email}</p>
+                                    <p className="text-xs text-gray-500">{emp.student_id} · {emp.email}</p>
                                   </div>
                                 </div>
                               </td>
@@ -2556,7 +2556,7 @@ const AdminPage: React.FC = () => {
                                     onClick={async () => {
                                       if (!window.confirm(`Reset/Disable MFA for ${emp.first_name} ${emp.last_name}?`)) return;
                                       try {
-                                        await adminApi.resetEmployeeMfa(emp.employee_id);
+                                        await adminApi.resetStudentMfa(emp.student_id);
                                         showSuccess(`MFA reset successfully for ${emp.first_name} ${emp.last_name}`);
                                         fetchData();
                                       } catch (err: any) {
@@ -2588,7 +2588,7 @@ const AdminPage: React.FC = () => {
                   <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                     <div>
                       <h2 className="text-xl font-bold text-gray-900">Pending Face Change Requests</h2>
-                      <p className="text-gray-500 text-sm mt-0.5">Review and approve biometric face registration requests from supervisors and employees.</p>
+                      <p className="text-gray-500 text-sm mt-0.5">Review and approve biometric face registration requests from teachers and students.</p>
                     </div>
                     <button
                       onClick={fetchData}
@@ -2610,7 +2610,7 @@ const AdminPage: React.FC = () => {
                           <div className="mb-4 md:mb-0">
                             <div className="flex items-center space-x-3">
                               <span className="font-semibold text-gray-900">{request.first_name} {request.last_name}</span>
-                              <span className="text-xs text-gray-500">({request.employee_id})</span>
+                              <span className="text-xs text-gray-500">({request.student_id})</span>
                               <span className={`px-2 py-0.5 text-xs rounded-full font-bold ${
                                 request.request_type === 'ADD' 
                                   ? 'bg-green-100 text-green-800' 
@@ -2624,9 +2624,9 @@ const AdminPage: React.FC = () => {
                             <div className="text-sm text-gray-500 mt-1">
                               Department: {request.department} &bull; Requested on {new Date(request.created_at).toLocaleDateString()}
                             </div>
-                            {request.requester_employee_id && request.requester_employee_id !== request.employee_id && (
+                            {request.requester_student_id && request.requester_student_id !== request.student_id && (
                               <div className="text-xs text-indigo-600 mt-1">
-                                Requested by: {request.requester_first_name} {request.requester_last_name} ({request.requester_employee_id})
+                                Requested by: {request.requester_first_name} {request.requester_last_name} ({request.requester_student_id})
                               </div>
                             )}
                           </div>
@@ -2696,7 +2696,7 @@ const AdminPage: React.FC = () => {
                   <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                     <div>
                       <h2 className="text-xl font-bold text-gray-900">Pending Biometric Recovery Requests</h2>
-                      <p className="text-gray-500 text-sm mt-0.5">Review and approve biometric and credential recovery requests submitted by lock-out employees or supervisors.</p>
+                      <p className="text-gray-500 text-sm mt-0.5">Review and approve biometric and credential recovery requests submitted by lock-out students or teachers.</p>
                     </div>
                     <button
                       onClick={fetchData}
@@ -2718,7 +2718,7 @@ const AdminPage: React.FC = () => {
                           <div className="mb-4 md:mb-0">
                             <div className="flex items-center space-x-3">
                               <span className="font-semibold text-gray-900">{recovery.first_name} {recovery.last_name}</span>
-                              <span className="text-xs text-gray-500">({recovery.employee_id})</span>
+                              <span className="text-xs text-gray-500">({recovery.student_id})</span>
                               <span className={`px-2 py-0.5 text-xs rounded-full font-bold ${
                                 recovery.request_type === 'face_reset' 
                                   ? 'bg-amber-100 text-amber-800' 
@@ -2818,7 +2818,7 @@ const AdminPage: React.FC = () => {
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Employee</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Student</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Performed By</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
@@ -2831,7 +2831,7 @@ const AdminPage: React.FC = () => {
                               <td className="px-4 py-3 text-sm text-gray-900">
                                 <div>
                                   <p className="font-medium">{log.first_name} {log.last_name}</p>
-                                  <p className="text-xs text-gray-500">{log.employee_id}</p>
+                                  <p className="text-xs text-gray-500">{log.student_id}</p>
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-sm">
@@ -2846,10 +2846,10 @@ const AdminPage: React.FC = () => {
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-700">
-                                {log.perf_employee_id ? (
+                                {log.perf_student_id ? (
                                   <div>
                                     <p className="font-medium">{log.perf_first_name} {log.perf_last_name}</p>
-                                    <p className="text-xs text-gray-500">{log.perf_employee_id}</p>
+                                    <p className="text-xs text-gray-500">{log.perf_student_id}</p>
                                   </div>
                                 ) : (
                                   'System'
@@ -2886,7 +2886,7 @@ const AdminPage: React.FC = () => {
                   <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                     <div>
                       <h2 className="text-xl font-bold text-gray-900">Pending Leave Approvals</h2>
-                      <p className="text-gray-500 text-sm mt-0.5">Review and approve or reject leave requests submitted by employees.</p>
+                      <p className="text-gray-500 text-sm mt-0.5">Review and approve or reject leave requests submitted by students.</p>
                     </div>
                     <button
                       onClick={fetchLeaveRequests}
@@ -2908,9 +2908,9 @@ const AdminPage: React.FC = () => {
                           <div className="mb-4 md:mb-0">
                             <div className="flex items-center space-x-3">
                               <span className="font-semibold text-gray-900">
-                                {request.employee?.first_name} {request.employee?.last_name}
+                                {request.student?.first_name} {request.student?.last_name}
                               </span>
-                              <span className="text-xs text-gray-500 font-normal">({request.employee?.employee_id})</span>
+                              <span className="text-xs text-gray-500 font-normal">({request.student?.student_id})</span>
                               <span className="px-2 py-0.5 text-xs rounded-full font-bold bg-yellow-100 text-yellow-800 uppercase">
                                 {request.leave_type}
                               </span>
@@ -2994,7 +2994,7 @@ const AdminPage: React.FC = () => {
         )}
       </main>
 
-      {/* ── CREATE EMPLOYEE MODAL ── */}
+      {/* ── CREATE STUDENT MODAL ── */}
       <AnimatePresence>
         {showCreateModal && (
           <motion.div
@@ -3013,7 +3013,7 @@ const AdminPage: React.FC = () => {
               <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <FaUserPlus className="text-blue-600" />
-                  Create New Employee
+                  Create New Student
                 </h3>
                 <button
                   onClick={() => setShowCreateModal(false)}
@@ -3026,26 +3026,26 @@ const AdminPage: React.FC = () => {
               <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Employee ID *</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Student ID *</label>
                     <input
-                      id="new-employee-id"
+                      id="new-student-id"
                       type="text"
                       placeholder="e.g. EMP001"
-                      value={createForm.employeeId}
-                      onChange={(e) => setCreateForm(f => ({ ...f, employeeId: e.target.value }))}
+                      value={createForm.studentId}
+                      onChange={(e) => setCreateForm(f => ({ ...f, studentId: e.target.value }))}
                       className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Role *</label>
                     <select
-                      id="new-employee-role"
+                      id="new-student-role"
                       value={createForm.role}
                       onChange={(e) => setCreateForm(f => ({ ...f, role: e.target.value as any }))}
                       className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="employee">Employee</option>
-                      <option value="supervisor">Supervisor</option>
+                      <option value="student">Student</option>
+                      <option value="teacher">Teacher</option>
                       <option value="admin">Admin</option>
                     </select>
                   </div>
@@ -3103,17 +3103,17 @@ const AdminPage: React.FC = () => {
                       className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  {createForm.role === 'employee' && (
+                  {createForm.role === 'student' && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Assign Supervisor</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Assign Teacher</label>
                       <select
-                        id="new-supervisor"
-                        value={createForm.supervisorId}
-                        onChange={(e) => setCreateForm(f => ({ ...f, supervisorId: e.target.value }))}
+                        id="new-teacher"
+                        value={createForm.teacherId}
+                        onChange={(e) => setCreateForm(f => ({ ...f, teacherId: e.target.value }))}
                         className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">None (unassigned)</option>
-                        {supervisors.map(s => (
+                        {teachers.map(s => (
                           <option key={s.id} value={s.id}>
                             {s.first_name} {s.last_name} ({s.department})
                           </option>
@@ -3165,8 +3165,8 @@ const AdminPage: React.FC = () => {
                   Cancel
                 </button>
                 <button
-                  id="submit-create-employee"
-                  onClick={handleCreateEmployee}
+                  id="submit-create-student"
+                  onClick={handleCreateStudent}
                   disabled={formLoading}
                   className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                 >
@@ -3178,7 +3178,7 @@ const AdminPage: React.FC = () => {
                   ) : (
                     <>
                       <FaUserPlus />
-                      Create Employee
+                      Create Student
                     </>
                   )}
                 </button>
@@ -3281,15 +3281,15 @@ const AdminPage: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* ── ASSIGN SUPERVISOR MODAL ── */}
+      {/* ── ASSIGN TEACHER MODAL ── */}
       <AnimatePresence>
-        {assignTargetEmployee && (
+        {assignTargetStudent && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={(e) => { if (e.target === e.currentTarget) setAssignTargetEmployee(null); }}
+            onClick={(e) => { if (e.target === e.currentTarget) setAssignTargetStudent(null); }}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -3300,10 +3300,10 @@ const AdminPage: React.FC = () => {
               <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <FaLink className="text-blue-600" />
-                  Assign Supervisor
+                  Assign Teacher
                 </h3>
                 <button
-                  onClick={() => setAssignTargetEmployee(null)}
+                  onClick={() => setAssignTargetStudent(null)}
                   className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
                 >
                   <FaTimes />
@@ -3313,30 +3313,30 @@ const AdminPage: React.FC = () => {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                    Employee
+                    Student
                   </label>
                   <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <p className="font-semibold text-gray-900">
-                      {assignTargetEmployee.first_name} {assignTargetEmployee.last_name}
+                      {assignTargetStudent.first_name} {assignTargetStudent.last_name}
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      ID: {assignTargetEmployee.employee_id} · Dept: {assignTargetEmployee.department} · Role: {assignTargetEmployee.position}
+                      ID: {assignTargetStudent.student_id} · Dept: {assignTargetStudent.department} · Role: {assignTargetStudent.position}
                     </p>
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="assign-supervisor-select" className="block text-xs font-medium text-gray-700 mb-1">
-                    Select Supervisor *
+                  <label htmlFor="assign-teacher-select" className="block text-xs font-medium text-gray-700 mb-1">
+                    Select Teacher *
                   </label>
                   <select
-                    id="assign-supervisor-select"
-                    value={selectedSupervisorId}
-                    onChange={(e) => setSelectedSupervisorId(e.target.value)}
+                    id="assign-teacher-select"
+                    value={selectedTeacherId}
+                    onChange={(e) => setSelectedTeacherId(e.target.value)}
                     className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                   >
-                    <option value="">-- Choose a Supervisor --</option>
-                    {supervisors.map((s) => (
+                    <option value="">-- Choose a Teacher --</option>
+                    {teachers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.first_name} {s.last_name} ({s.department})
                       </option>
@@ -3346,14 +3346,14 @@ const AdminPage: React.FC = () => {
 
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                   <button
-                    onClick={() => setAssignTargetEmployee(null)}
+                    onClick={() => setAssignTargetStudent(null)}
                     className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={handleAssignSupervisor}
-                    disabled={assignLoading || !selectedSupervisorId}
+                    onClick={handleAssignTeacher}
+                    disabled={assignLoading || !selectedTeacherId}
                     className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {assignLoading ? (
@@ -3408,14 +3408,14 @@ const AdminPage: React.FC = () => {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                    Employee
+                    Student
                   </label>
                   <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <p className="font-semibold text-gray-900">
                       {selectedEmpForPassword.first_name} {selectedEmpForPassword.last_name}
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      ID: {selectedEmpForPassword.employee_id} · Dept: {selectedEmpForPassword.department}
+                      ID: {selectedEmpForPassword.student_id} · Dept: {selectedEmpForPassword.department}
                     </p>
                   </div>
                 </div>
@@ -3497,20 +3497,20 @@ const AdminPage: React.FC = () => {
 
               <form onSubmit={handleAssignWorkTiming} className="p-6 space-y-4">
                 <div>
-                  <label htmlFor="timing-employee-select" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                    Select Employee/Supervisor *
+                  <label htmlFor="timing-student-select" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                    Select Student/Teacher *
                   </label>
                   <select
-                    id="timing-employee-select"
-                    value={selectedEmployeeIdForTiming}
-                    onChange={(e) => setSelectedEmployeeIdForTiming(e.target.value)}
+                    id="timing-student-select"
+                    value={selectedStudentIdForTiming}
+                    onChange={(e) => setSelectedStudentIdForTiming(e.target.value)}
                     className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                     required
                   >
-                    <option value="">-- Choose Employee --</option>
-                    {employees.map((emp) => (
+                    <option value="">-- Choose Student --</option>
+                    {students.map((emp) => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.first_name} {emp.last_name} ({emp.employee_id} - {emp.role})
+                        {emp.first_name} {emp.last_name} ({emp.student_id} - {emp.role})
                       </option>
                     ))}
                   </select>
@@ -3662,10 +3662,10 @@ const AdminPage: React.FC = () => {
               </div>
 
               <div className="p-6 space-y-5">
-                {/* Employee Info */}
+                {/* Student Info */}
                 <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                   <p className="font-semibold text-gray-900">{selectedEmpForLocation.first_name} {selectedEmpForLocation.last_name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">ID: {selectedEmpForLocation.employee_id} · {selectedEmpForLocation.department} · {selectedEmpForLocation.role}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">ID: {selectedEmpForLocation.student_id} · {selectedEmpForLocation.department} · {selectedEmpForLocation.role}</p>
                 </div>
 
                 {/* Current location status */}
@@ -3693,7 +3693,7 @@ const AdminPage: React.FC = () => {
                 ) : (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-0.5">No Personal Location Assigned</p>
-                    <p className="text-xs text-amber-600">This employee uses the global office geo-fence. Assign a personal location below.</p>
+                    <p className="text-xs text-amber-600">This student uses the global office geo-fence. Assign a personal location below.</p>
                   </div>
                 )}
 
@@ -3785,7 +3785,7 @@ const AdminPage: React.FC = () => {
                       placeholder="100"
                       className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
                     />
-                    <p className="text-xs text-gray-400 mt-1">Employees within this radius of the assigned location will be marked as "Within Fence". Default: 100m.</p>
+                    <p className="text-xs text-gray-400 mt-1">Students within this radius of the assigned location will be marked as "Within Fence". Default: 100m.</p>
                   </div>
 
                   {/* Live preview of Google Maps link */}
@@ -3847,15 +3847,15 @@ const AdminPage: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* ── EMPLOYEE DETAILS POPUP MODAL ── */}
+      {/* ── STUDENT DETAILS POPUP MODAL ── */}
       <AnimatePresence>
-        {selectedDetailEmployee && (
+        {selectedDetailStudent && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4 overflow-y-auto"
-            onClick={(e) => { if (e.target === e.currentTarget) setSelectedDetailEmployee(null); }}
+            onClick={(e) => { if (e.target === e.currentTarget) setSelectedDetailStudent(null); }}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -3865,27 +3865,27 @@ const AdminPage: React.FC = () => {
             >
               {/* Header Banner */}
               <div className={`px-6 py-5 flex items-center justify-between text-white ${
-                selectedDetailEmployee.role === 'admin' 
+                selectedDetailStudent.role === 'admin' 
                   ? 'bg-gradient-to-r from-purple-600 to-indigo-600' 
-                  : selectedDetailEmployee.role === 'supervisor'
+                  : selectedDetailStudent.role === 'teacher'
                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600'
                     : 'bg-gradient-to-r from-slate-700 to-slate-800'
               }`}>
                 <div className="flex items-center gap-4">
                   <div className="h-14 w-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white font-bold text-xl border border-white/30 shadow-sm">
-                    {selectedDetailEmployee.first_name[0]}{selectedDetailEmployee.last_name[0]}
+                    {selectedDetailStudent.first_name[0]}{selectedDetailStudent.last_name[0]}
                   </div>
                   <div>
                     <h3 className="text-xl font-bold tracking-tight">
-                      {selectedDetailEmployee.first_name} {selectedDetailEmployee.last_name}
+                      {selectedDetailStudent.first_name} {selectedDetailStudent.last_name}
                     </h3>
                     <p className="text-xs text-white/80 font-medium mt-0.5">
-                      {selectedDetailEmployee.position || 'No position assigned'} &bull; {selectedDetailEmployee.department || 'No department'}
+                      {selectedDetailStudent.position || 'No position assigned'} &bull; {selectedDetailStudent.department || 'No department'}
                     </p>
                   </div>
                 </div>
                 <button
-                  onClick={() => setSelectedDetailEmployee(null)}
+                  onClick={() => setSelectedDetailStudent(null)}
                   className="p-2 text-white/80 hover:text-white rounded-xl hover:bg-white/10 transition-colors"
                 >
                   <FaTimes className="text-lg" />
@@ -3901,21 +3901,21 @@ const AdminPage: React.FC = () => {
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Account Details</h4>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-500 font-medium">Employee ID</span>
-                        <span className="text-gray-900 font-bold font-mono">{selectedDetailEmployee.employee_id}</span>
+                        <span className="text-gray-500 font-medium">Student ID</span>
+                        <span className="text-gray-900 font-bold font-mono">{selectedDetailStudent.student_id}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500 font-medium">System Role</span>
-                        <span className="text-gray-900 font-semibold capitalize">{selectedDetailEmployee.role}</span>
+                        <span className="text-gray-900 font-semibold capitalize">{selectedDetailStudent.role}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500 font-medium">Department</span>
-                        <span className="text-gray-900 font-semibold">{selectedDetailEmployee.department || 'N/A'}</span>
+                        <span className="text-gray-900 font-semibold">{selectedDetailStudent.department || 'N/A'}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-500 font-medium">Supervisor</span>
-                        <span className="text-gray-900 font-semibold truncate max-w-[160px]" title={getSupervisorName(selectedDetailEmployee.supervisor_id)}>
-                          {getSupervisorName(selectedDetailEmployee.supervisor_id)}
+                        <span className="text-gray-500 font-medium">Teacher</span>
+                        <span className="text-gray-900 font-semibold truncate max-w-[160px]" title={getTeacherName(selectedDetailStudent.teacher_id)}>
+                          {getTeacherName(selectedDetailStudent.teacher_id)}
                         </span>
                       </div>
                     </div>
@@ -3928,32 +3928,32 @@ const AdminPage: React.FC = () => {
                       <div className="flex justify-between items-center">
                         <span className="text-gray-500 font-medium">Status</span>
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          selectedDetailEmployee.is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-600 border border-gray-250'
+                          selectedDetailStudent.is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-600 border border-gray-250'
                         }`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${selectedDetailEmployee.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
-                          {selectedDetailEmployee.is_active ? 'Active' : 'Inactive'}
+                          <span className={`h-1.5 w-1.5 rounded-full ${selectedDetailStudent.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
+                          {selectedDetailStudent.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-gray-500 font-medium">Face Recognition</span>
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          selectedDetailEmployee.face_enrolled ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-250'
+                          selectedDetailStudent.face_enrolled ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-250'
                         }`}>
-                          {selectedDetailEmployee.face_enrolled ? 'Enrolled' : 'Not Registered'}
+                          {selectedDetailStudent.face_enrolled ? 'Enrolled' : 'Not Registered'}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-gray-500 font-medium">MFA Status</span>
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          selectedDetailEmployee.mfa_enabled ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-650'
+                          selectedDetailStudent.mfa_enabled ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-650'
                         }`}>
-                          {selectedDetailEmployee.mfa_enabled ? 'Enabled' : 'Disabled'}
+                          {selectedDetailStudent.mfa_enabled ? 'Enabled' : 'Disabled'}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500 font-medium">Hire Date</span>
                         <span className="text-gray-900 font-semibold">
-                          {selectedDetailEmployee.hire_date ? new Date(selectedDetailEmployee.hire_date).toLocaleDateString() : 'N/A'}
+                          {selectedDetailStudent.hire_date ? new Date(selectedDetailStudent.hire_date).toLocaleDateString() : 'N/A'}
                         </span>
                       </div>
                     </div>
@@ -3965,11 +3965,11 @@ const AdminPage: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                       <div>
                         <span className="block text-xs text-gray-400 font-medium">Email Address</span>
-                        <span className="text-gray-900 font-semibold select-all">{selectedDetailEmployee.email}</span>
+                        <span className="text-gray-900 font-semibold select-all">{selectedDetailStudent.email}</span>
                       </div>
                       <div>
                         <span className="block text-xs text-gray-400 font-medium">Phone Number</span>
-                        <span className="text-gray-900 font-semibold select-all">{selectedDetailEmployee.phone_number || 'No phone registered'}</span>
+                        <span className="text-gray-900 font-semibold select-all">{selectedDetailStudent.phone_number || 'No phone registered'}</span>
                       </div>
                     </div>
                   </div>
@@ -3977,32 +3977,32 @@ const AdminPage: React.FC = () => {
                   {/* Assigned Location Card */}
                   <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm space-y-3 col-span-1 md:col-span-2">
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Work Location Geo-Fence</h4>
-                    {employeeLocationRows[selectedDetailEmployee.id]?.location_name ? (
+                    {studentLocationRows[selectedDetailStudent.id]?.location_name ? (
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                           <div>
                             <span className="block text-xs text-gray-400 font-medium">Location Name</span>
                             <span className="text-green-700 font-bold flex items-center gap-1">
-                              <FaMapMarkerAlt /> {employeeLocationRows[selectedDetailEmployee.id].location_name}
+                              <FaMapMarkerAlt /> {studentLocationRows[selectedDetailStudent.id].location_name}
                             </span>
                           </div>
                           <div>
                             <span className="block text-xs text-gray-400 font-medium">Coordinates</span>
                             <span className="text-gray-900 font-mono font-semibold">
-                              {Number(employeeLocationRows[selectedDetailEmployee.id].latitude).toFixed(6)}, {Number(employeeLocationRows[selectedDetailEmployee.id].longitude).toFixed(6)}
+                              {Number(studentLocationRows[selectedDetailStudent.id].latitude).toFixed(6)}, {Number(studentLocationRows[selectedDetailStudent.id].longitude).toFixed(6)}
                             </span>
                           </div>
                           <div>
                             <span className="block text-xs text-gray-400 font-medium">Radius Limit</span>
                             <span className="text-gray-900 font-semibold">
-                              {employeeLocationRows[selectedDetailEmployee.id].radius_meters} meters
+                              {studentLocationRows[selectedDetailStudent.id].radius_meters} meters
                             </span>
                           </div>
                         </div>
                         <div className="bg-green-50/50 p-2.5 rounded-xl border border-green-100 flex items-center justify-between">
-                          <span className="text-xs text-green-700 font-medium">This employee has a custom location assigned.</span>
+                          <span className="text-xs text-green-700 font-medium">This student has a custom location assigned.</span>
                           <a
-                            href={`https://maps.google.com/maps?q=${employeeLocationRows[selectedDetailEmployee.id].latitude},${employeeLocationRows[selectedDetailEmployee.id].longitude}`}
+                            href={`https://maps.google.com/maps?q=${studentLocationRows[selectedDetailStudent.id].latitude},${studentLocationRows[selectedDetailStudent.id].longitude}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-bold"
@@ -4024,8 +4024,8 @@ const AdminPage: React.FC = () => {
                         </div>
                         <button
                           onClick={() => {
-                            const emp = selectedDetailEmployee;
-                            setSelectedDetailEmployee(null);
+                            const emp = selectedDetailStudent;
+                            setSelectedDetailStudent(null);
                             openLocationModal(emp);
                           }}
                           className="px-3 py-1.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-bold transition-colors border border-blue-100"
@@ -4039,9 +4039,9 @@ const AdminPage: React.FC = () => {
 
                 {/* Audit metadata logs */}
                 <div className="text-[10px] text-gray-400 flex flex-wrap justify-between pt-2">
-                  <span>Joined System: {new Date(selectedDetailEmployee.created_at).toLocaleString()}</span>
-                  {selectedDetailEmployee.updated_at && (
-                    <span>Last Updated: {new Date(selectedDetailEmployee.updated_at).toLocaleString()}</span>
+                  <span>Joined System: {new Date(selectedDetailStudent.created_at).toLocaleString()}</span>
+                  {selectedDetailStudent.updated_at && (
+                    <span>Last Updated: {new Date(selectedDetailStudent.updated_at).toLocaleString()}</span>
                   )}
                 </div>
               </div>
@@ -4049,7 +4049,7 @@ const AdminPage: React.FC = () => {
               {/* Footer */}
               <div className="px-6 py-4 border-t border-gray-100 flex justify-end bg-gray-50/50">
                 <button
-                  onClick={() => setSelectedDetailEmployee(null)}
+                  onClick={() => setSelectedDetailStudent(null)}
                   className="px-5 py-2.5 text-sm font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors shadow-sm"
                 >
                   Close Profile

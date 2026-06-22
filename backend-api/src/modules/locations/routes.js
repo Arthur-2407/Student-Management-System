@@ -111,7 +111,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'location.create',
       resourceType: 'office_location',
       resourceId: String(newLocation.id),
@@ -213,7 +213,7 @@ router.put('/:locationId', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'location.update',
       resourceType: 'office_location',
       resourceId: String(result.rows[0].id),
@@ -252,7 +252,7 @@ router.delete('/:locationId', requireRole('admin'), async (req, res) => {
 
     // Log audit event
     await logAuditEvent({
-      actorEmployeeId: req.user.employeeId,
+      actorStudentId: req.user.studentId,
       action: 'location.delete',
       resourceType: 'office_location',
       resourceId: String(result.rows[0].id),

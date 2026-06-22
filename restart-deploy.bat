@@ -90,7 +90,7 @@ docker-compose -f docker-compose.prod.yml ps
 
 echo.
 echo [*] PostgreSQL check...
-docker-compose exec -T postgres pg_isready -U postgres >nul 2>&1
+docker-compose -f docker-compose.prod.yml exec -T student-db pg_isready -U postgres >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] PostgreSQL is healthy
 ) else (
@@ -98,7 +98,7 @@ if %errorlevel% equ 0 (
 )
 
 echo [*] Redis check...
-docker-compose exec -T redis redis-cli ping >nul 2>&1
+docker-compose -f docker-compose.prod.yml exec -T student-redis sh -c "redis-cli -a $REDIS_PASSWORD ping" >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] Redis is healthy
 ) else (
@@ -106,7 +106,7 @@ if %errorlevel% equ 0 (
 )
 
 echo [*] Backend API check...
-curl -f http://localhost:3001/health >nul 2>&1
+curl -f http://127.0.0.1:3002/health >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] Backend API is healthy
 ) else (
@@ -114,7 +114,7 @@ if %errorlevel% equ 0 (
 )
 
 echo [*] Face AI Service check...
-curl -f http://localhost:8000/health >nul 2>&1
+curl -f http://127.0.0.1:8080/face-ai/health >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] Face AI Service is healthy
 ) else (
@@ -130,9 +130,10 @@ echo All services have been restarted and redeployed!
 echo No code or data was removed or damaged.
 echo.
 echo Access points:
-echo   - Backend API: http://localhost:3001
-echo   - Face AI Service: http://localhost:8000
-echo   - Frontend: http://localhost
+echo   - Backend API: http://localhost:3002
+echo   - Face AI Service: http://localhost:8080/face-ai/
+echo   - Frontend (HTTP): http://localhost:8080
+echo   - Frontend (HTTPS): https://localhost:8443
 echo.
 echo Next: Check logs with: docker-compose logs -f
 echo.

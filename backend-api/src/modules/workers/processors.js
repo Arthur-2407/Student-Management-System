@@ -15,15 +15,15 @@ const { query } = require('../../config/database');
 function registerWorkers(io) {
   // ── Notification Worker ──────────────────────────────────────────────────
   jobQueue.process('notification', async (job) => {
-    const { employeeId, type, title, message, data } = job.data;
-    logger.debug('[Worker:notification] Processing', { employeeId, type });
+    const { studentId, type, title, message, data } = job.data;
+    logger.debug('[Worker:notification] Processing', { studentId, type });
 
     // Persist to DB
     try {
       await query(
-        `INSERT INTO notifications (employee_id, type, title, message, payload, is_read)
+        `INSERT INTO notifications (student_id, type, title, message, payload, is_read)
          VALUES ($1, $2, $3, $4, $5, false)`,
-        [employeeId, type || 'system', title || 'Notification', message, JSON.stringify(data || {})]
+        [studentId, type || 'system', title || 'Notification', message, JSON.stringify(data || {})]
       );
     } catch (err) {
       logger.warn('[Worker:notification] DB insert failed — delivering via WebSocket only', {
@@ -33,7 +33,7 @@ function registerWorkers(io) {
 
     // Push via WebSocket
     if (io) {
-      io.to(`employee:${employeeId}`).emit('system_notification', {
+      io.to(`student:${studentId}`).emit('system_notification', {
         type, title, message, data, timestamp: new Date().toISOString(),
       });
     }
@@ -41,30 +41,30 @@ function registerWorkers(io) {
 
   // ── Audit Log Worker ─────────────────────────────────────────────────────
   jobQueue.process('audit', async (job) => {
-    const { actorEmployeeId, action, resource, details } = job.data;
+    const { actorStudentId, action, resource, details } = job.data;
     logger.debug('[Worker:audit] Processing', { action, resource });
 
     await query(
-      `INSERT INTO audit_logs (actor_employee_id, action, resource, details, created_at)
+      `INSERT INTO audit_logs (actor_student_id, action, resource, details, created_at)
        VALUES ($1, $2, $3, $4, NOW())`,
-      [actorEmployeeId, action, resource, JSON.stringify(details || {})]
+      [actorStudentId, action, resource, JSON.stringify(details || {})]
     );
   });
 
   // ── Security Event Worker ────────────────────────────────────────────────
   jobQueue.process('security-event', async (job) => {
-    const { employeeId, eventType, severity, details, ipAddress } = job.data;
+    const { studentId, eventType, severity, details, ipAddress } = job.data;
     logger.debug('[Worker:security-event] Processing', { eventType, severity });
 
     await query(
-      `INSERT INTO security_events (employee_id, event_type, severity, details, ip_address)
+      `INSERT INTO security_events (student_id, event_type, severity, details, ip_address)
        VALUES ($1, $2, $3, $4, $5)`,
-      [employeeId, eventType, severity || 'medium', details, ipAddress]
+      [studentId, eventType, severity || 'medium', details, ipAddress]
     );
 
-    // Broadcast critical security events to supervisors
+    // Broadcast critical security events to teachers
     if (severity === 'critical' && io) {
-      io.to('supervisors').emit('security_alert', {
+      io.to('teachers').emit('security_alert', {
         eventType, severity, details, timestamp: new Date().toISOString(),
       });
     }

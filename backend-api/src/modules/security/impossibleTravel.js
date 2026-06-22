@@ -2,7 +2,7 @@
  * V9 — IMPOSSIBLE TRAVEL DETECTION ENGINE (Database-Persistent)
  *
  * Replaces in-memory Map storage with persistent database storage
- * using the impossible_travel_events and employee_login_locations tables
+ * using the impossible_travel_events and student_login_locations tables
  * (added in migration 006).
  *
  * Detects geographically impossible login patterns by comparing
@@ -60,9 +60,9 @@ class ImpossibleTravelDetector {
       if (db) {
         const result = await db.query(
           `SELECT last_lat, last_lng, last_login_at
-           FROM employee_login_locations
-           WHERE employee_id = (
-             SELECT id FROM employees WHERE employee_id = $1 LIMIT 1
+           FROM student_login_locations
+           WHERE student_id = (
+             SELECT id FROM students WHERE student_id = $1 LIMIT 1
            )`,
           [userId]
         );
@@ -78,12 +78,12 @@ class ImpossibleTravelDetector {
 
         // Update last login location
         await db.query(
-          `INSERT INTO employee_login_locations (employee_id, last_lat, last_lng, last_login_at, updated_at)
+          `INSERT INTO student_login_locations (student_id, last_lat, last_lng, last_login_at, updated_at)
            VALUES (
-             (SELECT id FROM employees WHERE employee_id = $1 LIMIT 1),
+             (SELECT id FROM students WHERE student_id = $1 LIMIT 1),
              $2, $3, NOW(), NOW()
            )
-           ON CONFLICT (employee_id) DO UPDATE SET
+           ON CONFLICT (student_id) DO UPDATE SET
              last_lat = EXCLUDED.last_lat,
              last_lng = EXCLUDED.last_lng,
              last_login_at = NOW(),
@@ -133,7 +133,7 @@ class ImpossibleTravelDetector {
         if (db) {
           await db.query(
             `INSERT INTO impossible_travel_events
-               (employee_id_str, from_lat, from_lng, to_lat, to_lng,
+               (student_id_str, from_lat, from_lng, to_lat, to_lng,
                 distance_km, time_diff_minutes, required_speed_kmh, severity)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
@@ -183,7 +183,7 @@ class ImpossibleTravelDetector {
       const db = this._getDB();
       if (db) {
         const result = await db.query(
-          `SELECT id, employee_id_str as user_id, from_lat, from_lng, to_lat, to_lng,
+          `SELECT id, student_id_str as user_id, from_lat, from_lng, to_lat, to_lng,
                   distance_km, time_diff_minutes, required_speed_kmh, severity, created_at as timestamp
            FROM impossible_travel_events
            WHERE resolved = FALSE
@@ -206,7 +206,7 @@ class ImpossibleTravelDetector {
         const result = await db.query(
           `SELECT COUNT(*) as total_alerts,
                   COUNT(*) FILTER (WHERE resolved = FALSE) as unresolved_alerts,
-                  COUNT(DISTINCT employee_id_str) as tracked_users
+                  COUNT(DISTINCT student_id_str) as tracked_users
            FROM impossible_travel_events`
         );
         return {
@@ -234,8 +234,8 @@ class ImpossibleTravelDetector {
       const db = this._getDB();
       if (db) {
         await db.query(
-          `DELETE FROM employee_login_locations
-           WHERE employee_id = (SELECT id FROM employees WHERE employee_id = $1 LIMIT 1)`,
+          `DELETE FROM student_login_locations
+           WHERE student_id = (SELECT id FROM students WHERE student_id = $1 LIMIT 1)`,
           [userId]
         );
       }

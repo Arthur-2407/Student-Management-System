@@ -11,7 +11,7 @@ function clampPagination(value, fallback, max) {
 
 router.get('/', async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
     const limit = clampPagination(req.query.limit, 20, 100);
     const offset = clampPagination(req.query.offset, 0, 10000);
     const { unread_only: unreadOnly } = req.query;
@@ -19,9 +19,9 @@ router.get('/', async (req, res) => {
     let queryText = `
       SELECT id, type, title, message, payload, is_read, read_at, created_at
       FROM notifications
-      WHERE employee_id = $1
+      WHERE student_id = $1
     `;
-    const params = [employeeId];
+    const params = [studentId];
 
     if (unreadOnly === 'true') {
       queryText += ' AND is_read = FALSE';
@@ -34,8 +34,8 @@ router.get('/', async (req, res) => {
     const unreadResult = await query(
       `SELECT COUNT(*) as count
        FROM notifications
-       WHERE employee_id = $1 AND is_read = FALSE`,
-      [employeeId]
+       WHERE student_id = $1 AND is_read = FALSE`,
+      [studentId]
     );
 
     res.json({
@@ -51,14 +51,14 @@ router.get('/', async (req, res) => {
 
 router.patch('/read-all', async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
 
     const result = await query(
       `UPDATE notifications
        SET is_read = TRUE, read_at = NOW()
-       WHERE employee_id = $1 AND is_read = FALSE
+       WHERE student_id = $1 AND is_read = FALSE
        RETURNING id`,
-      [employeeId]
+      [studentId]
     );
 
     res.json({
@@ -75,7 +75,7 @@ router.patch('/read-all', async (req, res) => {
 router.patch('/:id/read', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
-    const employeeId = req.user.id;
+    const studentId = req.user.id;
 
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ success: false, message: 'Invalid notification id' });
@@ -84,9 +84,9 @@ router.patch('/:id/read', async (req, res) => {
     const result = await query(
       `UPDATE notifications
        SET is_read = TRUE, read_at = NOW()
-       WHERE id = $1 AND employee_id = $2
+       WHERE id = $1 AND student_id = $2
        RETURNING id`,
-      [id, employeeId]
+      [id, studentId]
     );
 
     if (result.rowCount === 0) {

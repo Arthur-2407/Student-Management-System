@@ -111,7 +111,7 @@ Input: base64 image
 Output: Detected faces with bbox, landmarks, confidence, quality scores
 
 #### POST `/face/verify`
-Input: base64 image + employee_id + optional frames array
+Input: base64 image + student_id + optional frames array
 Process:
   1. Detect face
   2. Check quality
@@ -122,7 +122,7 @@ Process:
 Output: authenticated boolean + detailed results
 
 #### POST `/face/register`
-Input: employee_id + array of images (multiple poses)
+Input: student_id + array of images (multiple poses)
 Process:
   1. Process each image
   2. Check quality
@@ -147,8 +147,8 @@ Output: Quality assessment with component scores
 - Flask WSGI server may need gunicorn with multiple workers but shared GPU memory
 
 ### Database Integration (TODO)
-- Register endpoint needs: `db.store_embeddings(employee_id, encrypted_embeddings)`
-- Verify endpoint needs: `stored_emb = db.get_embedding(employee_id)`
+- Register endpoint needs: `db.store_embeddings(student_id, encrypted_embeddings)`
+- Verify endpoint needs: `stored_emb = db.get_embedding(student_id)`
 - Modify endpoints to add actual DB calls
 
 ### Security Checklist

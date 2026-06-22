@@ -17,7 +17,7 @@
  *
  * Usage:
  *   const { jobQueue } = require('./config/jobQueue');
- *   jobQueue.add('notification', { employeeId, message }, { priority: 1 });
+ *   jobQueue.add('notification', { studentId, message }, { priority: 1 });
  *   jobQueue.process('notification', async (job) => { ... });
  */
 const { logger } = require('./logger');

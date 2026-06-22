@@ -32,7 +32,7 @@ const masterState = {
   completed: [
     "Complete Phase 1 analysis of technology stack, architecture, modules, schema, and API routes.",
     "Verify video analysis frames and match UI/UX fixes.",
-    "Implement Secure multi-factor authentication (MFA) for Administrator and Supervisor.",
+    "Implement Secure multi-factor authentication (MFA) for Administrator and Teacher.",
     "Implement Face setup and seeding for development and production environments.",
     "Implement Face Management approval workflow (ADD, UPDATE, REPLACE, DELETE).",
     "Audit and fix Security hardening (Token validation, rate limiters, input validation).",
@@ -46,9 +46,9 @@ const masterState = {
     "Verify health status of running services"
   ],
   modified_files: [
-    "backend-api/Dockerfile.prod",
-    "backend-api/src/migrations/009_face_approval_workflow.up.sql",
-    "backend-api/src/modules/auth/routes.js",
+    "student-backend/Dockerfile.prod",
+    "student-backend/src/migrations/009_face_approval_workflow.up.sql",
+    "student-backend/src/modules/auth/routes.js",
     "frontend/src/api/authApi.ts",
     "frontend/src/router.tsx",
     "frontend/src/pages/LoginPage.tsx"
@@ -64,7 +64,7 @@ const projectMap = {
   frontend: {
     framework: "Vite + React + TypeScript",
     router: "react-router-dom",
-    pages: ["LoginPage", "DashboardPage", "AttendancePage", "LeavePage", "ReportsPage", "SupervisorDashboard", "SecurityDashboard", "SystemStatusDashboard", "BootstrapSetupPage"]
+    pages: ["LoginPage", "DashboardPage", "AttendancePage", "LeavePage", "ReportsPage", "TeacherDashboard", "SecurityDashboard", "SystemStatusDashboard", "BootstrapSetupPage"]
   },
   backend: {
     framework: "Express + Node.js",
@@ -75,9 +75,9 @@ const projectMap = {
 };
 
 const dependencyGraph = {
-  "backend-api": ["postgres", "redis", "face-ai-service"],
-  "frontend": ["backend-api"],
-  "nginx": ["frontend", "backend-api"]
+  "student-backend": ["postgres", "redis", "student-face-ai"],
+  "frontend": ["student-backend"],
+  "nginx": ["frontend", "student-backend"]
 };
 
 const videoAnalysis = {
@@ -136,19 +136,19 @@ const currentTask = {
 
 const changeLog = [
   {
-    file: "backend-api/Dockerfile.prod",
+    file: "student-backend/Dockerfile.prod",
     change: "Created logs directory before running chown",
     reason: "Fix EACCES logs directory permission error",
     timestamp: new Date().toISOString()
   },
   {
-    file: "backend-api/src/migrations/009_face_approval_workflow.up.sql",
+    file: "student-backend/src/migrations/009_face_approval_workflow.up.sql",
     change: "Added environment condition to skip seeding default face embeddings in production",
     reason: "Secure production startup with unseeded admin credentials",
     timestamp: new Date().toISOString()
   },
   {
-    file: "backend-api/src/modules/auth/routes.js",
+    file: "student-backend/src/modules/auth/routes.js",
     change: "Implemented /bootstrap/status and /bootstrap/setup endpoints",
     reason: "Support secure first-time setups and admin passwords",
     timestamp: new Date().toISOString()
@@ -175,7 +175,7 @@ const sessionHistory = [
     task: "Implement secure MFA, admin face setup, and bootstrap mode",
     files: ["routes.js", "authApi.ts", "router.tsx", "LoginPage.tsx", "BootstrapSetupPage.tsx"],
     decisions: ["Skiped default face in production", "Added mandatory combined face+password for administrative roles"],
-    errors: ["EACCES in backend-api log volume mount (fixed)"]
+    errors: ["EACCES in student-backend log volume mount (fixed)"]
   }
 ];
 
@@ -191,9 +191,9 @@ Verification & Deployment
 Docker container updates rebuild and health status verification.
 
 ## Completed Work
-1. Combined password + face authentication logic for Admins/Supervisors.
+1. Combined password + face authentication logic for Admins/Teachers.
 2. Complete approval workflow backend module (ADD, UPDATE, REPLACE, DELETE face endpoints).
-3. Database migration updates to seed supervisor and skip production default admin faces.
+3. Database migration updates to seed teacher and skip production default admin faces.
 4. Bootstrap Mode API endpoints on backend and redirect setup page on frontend.
 5. Production bundle size optimization and asset compilation checks.
 

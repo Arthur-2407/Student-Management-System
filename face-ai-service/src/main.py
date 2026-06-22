@@ -407,7 +407,7 @@ class FaceAuthenticationPipeline:
     
     def process_face_login(self, 
                           video_frames: List[np.ndarray], 
-                          employee_id: str,
+                          student_id: str,
                           challenge_type: Optional[str] = None,
                           stored_embedding: Optional[np.ndarray] = None) -> Dict:
         """
@@ -415,7 +415,7 @@ class FaceAuthenticationPipeline:
 
         Args:
             video_frames:      List of video frames (10-20 frames)
-            employee_id:       Employee identifier
+            student_id:       Student identifier
             challenge_type:    Optional challenge type for liveness verification
             stored_embedding:  Pre-fetched face embedding from PostgreSQL (passed by Express API).
                                If not provided, the pipeline attempts a filesystem cache lookup.
@@ -447,7 +447,7 @@ class FaceAuthenticationPipeline:
             if is_dummy:
                 # Retrieve active embedding to check if user is registered/enrolled
                 db_embedding = stored_embedding if stored_embedding is not None \
-                    else self._get_stored_embedding(employee_id)
+                    else self._get_stored_embedding(student_id)
                 if db_embedding is None:
                     result["errors"].append("No stored face embedding found — enroll face first")
                     result["security_events"].append("NO_STORED_EMBEDDING")
@@ -471,7 +471,7 @@ class FaceAuthenticationPipeline:
                     return result
 
             # Step 1: Face Detection
-            self.logger.info(f"Starting face authentication for employee {employee_id}")
+            self.logger.info(f"Starting face authentication for student {student_id}")
             
             faces_detected = []
             face_boxes = []
@@ -557,9 +557,9 @@ class FaceAuthenticationPipeline:
             if spoof_result["spoof_confidence"] > self.config["spoof_threshold"]:
                 # Log spoof attempt details (full individual scores for forensics)
                 self.logger.warning(
-                    "Spoof attempt detected for employee %s: "
+                    "Spoof attempt detected for student %s: "
                     "confidence=%.4f type=%s triggered=%s individual_scores=%s",
-                    employee_id,
+                    student_id,
                     spoof_result["spoof_confidence"],
                     spoof_result["detection_type"],
                     spoof_result.get("triggered_methods", []),
@@ -607,7 +607,7 @@ class FaceAuthenticationPipeline:
                 # Use injected stored_embedding (from PostgreSQL via Express API);
                 # fall back to filesystem cache if not provided.
                 db_embedding = stored_embedding if stored_embedding is not None \
-                    else self._get_stored_embedding(employee_id)
+                    else self._get_stored_embedding(student_id)
                 
                 if db_embedding is not None:
                     match_result = face_matcher.compare_embeddings(
@@ -684,7 +684,7 @@ class FaceAuthenticationPipeline:
                 
                 result["authenticated"] = True
                 self.logger.info(
-                    f"Authentication successful for employee {employee_id}: "
+                    f"Authentication successful for student {student_id}: "
                     f"confidence={result['confidence']:.2f} unified_score={result['unified_score']:.4f}"
                 )
             else:
@@ -712,7 +712,7 @@ class FaceAuthenticationPipeline:
         clearest_idx = np.argmax(variances)
         return faces[clearest_idx]
     
-    def _get_stored_embedding(self, employee_id: str) -> Optional[np.ndarray]:
+    def _get_stored_embedding(self, student_id: str) -> Optional[np.ndarray]:
         """
         Retrieve stored face embedding from filesystem cache only.
         In production, the embedding is injected via the stored_embedding parameter
@@ -722,20 +722,20 @@ class FaceAuthenticationPipeline:
         """
         try:
             embedding_dir = os.getenv('FACE_EMBEDDINGS_DIR', '/data/embeddings')
-            embedding_path = os.path.join(embedding_dir, f'{employee_id}.npy')
+            embedding_path = os.path.join(embedding_dir, f'{student_id}.npy')
             if os.path.exists(embedding_path):
-                self.logger.info(f'Loaded cached embedding from filesystem for {employee_id}')
+                self.logger.info(f'Loaded cached embedding from filesystem for {student_id}')
                 return np.load(embedding_path)
 
             # No embedding found in filesystem cache either.
             # Return None to let the pipeline produce NO_STORED_EMBEDDING event.
             self.logger.warning(
-                f'No stored embedding found for {employee_id}. '
+                f'No stored embedding found for {student_id}. '
                 'Ensure face is enrolled and stored_embedding is passed from Express API.'
             )
             return None
         except Exception as exc:
-            self.logger.error(f'Error retrieving embedding for {employee_id}: {exc}')
+            self.logger.error(f'Error retrieving embedding for {student_id}: {exc}')
             return None
 
 # Initialize pipeline
@@ -774,9 +774,9 @@ def face_login():
     try:
         data = request.json
         
-        if not data or 'frames' not in data or 'employee_id' not in data:
+        if not data or 'frames' not in data or 'student_id' not in data:
             return jsonify({
-                'error': 'Missing required fields: frames, employee_id',
+                'error': 'Missing required fields: frames, student_id',
                 'code': 'INVALID_REQUEST'
             }), 400
         
@@ -801,7 +801,7 @@ def face_login():
                     logger.warning(f'Could not deserialise stored_embedding: {emb_err}')
             
             db_embedding = stored_embedding if stored_embedding is not None \
-                else pipeline._get_stored_embedding(data['employee_id'])
+                else pipeline._get_stored_embedding(data['student_id'])
             
             if db_embedding is None:
                 return jsonify({
@@ -879,13 +879,13 @@ def face_login():
                                 stored_embeddings.append(arr)
                         if stored_embeddings:
                             stored_embedding = stored_embeddings
-                            logger.info(f'Received list of {len(stored_embeddings)} stored_embeddings for {data["employee_id"]}')
+                            logger.info(f'Received list of {len(stored_embeddings)} stored_embeddings for {data["student_id"]}')
                     else:
                         # Single embedding list
                         arr = np.asarray(stored_embedding_raw, dtype=np.float32).flatten()
                         if arr.shape[0] == 512:
                             stored_embedding = arr
-                            logger.info(f'Received single stored_embedding for {data["employee_id"]} dim=512')
+                            logger.info(f'Received single stored_embedding for {data["student_id"]} dim=512')
                 elif isinstance(stored_embedding_raw, dict):
                     # Dictionary of embeddings
                     stored_embeddings = []
@@ -895,20 +895,20 @@ def face_login():
                             stored_embeddings.append(arr)
                     if stored_embeddings:
                         stored_embedding = stored_embeddings
-                        logger.info(f'Received dict of {len(stored_embeddings)} stored_embeddings for {data["employee_id"]}')
+                        logger.info(f'Received dict of {len(stored_embeddings)} stored_embeddings for {data["student_id"]}')
                 else:
                     # Generic single embedding fallback
                     arr = np.asarray(stored_embedding_raw, dtype=np.float32).flatten()
                     if arr.shape[0] == 512:
                         stored_embedding = arr
-                        logger.info(f'Received generic stored_embedding for {data["employee_id"]} dim=512')
+                        logger.info(f'Received generic stored_embedding for {data["student_id"]} dim=512')
             except Exception as emb_err:
                 logger.warning(f'Could not deserialise stored_embedding: {emb_err}')
 
         # Process authentication
         result = pipeline.process_face_login(
             video_frames=frames,
-            employee_id=data['employee_id'],
+            student_id=data['student_id'],
             challenge_type=data.get('challenge_type') or data.get('challengeType'),
             stored_embedding=stored_embedding,
         )
@@ -922,8 +922,8 @@ def face_login():
         # Log security events with full spoof telemetry for audit trail
         if result.get('security_events'):
             logger.warning(
-                "Security events for employee %s: %s | spoof_confidence=%.4f type=%s",
-                data['employee_id'],
+                "Security events for student %s: %s | spoof_confidence=%.4f type=%s",
+                data['student_id'],
                 result['security_events'],
                 result['spoof_confidence'],
                 result['detection_type'],
@@ -947,9 +947,9 @@ def register_face():
 
         data = request.json
         
-        if not data or 'frames' not in data or 'employee_id' not in data:
+        if not data or 'frames' not in data or 'student_id' not in data:
             return jsonify({
-                'error': 'Missing required fields: frames, employee_id',
+                'error': 'Missing required fields: frames, student_id',
                 'code': 'INVALID_REQUEST'
             }), 400
         
@@ -968,7 +968,7 @@ def register_face():
                 'success': True,
                 'registered': True,
                 'message': 'Face registered successfully (Mock Bypass for E2E Test)',
-                'employee_id': data['employee_id'],
+                'student_id': data['student_id'],
                 'embedding': mock_embedding.tolist(),
                 'embedding_dim': 512,
                 'confidence': 1.0,
@@ -1017,7 +1017,7 @@ def register_face():
                     'error': 'Mock bypass forbidden in production/real mode',
                     'code': 'MOCK_BYPASS_FORBIDDEN',
                     'security_event': 'MOCK_BYPASS_FORBIDDEN_REGISTRATION',
-                    'employee_id': data['employee_id'],
+                    'student_id': data['student_id'],
                     'timestamp': datetime.now().isoformat()
                 }), 403
             
@@ -1028,7 +1028,7 @@ def register_face():
                 'success': True,
                 'registered': True,
                 'message': 'Face registered successfully (Mock Bypass for E2E Test)',
-                'employee_id': data['employee_id'],
+                'student_id': data['student_id'],
                 'embedding': mock_embedding.tolist(),
                 'embedding_dim': 512,
                 'confidence': 1.0,
@@ -1074,7 +1074,7 @@ def register_face():
             'success': True,
             'registered': True,
             'message': 'Face registered successfully',
-            'employee_id': data['employee_id'],
+            'student_id': data['student_id'],
             'embedding': embedding.tolist(),          # <-- persisted by Express to face_embeddings
             'embedding_dim': int(embedding.shape[0]),
             'confidence': quality_score,

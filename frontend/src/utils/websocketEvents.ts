@@ -44,13 +44,13 @@ export const formatEventMessage = (event: WebSocketEvent): string => {
     case EVENT_TYPES.SECURITY_ALERT:
       return `Security alert: ${event.payload.message}`;
     case EVENT_TYPES.ATTENDANCE_UPDATE:
-      return `Attendance update: ${event.payload.employeeName} ${event.payload.action}`;
+      return `Attendance update: ${event.payload.studentName} ${event.payload.action}`;
     case EVENT_TYPES.SPOOF_DETECTION:
-      return `Spoof detection: ${event.payload.employeeName} attempted spoofing`;
+      return `Spoof detection: ${event.payload.studentName} attempted spoofing`;
     case EVENT_TYPES.SYSTEM_NOTIFICATION:
       return `System notification: ${event.payload.message}`;
     case EVENT_TYPES.LEAVE_APPROVAL:
-      return `Leave request: ${event.payload.status} for ${event.payload.employeeName}`;
+      return `Leave request: ${event.payload.status} for ${event.payload.studentName}`;
     case EVENT_TYPES.TEAM_ACTIVITY:
       return `Team activity: ${event.payload.message}`;
     default:
@@ -87,15 +87,15 @@ export const shouldNotifyUser = (event: WebSocketEvent, userRole: string): boole
     return true;
   }
   
-  // Supervisors get notified for team-related events
-  if (userRole === 'supervisor' && 
+  // Teachers get notified for team-related events
+  if (userRole === 'teacher' && 
       (event.type === EVENT_TYPES.TEAM_ACTIVITY || 
        event.type === EVENT_TYPES.LEAVE_APPROVAL)) {
     return true;
   }
   
-  // Regular employees only get notified for personal events
-  if (userRole === 'employee' && 
+  // Regular students only get notified for personal events
+  if (userRole === 'student' && 
       (event.type === EVENT_TYPES.LEAVE_APPROVAL || 
        event.type === EVENT_TYPES.SYSTEM_NOTIFICATION)) {
     return true;
