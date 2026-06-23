@@ -1,11 +1,4 @@
-import {
-  ResponsiveContainer,
-  PieChart,
-  Pie as RechartsPie,
-  Cell,
-  Tooltip as RechartsTooltip,
-  Legend as RechartsLegend
-} from 'recharts';
+import * as Recharts from 'recharts';
 
 interface LeaveData {
   name: string;
@@ -18,16 +11,19 @@ interface LeaveChartProps {
 }
 
 // ✅ FIX: Cast components to valid JSX types
-const Pie = RechartsPie as unknown as React.FC<any>;
-const Tooltip = RechartsTooltip as unknown as React.FC<any>;
-const Legend = RechartsLegend as unknown as React.FC<any>;
+const Pie = Recharts.Pie as unknown as React.FC<any>;
+const Tooltip = Recharts.Tooltip as unknown as React.FC<any>;
+const Legend = Recharts.Legend as unknown as React.FC<any>;
+const ResponsiveContainer = Recharts.ResponsiveContainer as unknown as React.FC<any>;
+const PieChart = Recharts.PieChart as unknown as React.FC<any>;
+const Cell = Recharts.Cell as unknown as React.FC<any>;
 
 const LeaveChart = ({ data, className = '' }: LeaveChartProps) => {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
   return (
     <div className={`w-full h-80 ${className}`}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <PieChart>
           <Pie
             data={data}

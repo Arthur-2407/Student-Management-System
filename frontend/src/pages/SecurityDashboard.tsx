@@ -6,23 +6,23 @@ import {
   FaUserSecret,
   FaMapMarkerAlt,
   FaCamera,
-  FaChartBar
+  FaChartBar,
+  FaUserCheck
 } from 'react-icons/fa';
-import { 
-  BarChart,
-  Bar,
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line
-} from 'recharts';
+import * as Recharts from 'recharts';
+const BarChart = Recharts.BarChart as any;
+const Bar = Recharts.Bar as any;
+const XAxis = Recharts.XAxis as any;
+const YAxis = Recharts.YAxis as any;
+const CartesianGrid = Recharts.CartesianGrid as any;
+const Tooltip = Recharts.Tooltip as any;
+const Legend = Recharts.Legend as any;
+const ResponsiveContainer = Recharts.ResponsiveContainer as any;
+const PieChart = Recharts.PieChart as any;
+const Pie = Recharts.Pie as any;
+const Cell = Recharts.Cell as any;
+const LineChart = Recharts.LineChart as any;
+const Line = Recharts.Line as any;
 import { securityApi } from '@api/securityApi';
 import type { SpoofAttemptRecord } from '@api/securityApi';
 import { useNotification } from '@contexts/NotificationContext';
@@ -85,7 +85,7 @@ const SecurityDashboard: React.FC = () => {
 
         // STABILIZATION: Parallel fetch with allSettled — one failure doesn't block others
         const [eventsResult, logsResult, spoofResult] = await Promise.allSettled([
-          securityApi.getSecurityEvents(20),
+          securityApi.getSecurityEvents(100),
           securityApi.getLoginLogs(20),
           securityApi.getSpoofAttempts(20),
         ]);
@@ -275,27 +275,37 @@ const SecurityDashboard: React.FC = () => {
           <div className="bg-white rounded-xl shadow p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Security Events Distribution</h2>
             <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={eventTypeData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={true}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    nameKey="name"
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {eventTypeData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              {eventTypeData.every(d => d.value === 0) ? (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  <div className="text-center">
+                    <FaUserCheck className="mx-auto text-4xl text-green-300 mb-2" />
+                    <p className="font-semibold text-gray-700">No Security Events</p>
+                    <p className="text-sm text-gray-400 mt-1">System is operating normally</p>
+                  </div>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <PieChart>
+                    <Pie
+                      data={eventTypeData.filter(d => d.value > 0)}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={true}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                      nameKey="name"
+                      label={({ name, percent }: any) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {eventTypeData.filter(d => d.value > 0).map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 
@@ -303,7 +313,7 @@ const SecurityDashboard: React.FC = () => {
           <div className="bg-white rounded-xl shadow p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Spoof Attempts Trend (Last 7 Days)</h2>
             <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={spoofAttemptsByDay}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="day" />
@@ -333,7 +343,7 @@ const SecurityDashboard: React.FC = () => {
               <h2 className="text-xl font-bold text-gray-900">Events by Severity</h2>
             </div>
             <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={severityData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
@@ -442,7 +452,7 @@ const SecurityDashboard: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {securityEvents.map((event) => (
+                        {securityEvents.slice(0, 20).map((event) => (
                           <motion.tr 
                             key={event.id}
                             initial={{ opacity: 0 }}
@@ -460,8 +470,17 @@ const SecurityDashboard: React.FC = () => {
                                     {event.student.student_id}
                                   </div>
                                 </div>
+                              ) : (event as any).first_name ? (
+                                <div>
+                                  <div className="font-medium">
+                                    {(event as any).first_name} {(event as any).last_name}
+                                  </div>
+                                  <div className="text-gray-500 text-xs">
+                                    {(event as any).student_id}
+                                  </div>
+                                </div>
                               ) : (
-                                'Unknown'
+                                <span className="text-gray-400 italic">System</span>
                               )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

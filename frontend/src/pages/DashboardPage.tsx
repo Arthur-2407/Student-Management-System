@@ -9,12 +9,25 @@ import {
   FaCamera,
   FaClock,
 } from 'react-icons/fa';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import * as Recharts from 'recharts';
+const BarChart = Recharts.BarChart as any;
+const Bar = Recharts.Bar as any;
+const XAxis = Recharts.XAxis as any;
+const YAxis = Recharts.YAxis as any;
+const CartesianGrid = Recharts.CartesianGrid as any;
+const Tooltip = Recharts.Tooltip as any;
+const ResponsiveContainer = Recharts.ResponsiveContainer as any;
+const PieChart = Recharts.PieChart as any;
+const Pie = Recharts.Pie as any;
+const Cell = Recharts.Cell as any;
+
 import { attendanceApi } from '@api/attendanceApi';
 import { securityApi } from '@api/securityApi';
 import { faceManagementApi } from '@api/faceManagementApi';
 import FaceCamera from '@components/camera/FaceCamera';
 import { useAuth } from '@contexts/AuthContext';
+import { GooeyButton } from '@components/ui/GooeyButton';
+
 import { useNotification } from '@contexts/NotificationContext';
 import { locationService } from '@services/locationService';
 import { formatDistance, getGeoFenceStatusText, getGeoFenceStatusColor } from '@utils/geofenceUtils';
@@ -101,11 +114,14 @@ const DashboardPage: React.FC = () => {
   const { showError, showSuccess } = useNotification();
   
   
+
   const [attendanceStats, setAttendanceStats] = useState<AttendanceStats | null>(null);
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [checkInStatus, setCheckInStatus] = useState<'checked-in' | 'checked-out' | 'loading'>('loading');
   const [lastCheckIn, setLastCheckIn] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<'check-in' | 'check-out' | null>(null);
+
   // STABILIZATION: Per-section loading states for partial render support
   const [statsLoading, setStatsLoading] = useState(true);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -685,6 +701,8 @@ const DashboardPage: React.FC = () => {
       setCheckInStatus('checked-in');
       setLastCheckIn(response.data.record.check_in_time);
       showSuccess('Successfully checked in!');
+      setActionSuccess('check-in');
+      setTimeout(() => setActionSuccess(null), 3000);
       const abortController = new AbortController();
       fetchDashboardData(abortController.signal);
     } catch (error: any) {
@@ -713,6 +731,8 @@ const DashboardPage: React.FC = () => {
       await attendanceApi.checkOut({ location: freshLocation || undefined });
       setCheckInStatus('checked-out');
       showSuccess('Successfully checked out!');
+      setActionSuccess('check-out');
+      setTimeout(() => setActionSuccess(null), 3000);
       const abortController = new AbortController();
       fetchDashboardData(abortController.signal);
     } catch (error: any) {
@@ -751,61 +771,70 @@ const DashboardPage: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600 mt-1">Welcome back, {(user as any)?.firstName ?? ''} {(user as any)?.lastName ?? ''}</p>
           {user && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-sm text-gray-500">
-              <span><strong>ID:</strong> {user.studentId}</span>
-              <span className="text-gray-300">•</span>
-              <span><strong>Department:</strong> {user.department}</span>
-              {user.role !== 'admin' && (
-                <>
-                  <span className="text-gray-300">•</span>
-                  <span>
-                    <strong>Teacher:</strong>{' '}
-                    {(user as any).teacherName ? (
-                      <span className="text-blue-600 font-medium">{(user as any).teacherName}</span>
-                    ) : (
-                      <span className="text-amber-500 italic">Unassigned</span>
-                    )}
-                  </span>
-                </>
-              )}
-              <span className="text-gray-300">•</span>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${myTiming?.is_temporary ? 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse' : 'bg-blue-50 text-blue-800 border border-blue-100'}`}>
-                <strong>Work Timings:</strong> {myTiming ? `${myTiming.work_start_time.substring(0, 5)} - ${myTiming.work_end_time.substring(0, 5)}` : '09:00 - 18:00'}
-                {myTiming?.is_temporary && (
-                  <span className="ml-1 text-[11px] text-amber-700 font-mono">
-                    (Temp: {myTiming.start_date ? new Date(myTiming.start_date).toLocaleDateString() : ''} - {myTiming.end_date ? new Date(myTiming.end_date).toLocaleDateString() : ''}
-                    {countdown ? ` | ${countdown.days}d ${countdown.hours}h ${countdown.minutes}m ${countdown.seconds}s left` : ''})
-                  </span>
+            <div className="flex flex-col gap-3 mt-3 text-sm text-gray-500">
+              {/* Row 1: Profile Details */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                <span><strong>ID:</strong> {user.studentId}</span>
+                <span className="text-gray-300">•</span>
+                <span><strong>Department:</strong> {user.department}</span>
+                {user.role !== 'admin' && (
+                  <>
+                    <span className="text-gray-300">•</span>
+                    <span>
+                      <strong>Teacher:</strong>{' '}
+                      {(user as any).teacherName ? (
+                        <span className="text-blue-600 font-medium">{(user as any).teacherName}</span>
+                      ) : (
+                        <span className="text-amber-500 italic">Unassigned</span>
+                      )}
+                    </span>
+                  </>
                 )}
-              </span>
-              <span className="text-gray-300">•</span>
-              <span className="inline-flex items-center gap-1.5">
-                <strong>Work Location:</strong>{' '}
-                {myTiming?.has_assigned_location && myTiming.latitude && myTiming.longitude ? (
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${myTiming.latitude},${myTiming.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-green-600 hover:text-green-800 font-semibold underline inline-flex items-center gap-1"
-                  >
-                    <FaMapMarkerAlt /> {myTiming.location_name || 'Assigned Location'}
-                  </a>
-                ) : (
-                  <span className="text-gray-500 italic">Global Office (Default)</span>
-                )}
-              </span>
+              </div>
 
-              {user.role !== 'admin' && (
-                <>
-                  <span className="text-gray-300">•</span>
-                  <button
-                    onClick={() => setIsRequestModalOpen(true)}
-                    className="px-2.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs rounded-full shadow-sm hover:shadow transition-all"
-                  >
-                    Request Location/Timing
-                  </button>
-                </>
-              )}
+              {/* Row 2: Class Timings */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${myTiming?.is_temporary ? 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse' : 'bg-blue-50 text-blue-800 border border-blue-100'}`}>
+                  <strong>Class Timings:</strong> {myTiming ? `${myTiming.work_start_time.substring(0, 5)} - ${myTiming.work_end_time.substring(0, 5)}` : '09:00 - 18:00'}
+                  {myTiming?.is_temporary && (
+                    <span className="ml-1 text-[11px] text-amber-700 font-mono">
+                      (Temp: {myTiming.start_date ? new Date(myTiming.start_date).toLocaleDateString() : ''} - {myTiming.end_date ? new Date(myTiming.end_date).toLocaleDateString() : ''}
+                      {countdown ? ` | ${countdown.days}d ${countdown.hours}h ${countdown.minutes}m ${countdown.seconds}s left` : ''})
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              {/* Row 3: Class Location and Actions */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1 rounded-full text-xs text-gray-700">
+                  <strong>Class Location:</strong>{' '}
+                  {myTiming?.has_assigned_location && myTiming.latitude && myTiming.longitude ? (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${myTiming.latitude},${myTiming.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-green-600 hover:text-green-800 font-semibold underline inline-flex items-center gap-1"
+                    >
+                      <FaMapMarkerAlt /> {myTiming.location_name || 'Assigned Location'}
+                    </a>
+                  ) : (
+                    <span className="text-gray-500 italic">Global Office (Default)</span>
+                  )}
+                </span>
+
+                {user.role !== 'admin' && (
+                  <>
+                    <span className="text-gray-300">•</span>
+                    <button
+                      onClick={() => setIsRequestModalOpen(true)}
+                      className="px-3.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-full shadow-sm hover:shadow transition-all"
+                    >
+                      Request Class Location/Timing
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -923,10 +952,10 @@ const DashboardPage: React.FC = () => {
                 </div>
               </div>
               <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart 
                     data={attendanceChartData}
-                    onClick={(state) => {
+                    onClick={(state: any) => {
                       if (state && state.activePayload && state.activePayload.length > 0) {
                         const clickedData = state.activePayload[0].payload;
                         const dayName = clickedData.day;
@@ -956,7 +985,7 @@ const DashboardPage: React.FC = () => {
                     <YAxis tickLine={false} axisLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} unit="h" />
                     <Tooltip 
                       cursor={{ fill: '#f3f4f6', opacity: 0.5 }}
-                      content={({ active, payload }) => {
+                      content={({ active, payload }: any) => {
                         if (active && payload && payload.length) {
                           const data = payload[0].payload;
                           return (
@@ -1056,38 +1085,46 @@ const DashboardPage: React.FC = () => {
               </div>
               
               <div className="mt-6 space-y-3">
-                {checkInStatus === 'checked-out' ? (
-                  <button
+                {actionSuccess === 'check-in' ? (
+                  <GooeyButton
+                    type="success-in"
+                    icon={<FaCamera />}
+                  >
+                    Checked In
+                  </GooeyButton>
+                ) : actionSuccess === 'check-out' ? (
+                  <GooeyButton
+                    type="success-out"
+                    icon={<FaUserClock />}
+                  >
+                    Checked Out
+                  </GooeyButton>
+                ) : isLoading ? (
+                  <GooeyButton
+                    type="loading"
+                  >
+                    Processing...
+                  </GooeyButton>
+                ) : checkInStatus === 'checked-out' ? (
+                  <GooeyButton
                     onClick={handleCheckIn}
                     disabled={isLoading}
-                    className="w-full flex items-center justify-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
+                    type="check-in"
+                    icon={<FaCamera />}
                   >
-                    <FaCamera className="mr-2" />
                     Check In
-                  </button>
-                ) : checkInStatus === 'checked-in' ? (
-                  <button
+                  </GooeyButton>
+                ) : (
+                  <GooeyButton
                     onClick={handleCheckOut}
                     disabled={isLoading}
-                    className="w-full flex items-center justify-center px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
+                    type="check-out"
+                    icon={<FaUserClock />}
                   >
-                    <FaUserClock className="mr-2" />
                     Check Out
-                  </button>
-                ) : (
-                  <button
-                    disabled
-                    className="w-full flex items-center justify-center px-4 py-2 bg-gray-300 text-gray-600 rounded-lg"
-                  >
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                  </button>
+                  </GooeyButton>
                 )}
               </div>
-              
               {location && (
                 <div className="mt-6 p-4 bg-blue-50 rounded-lg">
                   <p className="text-sm font-medium text-blue-800">Current Location</p>
@@ -1153,7 +1190,7 @@ const DashboardPage: React.FC = () => {
             <div className="bg-white rounded-xl shadow p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Geo-fence Compliance</h2>
               <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
                       data={complianceData}
@@ -1163,7 +1200,7 @@ const DashboardPage: React.FC = () => {
                       outerRadius={60}
                       fill="#8884d8"
                       dataKey="value"
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }: any) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     >
                       {complianceData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -1500,7 +1537,7 @@ const DashboardPage: React.FC = () => {
 
                         <div className="space-y-1">
                           {!myTiming?.has_assigned_timing ? (
-                            <p className="text-amber-600 text-center py-4 font-semibold">Work Timing: Unassigned. No assigned work hours found.</p>
+                            <p className="text-amber-600 text-center py-4 font-semibold">Class Timing: Unassigned. No assigned class hours found.</p>
                           ) : getLateArrivalsBreakdown().length === 0 ? (
                             <p className="text-gray-500 text-center py-4">No late arrivals recorded!</p>
                           ) : (
@@ -1659,7 +1696,7 @@ const DashboardPage: React.FC = () => {
               className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-lg overflow-hidden flex flex-col my-8"
             >
               <div className="flex justify-between items-center bg-gray-50 px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-bold text-gray-900">Request Work Location / Timing Change</h3>
+                <h3 className="text-lg font-bold text-gray-900">Request Class Location / Timing Change</h3>
                 <button
                   onClick={() => setIsRequestModalOpen(false)}
                   className="text-gray-400 hover:text-gray-600 transition-colors text-2xl"
@@ -1676,16 +1713,16 @@ const DashboardPage: React.FC = () => {
                     onChange={(e) => setRequestType(e.target.value as any)}
                     className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="both">Both Location & Timing</option>
-                    <option value="location">Work Location Only</option>
-                    <option value="timing">Work Timing Only</option>
+                    <option value="both">Both Class Location & Timing</option>
+                    <option value="location">Class Location Only</option>
+                    <option value="timing">Class Timing Only</option>
                   </select>
                 </div>
 
                 {/* Location Section */}
                 {(requestType === 'location' || requestType === 'both') && (
                   <div className="space-y-3 p-4 bg-green-50/50 rounded-xl border border-green-100">
-                    <h4 className="text-sm font-bold text-green-800">Requested Work Location Details</h4>
+                    <h4 className="text-sm font-bold text-green-800">Requested Class Location Details</h4>
                     
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Location Name</label>
@@ -1739,7 +1776,7 @@ const DashboardPage: React.FC = () => {
                 {/* Timing Section */}
                 {(requestType === 'timing' || requestType === 'both') && (
                   <div className="space-y-3 p-4 bg-blue-50/50 rounded-xl border border-blue-100">
-                    <h4 className="text-sm font-bold text-blue-800">Requested Work Timing Details</h4>
+                    <h4 className="text-sm font-bold text-blue-800">Requested Class Timing Details</h4>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>

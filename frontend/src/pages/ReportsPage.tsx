@@ -7,21 +7,20 @@ import {
   FaFilePdf,
   FaFileExcel
 } from 'react-icons/fa';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell
-} from 'recharts';
+import * as Recharts from 'recharts';
+const BarChart = Recharts.BarChart as any;
+const Bar = Recharts.Bar as any;
+const XAxis = Recharts.XAxis as any;
+const YAxis = Recharts.YAxis as any;
+const CartesianGrid = Recharts.CartesianGrid as any;
+const Tooltip = Recharts.Tooltip as any;
+const Legend = Recharts.Legend as any;
+const ResponsiveContainer = Recharts.ResponsiveContainer as any;
+const LineChart = Recharts.LineChart as any;
+const Line = Recharts.Line as any;
+const PieChart = Recharts.PieChart as any;
+const Pie = Recharts.Pie as any;
+const Cell = Recharts.Cell as any;
 import { reportsApi } from '@api/reportsApi';
 import api from '@services/api';
 import { useNotification } from '@contexts/NotificationContext';
@@ -1291,7 +1290,7 @@ const ReportsPage: React.FC = () => {
                       Calculating worked hours from database...
                     </div>
                   ) : (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                       <BarChart data={dailyDataForChart}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                         <XAxis dataKey="day" tickLine={false} axisLine={false} style={{ fontSize: '11px', fill: '#6b7280' }} />
@@ -1382,7 +1381,7 @@ const ReportsPage: React.FC = () => {
               <div className="bg-white rounded-xl shadow p-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Department Attendance Rates</h2>
                 <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart margin={{ top: 20, right: 60, bottom: 20, left: 60 }}>
                       <Pie
                         data={departmentData}
@@ -1393,13 +1392,13 @@ const ReportsPage: React.FC = () => {
                         fill="#8884d8"
                         dataKey="attendanceRate"
                         nameKey="department"
-                        label={({ name, value }) => `${name}: ${value}%`}
+                        label={({ name, value }: any) => `${name}: ${value}%`}
                       >
                         {departmentData.map((_entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [`${value}%`, 'Attendance Rate']} />
+                      <Tooltip formatter={(value: any) => [`${value}%`, 'Attendance Rate']} />
                       <Legend />
                     </PieChart>
                   </ResponsiveContainer>
@@ -1424,7 +1423,7 @@ const ReportsPage: React.FC = () => {
                   </span>
                 </div>
                 <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <LineChart
                       data={[
                         { name: 'Approved', value: leaveStats.approved },

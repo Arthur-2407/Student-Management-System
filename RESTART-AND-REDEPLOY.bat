@@ -135,6 +135,17 @@ echo PHASE 5: Building All Services
 echo ========================================
 echo.
 
+echo [*] Compiling frontend assets on host...
+cd frontend
+call npm run build
+if %errorlevel% neq 0 (
+    echo [ERROR] Frontend compilation failed on host. Aborting.
+    cd ..
+    exit /b 1
+)
+cd ..
+echo [SUCCESS] Frontend compiled successfully on host.
+
 echo [*] Building all Docker images without cache...
 echo [*] This may take several minutes...
 docker-compose -f docker-compose.prod.yml build --no-cache

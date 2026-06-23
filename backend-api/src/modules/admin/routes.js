@@ -121,30 +121,60 @@ router.post('/students', requireRole('admin'), async (req, res) => {
     } = req.body;
 
     // Validation
-    if (!studentId || !firstName || !lastName || !email || !department || !position || !hireDate) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!studentId || !studentId.toString().trim()) {
+      return res.status(400).json({ error: 'Student ID is required' });
+    }
+    if (!firstName || !firstName.toString().trim()) {
+      return res.status(400).json({ error: 'First Name is required' });
+    }
+    if (!lastName || !lastName.toString().trim()) {
+      return res.status(400).json({ error: 'Last Name is required' });
+    }
+    if (!email || !email.toString().trim()) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    if (!department || !department.toString().trim()) {
+      return res.status(400).json({ error: 'Department is required' });
+    }
+    if (!position || !position.toString().trim()) {
+      return res.status(400).json({ error: 'Position is required' });
+    }
+    if (!hireDate || !hireDate.toString().trim()) {
+      return res.status(400).json({ error: 'Hire Date is required' });
     }
 
-    if (!['student', 'teacher', 'admin'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role' });
+    if (!role || !['student', 'teacher', 'admin'].includes(role)) {
+      return res.status(400).json({ error: `Invalid role "${role}". Must be student, teacher, or admin.` });
     }
 
     if (!validator.isEmail(email)) {
-      return res.status(400).json({ error: 'Invalid email format' });
+      return res.status(400).json({ error: 'Invalid email format. Please enter a valid email address.' });
     }
 
-    // Check if student_id or email already exists
-    const existsResult = await query(
-      'SELECT id FROM students WHERE student_id = $1 OR email = $2',
-      [studentId, email]
-    );
+    // Sanitize and normalize the studentId (trim whitespace)
+    const cleanStudentId = studentId.toString().trim();
+    const cleanEmail = email.toString().trim().toLowerCase();
 
-    if (existsResult.rows.length > 0) {
-      return res.status(409).json({ error: 'Student ID or email already exists' });
+    // Check if student_id already exists (separate from email check for clear error messages)
+    const idExistsResult = await query(
+      'SELECT id FROM students WHERE student_id = $1',
+      [cleanStudentId]
+    );
+    if (idExistsResult.rows.length > 0) {
+      return res.status(409).json({ error: `Student ID "${cleanStudentId}" is already taken. Please use a different Student ID.` });
+    }
+
+    // Check if email already exists
+    const emailExistsResult = await query(
+      'SELECT id FROM students WHERE LOWER(email) = $1',
+      [cleanEmail]
+    );
+    if (emailExistsResult.rows.length > 0) {
+      return res.status(409).json({ error: `Email "${email}" is already registered. Please use a different email address.` });
     }
 
     // Hash password
-    const actualPassword = (password && String(password).trim() !== '') ? String(password) : String(studentId);
+    const actualPassword = (password && String(password).trim() !== '') ? String(password) : cleanStudentId;
     const passwordHash = await bcrypt.hash(actualPassword, 10);
 
     // Resolve teacher_id for teachers to report to admin by default
@@ -156,20 +186,55 @@ router.post('/students', requireRole('admin'), async (req, res) => {
       }
     }
 
+    // Normalize hireDate — accept YYYY-MM-DD or convert if needed
+    let normalizedHireDate = hireDate.toString().trim();
+    // If date is in DD-MM-YYYY format, convert to YYYY-MM-DD
+    if (/^\d{2}-\d{2}-\d{4}$/.test(normalizedHireDate)) {
+      const parts = normalizedHireDate.split('-');
+      normalizedHireDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    // If date is in DD/MM/YYYY format, convert to YYYY-MM-DD
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(normalizedHireDate)) {
+      const parts = normalizedHireDate.split('/');
+      normalizedHireDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+
     // Insert student
-    const result = await query(
-      `INSERT INTO students (
-        student_id, first_name, last_name, email, phone_number,
-        department, position, role, teacher_id, hire_date,
-        password_hash, is_active, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, NOW(), NOW())
-      RETURNING id, student_id, first_name, last_name, email, role`,
-      [
-        studentId, firstName, lastName, email, phoneNumber || null,
-        department, position, role, actualTeacherId, hireDate,
-        passwordHash
-      ]
-    );
+    let result;
+    try {
+      result = await query(
+        `INSERT INTO students (
+          student_id, first_name, last_name, email, phone_number,
+          department, position, role, teacher_id, hire_date,
+          password_hash, is_active, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, NOW(), NOW())
+        RETURNING id, student_id, first_name, last_name, email, role`,
+        [
+          cleanStudentId, firstName.toString().trim(), lastName.toString().trim(),
+          cleanEmail, phoneNumber ? phoneNumber.toString().trim() : null,
+          department.toString().trim(), position.toString().trim(), role,
+          actualTeacherId, normalizedHireDate,
+          passwordHash
+        ]
+      );
+    } catch (insertError) {
+      logger.error('Student insert DB error', { error: insertError.message, code: insertError.code });
+      // Handle PostgreSQL unique constraint violations gracefully
+      if (insertError.code === '23505') {
+        if (insertError.constraint && insertError.constraint.includes('email')) {
+          return res.status(409).json({ error: `Email "${email}" is already registered.` });
+        }
+        if (insertError.constraint && insertError.constraint.includes('student_id')) {
+          return res.status(409).json({ error: `Student ID "${cleanStudentId}" is already taken.` });
+        }
+        return res.status(409).json({ error: 'A student with this Student ID or email already exists.' });
+      }
+      // Date/type errors
+      if (insertError.code === '22007' || insertError.code === '22008') {
+        return res.status(400).json({ error: `Invalid date format for Hire Date: "${hireDate}". Please use YYYY-MM-DD format.` });
+      }
+      throw insertError;
+    }
 
     const newStudent = result.rows[0];
 
@@ -203,11 +268,15 @@ router.post('/students', requireRole('admin'), async (req, res) => {
     res.status(201).json({
       success: true,
       data: newStudent,
-      message: 'Student created successfully'
+      message: `Student ${firstName} ${lastName} created successfully`
     });
   } catch (error) {
-    logger.error('Student create error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to create student' });
+    logger.error('Student create error', { error: error.message, stack: error.stack, userId: req.user?.id });
+    // Return the actual error message so admin can see what went wrong
+    res.status(500).json({
+      error: 'Failed to create student',
+      details: error.message
+    });
   }
 });
 
@@ -399,8 +468,10 @@ router.delete('/students/:studentId', requireRole('admin'), async (req, res) => 
     // Start transaction for clean hard deletion of the student and all their references
     await query('BEGIN');
     try {
-      // 1. Delete or nullify records where student is creator/approver/lead/head/teacher
+      // 1. Delete or nullify records where student is creator/approver/lead/head/teacher/admin/actor
       await query('UPDATE students SET teacher_id = NULL WHERE teacher_id = $1', [empId]);
+      await query('UPDATE students SET face_enrolled_by = NULL WHERE face_enrolled_by = $1', [empId]);
+      await query('UPDATE students SET deleted_by = NULL WHERE deleted_by = $1', [empId]);
       await query('UPDATE department_config SET department_head_id = NULL WHERE department_head_id = $1', [empId]);
       await query('UPDATE team_config SET team_lead_id = NULL WHERE team_lead_id = $1', [empId]);
       await query('UPDATE office_locations SET created_by = NULL WHERE created_by = $1', [empId]);
@@ -411,34 +482,66 @@ router.delete('/students/:studentId', requireRole('admin'), async (req, res) => 
       await query('UPDATE account_recovery_requests SET reviewed_by = NULL WHERE reviewed_by = $1', [empId]);
       await query('UPDATE account_recovery_requests SET completed_by = NULL WHERE completed_by = $1', [empId]);
       
-      // 2. Delete student specific records (the student is the main actor/target)
+      // Nullify references in teacher_assignments (where deleted teacher was the actor assigning/unassigning)
+      await query('UPDATE teacher_assignments SET assigned_by = NULL WHERE assigned_by = $1', [empId]);
+      await query('UPDATE teacher_assignments SET unassigned_by = NULL WHERE unassigned_by = $1', [empId]);
+      
+      // Nullify admin_configuration references
+      await query('UPDATE admin_configuration SET admin_student_id = NULL WHERE admin_student_id = $1', [empId]);
+      
+      // Nullify audit and history references instead of cascade deleting other students' data
+      await query('UPDATE face_embeddings SET enrolled_by = NULL WHERE enrolled_by = $1', [empId]);
+      await query('UPDATE face_enrollment_logs SET student_id = NULL WHERE student_id = $1', [empId]);
+      await query('UPDATE face_change_requests SET requested_by = NULL WHERE requested_by = $1', [empId]);
+      await query('UPDATE face_audit_logs SET performed_by = NULL WHERE performed_by = $1', [empId]);
+      await query('UPDATE face_approval_history SET actioned_by = NULL WHERE actioned_by = $1', [empId]);
+      
+      await query('UPDATE leave_requests SET teacher_id = NULL, approved_by = NULL, approver_id = NULL WHERE teacher_id = $1 OR approved_by = $1 OR approver_id = $1', [empId]);
+      await query('UPDATE leave_approval_history SET actor_student_id = NULL WHERE actor_student_id = $1', [empId]);
+      await query('UPDATE student_reports SET teacher_id = NULL, approved_by = NULL WHERE teacher_id = $1 OR approved_by = $1', [empId]);
+      await query('UPDATE notifications SET sender_id = NULL WHERE sender_id = $1', [empId]);
+      await query('UPDATE audit_logs SET user_id = NULL WHERE user_id = $1', [empId]);
+      await query('UPDATE audit_logs SET actor_student_id = NULL WHERE actor_student_id = $1', [empId]);
+      
+      // Update role assignments where they were assigned by this user
+      await query('UPDATE role_assignments SET assigned_by = NULL WHERE assigned_by = $1', [empId]);
+      
+      // 2. Delete student specific records (the student is the main actor/target/recipient)
       await query('DELETE FROM teacher_assignments WHERE student_id = $1 OR teacher_id = $1', [empId]);
       await query('DELETE FROM student_relationships WHERE student_id = $1 OR teacher_id = $1', [empId]);
       await query('DELETE FROM team_members WHERE student_id = $1', [empId]);
-      await query('DELETE FROM role_assignments WHERE student_id = $1 OR assigned_by = $1', [empId]);
+      await query('DELETE FROM role_assignments WHERE student_id = $1', [empId]);
       await query('DELETE FROM face_update_requests WHERE requester_id = $1', [empId]);
       await query('DELETE FROM password_reset_requests WHERE requester_id = $1', [empId]);
-      await query('DELETE FROM account_recovery_requests WHERE student_id = $1', [empId]);
+      await query('DELETE FROM account_recovery_audit_log WHERE recovery_id IN (SELECT id FROM account_recovery_requests WHERE student_id = $1)', [empId]);
       await query('DELETE FROM account_recovery_audit_log WHERE actor_id = $1', [empId]);
+      await query('DELETE FROM account_recovery_requests WHERE student_id = $1', [empId]);
       await query('DELETE FROM student_attendance WHERE student_id = $1', [empId]);
-      await query('DELETE FROM leave_requests WHERE student_id = $1 OR teacher_id = $1 OR approved_by = $1 OR approver_id = $1', [empId]);
-      await query('DELETE FROM student_reports WHERE student_id = $1 OR teacher_id = $1 OR approved_by = $1', [empId]);
+      await query('DELETE FROM leave_approval_history WHERE leave_request_id IN (SELECT id FROM leave_requests WHERE student_id = $1)', [empId]);
+      await query('DELETE FROM leave_requests WHERE student_id = $1', [empId]);
+      await query('DELETE FROM student_reports WHERE student_id = $1', [empId]);
       await query('DELETE FROM login_logs WHERE student_id = $1', [empId]);
       await query('DELETE FROM security_events WHERE student_id = $1', [empId]);
       await query('DELETE FROM refresh_tokens WHERE student_id = $1', [empId]);
-      await query('DELETE FROM notifications WHERE student_id = $1 OR recipient_id = $1 OR sender_id = $1', [empId]);
-      await query('DELETE FROM audit_logs WHERE user_id = $1 OR actor_student_id = $1', [empId]);
+      await query('DELETE FROM notifications WHERE student_id = $1 OR recipient_id = $1', [empId]);
       await query('DELETE FROM work_timings WHERE student_id = $1', [empId]);
-      await query('DELETE FROM face_approval_history WHERE actioned_by = $1', [empId]);
       await query('DELETE FROM leave_balance WHERE student_id = $1', [empId]);
-      await query('DELETE FROM face_embeddings WHERE student_id = $1 OR enrolled_by = $1', [empId]);
-      await query('DELETE FROM face_enrollment_logs WHERE student_id = $1 OR target_student_id = $1', [empId]);
+      await query('DELETE FROM face_embeddings WHERE student_id = $1', [empId]);
+      await query('DELETE FROM face_enrollment_logs WHERE target_student_id = $1', [empId]);
       await query('DELETE FROM device_fingerprints WHERE student_id = $1', [empId]);
       await query('DELETE FROM impossible_travel_events WHERE student_id = $1', [empId]);
       await query('DELETE FROM student_login_locations WHERE student_id = $1', [empId]);
-      await query('DELETE FROM leave_approval_history WHERE actor_student_id = $1', [empId]);
-      await query('DELETE FROM face_change_requests WHERE student_id = $1 OR requested_by = $1', [empId]);
-      await query('DELETE FROM face_audit_logs WHERE student_id = $1 OR performed_by = $1', [empId]);
+      await query('DELETE FROM face_approval_history WHERE request_id IN (SELECT id FROM face_change_requests WHERE student_id = $1)', [empId]);
+      await query('DELETE FROM face_approval_requests WHERE request_id IN (SELECT id FROM face_change_requests WHERE student_id = $1)', [empId]);
+      await query('DELETE FROM face_change_requests WHERE student_id = $1', [empId]);
+      await query('DELETE FROM face_audit_logs WHERE student_id = $1', [empId]);
+      
+      // Delete custom locations assigned to this student
+      await query('DELETE FROM student_locations WHERE student_id = $1', [empId]);
+      // Delete location/timing requests made by this student
+      await query('DELETE FROM location_timing_requests WHERE student_id = $1', [empId]);
+      
+      // Update any self-referencing hierarchy linkages remaining
       await query('UPDATE students SET teacher_id = NULL, face_enrolled_by = NULL, deleted_by = NULL WHERE teacher_id = $1 OR face_enrolled_by = $1 OR deleted_by = $1', [empId]);
 
       // 3. Delete from face database tables using faceQuery
@@ -652,7 +755,7 @@ router.post('/students/:studentId/location', requireRole('admin'), async (req, r
     res.json({
       success: true,
       data: result.rows[0],
-      message: 'Work location assigned successfully'
+      message: 'Class location assigned successfully'
     });
   } catch (error) {
     logger.error('Assign student location error', { error: error.message, userId: req.user?.id });
@@ -708,7 +811,7 @@ router.delete('/students/:studentId/location', requireRole('admin'), async (req,
 
     res.json({
       success: true,
-      message: 'Work location removed. Student will use global office location.'
+      message: 'Class location removed. Student will use global office location.'
     });
   } catch (error) {
     logger.error('Remove student location error', { error: error.message, userId: req.user?.id });
@@ -1091,7 +1194,7 @@ router.get('/work-timings', requireRole('teacher'), async (req, res) => {
     });
   } catch (error) {
     logger.error('Work timings list error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to fetch work timings' });
+    res.status(500).json({ error: 'Failed to fetch class timings' });
   }
 });
 
@@ -1196,7 +1299,7 @@ router.post('/work-timings', requireRole('admin'), async (req, res) => {
     });
   } catch (error) {
     logger.error('Work timing create error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to create work timing' });
+    res.status(500).json({ error: 'Failed to create class timing' });
   }
 });
 
@@ -1248,11 +1351,11 @@ router.delete('/work-timings/:id', requireRole('admin'), async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Work timing deleted successfully'
+      message: 'Class timing deleted successfully'
     });
   } catch (error) {
     logger.error('Work timing delete error', { error: error.message, userId: req.user?.id });
-    res.status(500).json({ error: 'Failed to delete work timing' });
+    res.status(500).json({ error: 'Failed to delete class timing' });
   }
 });
 

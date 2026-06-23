@@ -1,13 +1,4 @@
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend
-} from 'recharts';
+import * as Recharts from 'recharts';
 
 interface SecurityChartProps {
   data: any[];
@@ -15,19 +6,19 @@ interface SecurityChartProps {
 }
 
 // Cast Recharts components to fix JSX type errors
-const LineChartComp = LineChart as any;
-const LineComp = Line as any;
-const XAxisComp = XAxis as any;
-const YAxisComp = YAxis as any;
-const TooltipComp = Tooltip as any;
-const LegendComp = Legend as any;
-const CartesianGridComp = CartesianGrid as any;
-const ResponsiveContainerComp = ResponsiveContainer as any;
+const LineChartComp = Recharts.LineChart as any;
+const LineComp = Recharts.Line as any;
+const XAxisComp = Recharts.XAxis as any;
+const YAxisComp = Recharts.YAxis as any;
+const TooltipComp = Recharts.Tooltip as any;
+const LegendComp = Recharts.Legend as any;
+const CartesianGridComp = Recharts.CartesianGrid as any;
+const ResponsiveContainerComp = Recharts.ResponsiveContainer as any;
 
 const SecurityChart = ({ data, className = '' }: SecurityChartProps) => {
   return (
     <div className={`w-full h-80 ${className}`}>
-      <ResponsiveContainerComp width="100%" height="100%">
+      <ResponsiveContainerComp width="100%" height="100%" minWidth={0} minHeight={0}>
         <LineChartComp
           data={data}
           margin={{

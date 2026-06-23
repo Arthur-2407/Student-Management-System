@@ -504,8 +504,8 @@ router.get('/my-timing', async (req, res) => {
       has_assigned_location: assignedLocation !== null
     });
   } catch (error) {
-    logger.error('Failed to get student work timings', { error: error.message });
-    res.status(500).json({ error: 'Failed to fetch work timings' });
+    logger.error('Failed to get student class timings', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch class timings' });
   }
 });
 

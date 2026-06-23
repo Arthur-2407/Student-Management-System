@@ -109,6 +109,7 @@ services:
       - ACCOUNT_LOCKOUT_DISABLED=${ACCOUNT_LOCKOUT_DISABLED:-false}
     volumes:
       - student_backend_api_logs:/app/logs
+      - student_backend_uploads:/app/uploads
     ports:
       - "3002:3001"
     networks:
@@ -245,4 +246,6 @@ volumes:
   student_backend_api_logs:
     driver: local
   student_nginx_logs:
+    driver: local
+  student_backend_uploads:
     driver: local

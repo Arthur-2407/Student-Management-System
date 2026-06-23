@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
 /* stylelint-disable at-rule-no-unknown */
 @tailwind base;
 @tailwind components;
@@ -5,77 +7,84 @@
 
 @layer base {
   :root {
-    --radius: 0.5rem;
+    --radius: 0.75rem;
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    font-family: 'Outfit', sans-serif;
+    @apply bg-gray-50 text-gray-900 antialiased;
   }
   
   .dark {
-    @apply bg-gray-900 text-white;
+    @apply bg-gray-950 text-white;
+  }
+
+  /* Premium Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300/60 rounded-full hover:bg-gray-400/80 transition-colors;
   }
 }
 
 @layer components {
+  /* Modern Premium Card styling */
   .card {
-    @apply bg-white rounded-lg shadow-md p-6;
+    @apply bg-white rounded-xl border border-gray-100 shadow-sm p-6 transition-all duration-300;
+  }
+  .card:hover {
+    @apply shadow-md shadow-gray-100/50 scale-[1.002];
   }
   .dark .card {
-    @apply bg-gray-800;
+    @apply bg-gray-900 border-gray-800 shadow-none;
+  }
+  .dark .card:hover {
+    @apply border-gray-700/50 scale-[1.002];
   }
   
+  /* SaaS Button utilities */
   .btn {
-    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98];
   }
 
-  /* FIX: move focus-visible separately */
   .btn:focus-visible {
-    @apply outline-none ring-2;
+    @apply outline-none ring-2 ring-primary-500/40;
   }
 
   /* PRIMARY */
   .btn-primary {
-    @apply bg-blue-600 text-white;
-  }
-  .btn-primary:hover {
-    @apply bg-blue-700;
+    @apply bg-primary-600 text-white shadow-sm shadow-primary-500/10 hover:bg-primary-700 hover:shadow-md hover:shadow-primary-500/20;
   }
 
   /* SECONDARY */
   .btn-secondary {
-    @apply bg-gray-200 text-gray-900;
-  }
-  .btn-secondary:hover {
-    @apply bg-gray-300;
+    @apply bg-gray-100 border border-gray-200 text-gray-700 hover:bg-gray-200 hover:text-gray-900;
   }
   .dark .btn-secondary {
-    @apply bg-gray-700 text-white;
-  }
-  .dark .btn-secondary:hover {
-    @apply bg-gray-600;
+    @apply bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white;
   }
 
   /* DANGER */
   .btn-danger {
-    @apply bg-red-600 text-white;
-  }
-  .btn-danger:hover {
-    @apply bg-red-700;
+    @apply bg-danger-600 text-white shadow-sm shadow-danger-500/10 hover:bg-danger-700 hover:shadow-md hover:shadow-danger-500/20;
   }
 
   /* INPUT */
   .input {
-    @apply flex h-10 w-full rounded-md border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50;
+    @apply flex h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50;
   }
-
   .input:focus-visible {
-    @apply outline-none ring-2;
+    @apply outline-none ring-2 ring-primary-500/20 border-primary-500;
   }
 
   /* LABEL */
   .form-label {
-    @apply block text-sm font-medium mb-2 text-gray-700;
+    @apply block text-sm font-medium mb-1.5 text-gray-700;
   }
   .dark .form-label {
     @apply text-gray-300;
@@ -83,34 +92,51 @@
 
   /* ALERTS */
   .alert {
-    @apply p-4 rounded-md mb-4;
+    @apply p-4 rounded-xl mb-4 border flex items-start gap-3 text-sm;
   }
 
   .alert-success {
-    @apply bg-green-100 text-green-800;
+    @apply bg-success-50 text-success-800 border-success-100;
   }
   .dark .alert-success {
-    @apply bg-green-900 text-green-200;
+    @apply bg-success-950/20 text-success-300 border-success-900/30;
   }
 
   .alert-error {
-    @apply bg-red-100 text-red-800;
+    @apply bg-danger-50 text-danger-800 border-danger-100;
   }
   .dark .alert-error {
-    @apply bg-red-900 text-red-200;
+    @apply bg-danger-950/20 text-danger-300 border-danger-900/30;
   }
 
   .alert-warning {
-    @apply bg-yellow-100 text-yellow-800;
+    @apply bg-warning-50 text-warning-800 border-warning-100;
   }
   .dark .alert-warning {
-    @apply bg-yellow-900 text-yellow-200;
+    @apply bg-warning-950/20 text-warning-300 border-warning-900/30;
+  }
+
+  /* Modern SaaS Data Table styling */
+  .table-container {
+    @apply w-full overflow-x-auto border border-gray-200/60 rounded-xl bg-white shadow-sm;
+  }
+  .table-header {
+    @apply bg-gray-50/70 border-b border-gray-200/80 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sticky top-0;
+  }
+  .table-row {
+    @apply border-b border-gray-100 hover:bg-gray-50/30 transition-colors;
+  }
+  .table-cell {
+    @apply px-6 py-4 text-sm text-gray-700 whitespace-nowrap;
   }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  .gooey-filter {
+    filter: url('#gooey-liquid-filter-btn');
   }
 }
 /* stylelint-enable at-rule-no-unknown */

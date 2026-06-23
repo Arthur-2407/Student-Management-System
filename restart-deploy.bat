@@ -58,6 +58,18 @@ docker pull redis:7-alpine
 echo [OK] Images pulled
 
 echo.
+echo [*] Compiling frontend assets on host...
+cd frontend
+call npm run build
+if %errorlevel% neq 0 (
+    echo ERROR: Frontend compilation failed
+    cd ..
+    exit /b 1
+)
+cd ..
+echo [OK] Frontend compiled
+
+echo.
 echo [*] Building services (this may take several minutes)...
 docker-compose -f docker-compose.prod.yml build --no-cache
 if %errorlevel% neq 0 (

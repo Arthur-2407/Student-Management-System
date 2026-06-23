@@ -34,13 +34,13 @@ RUN npm config set registry https://registry.npmjs.org && npm ci --omit=dev && n
 # Copy built application from builder stage
 COPY --from=builder /app/src ./src
 
-# Create non-root user for security and create logs directory
-RUN mkdir -p /app/logs && \
+# Create non-root user for security and create logs and uploads directories
+RUN mkdir -p /app/logs /app/uploads && \
     addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
 # Change ownership of app directory
-RUN chown -R nodejs:nodejs /app /app/logs
+RUN chown -R nodejs:nodejs /app /app/logs /app/uploads
 
 # Switch to non-root user
 USER nodejs

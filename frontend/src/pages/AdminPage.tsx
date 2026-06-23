@@ -772,11 +772,11 @@ const AdminPage: React.FC = () => {
       return;
     }
     if (!timingWorkStart || !timingWorkEnd) {
-      showError('Work start and end times are required');
+      showError('Class start and end times are required');
       return;
     }
     if (timingModalType === 'temporary' && (!timingStartDate || !timingEndDate)) {
-      showError('Start and end dates are required for temporary work timings');
+      showError('Start and end dates are required for temporary class timings');
       return;
     }
 
@@ -795,9 +795,9 @@ const AdminPage: React.FC = () => {
 
       const response = await adminApi.createWorkTiming(payload);
       if (response.status === 201 || response.data.success) {
-        showSuccess(`Successfully assigned ${timingModalType} work timing`);
+        showSuccess(`Successfully assigned ${timingModalType} class timing`);
         setIsAssignTimingModalOpen(false);
-        // Refresh work timings
+        // Refresh class timings
         const updatedTimings = await adminApi.getWorkTimings();
         setWorkTimings(updatedTimings.data.data || []);
         fetchAllLocations();
@@ -818,7 +818,7 @@ const AdminPage: React.FC = () => {
           } else {
             await adminApi.updateLocationTimingRequest(processingRequestId, {
               status: 'approved',
-              adminNotes: 'Approved and assigned work timing.'
+              adminNotes: 'Approved and assigned class timing.'
             });
             setProcessingRequestId(null);
             fetchRequests();
@@ -827,26 +827,26 @@ const AdminPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      showError(err.response?.data?.error || 'Failed to assign work timing');
+      showError(err.response?.data?.error || 'Failed to assign class timing');
     } finally {
       setTimingSubmitting(false);
     }
   };
 
   const handleDeleteWorkTiming = async (id: number) => {
-    if (!window.confirm('Are you sure you want to remove this work timing configuration?')) return;
+    if (!window.confirm('Are you sure you want to remove this class timing configuration?')) return;
     try {
       const response = await adminApi.deleteWorkTiming(id);
       if (response.status === 200 || response.data.success) {
-        showSuccess('Successfully deleted work timing configuration');
-        // Refresh work timings
+        showSuccess('Successfully deleted class timing configuration');
+        // Refresh class timings
         const updatedTimings = await adminApi.getWorkTimings();
         setWorkTimings(updatedTimings.data.data || []);
         fetchAllLocations();
       }
     } catch (err: any) {
       console.error(err);
-      showError(err.response?.data?.error || 'Failed to delete work timing configuration');
+      showError(err.response?.data?.error || 'Failed to delete class timing configuration');
     }
   };
 
@@ -961,6 +961,8 @@ const AdminPage: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState<CreateStudentForm>(INITIAL_FORM);
   const [formLoading, setFormLoading] = useState(false);
+  const [customDeptMode, setCustomDeptMode] = useState(false);
+  const [createError, setCreateError] = useState<string>('');
 
   // Assignment modal
   const [assignTargetStudent, setAssignTargetStudent] = useState<Student | null>(null);
@@ -1107,7 +1109,7 @@ const AdminPage: React.FC = () => {
         longitude: lng,
         radiusMeters: parseInt(locationRadius, 10) || 500,
       });
-      showSuccess(`Work location assigned to ${selectedEmpForLocation.first_name} ${selectedEmpForLocation.last_name}`);
+      showSuccess(`Class location assigned to ${selectedEmpForLocation.first_name} ${selectedEmpForLocation.last_name}`);
       setIsLocationModalOpen(false);
       setSelectedEmpForLocation(null);
       fetchData();
@@ -1116,7 +1118,7 @@ const AdminPage: React.FC = () => {
       if (processingRequestId) {
         await adminApi.updateLocationTimingRequest(processingRequestId, {
           status: 'approved',
-          adminNotes: 'Approved and assigned work location.'
+          adminNotes: 'Approved and assigned class location.'
         });
         setProcessingRequestId(null);
         fetchRequests();
@@ -1130,11 +1132,11 @@ const AdminPage: React.FC = () => {
 
   const handleRemoveLocation = async () => {
     if (!selectedEmpForLocation) return;
-    if (!window.confirm(`Remove work location for ${selectedEmpForLocation.first_name} ${selectedEmpForLocation.last_name}? They will fall back to the global office location.`)) return;
+    if (!window.confirm(`Remove class location for ${selectedEmpForLocation.first_name} ${selectedEmpForLocation.last_name}? They will fall back to the global office location.`)) return;
     setLocationLoading(true);
     try {
       await adminApi.removeStudentLocation(selectedEmpForLocation.id);
-      showSuccess('Work location removed successfully');
+      showSuccess('Class location removed successfully');
       setIsLocationModalOpen(false);
       setSelectedEmpForLocation(null);
       fetchData();
@@ -1448,39 +1450,72 @@ const AdminPage: React.FC = () => {
 
   // Create student handler
   const handleCreateStudent = async () => {
-    if (
-      !createForm.studentId ||
-      !createForm.firstName ||
-      !createForm.lastName ||
-      !createForm.email ||
-      !createForm.department ||
-      !createForm.position
-    ) {
-      showError('Student ID, name, email, department, and position are required');
+    setCreateError('');
+
+    // Front-end validation with specific messages
+    if (!createForm.studentId || !createForm.studentId.trim()) {
+      setCreateError('Student ID is required.');
+      return;
+    }
+    if (!createForm.firstName || !createForm.firstName.trim()) {
+      setCreateError('First Name is required.');
+      return;
+    }
+    if (!createForm.lastName || !createForm.lastName.trim()) {
+      setCreateError('Last Name is required.');
+      return;
+    }
+    if (!createForm.email || !createForm.email.trim()) {
+      setCreateError('Email is required.');
+      return;
+    }
+    if (!createForm.department || !createForm.department.trim()) {
+      setCreateError('Department is required.');
+      return;
+    }
+    if (!createForm.position || !createForm.position.trim()) {
+      setCreateError('Position is required.');
+      return;
+    }
+
+    // Basic email format check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(createForm.email.trim())) {
+      setCreateError('Please enter a valid email address.');
       return;
     }
 
     setFormLoading(true);
     try {
       await adminApi.createStudent({
-        studentId: createForm.studentId,
-        firstName: createForm.firstName,
-        lastName: createForm.lastName,
-        email: createForm.email,
+        studentId: createForm.studentId.trim(),
+        firstName: createForm.firstName.trim(),
+        lastName: createForm.lastName.trim(),
+        email: createForm.email.trim(),
         phoneNumber: createForm.phoneNumber || undefined,
-        department: createForm.department,
-        position: createForm.position,
+        department: createForm.department.trim(),
+        position: createForm.position.trim(),
         role: createForm.role,
         teacherId: createForm.teacherId ? parseInt(createForm.teacherId) : undefined,
-        hireDate: createForm.hireDate,
+        hireDate: createForm.hireDate || new Date().toISOString().split('T')[0],
         password: createForm.password || undefined,
       });
       showSuccess(`Student ${createForm.firstName} ${createForm.lastName} created successfully`);
       setShowCreateModal(false);
       setCreateForm(INITIAL_FORM);
+      setCreateError('');
+      setCustomDeptMode(false);
       fetchData();
     } catch (err: any) {
-      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to create student');
+      // Extract the most descriptive error message from the response
+      const details = err.response?.data?.details;
+      const errorMsg = err.response?.data?.error;
+      const errMsg = details && errorMsg && errorMsg !== details
+        ? `${errorMsg}: ${details}`
+        : (errorMsg || err.response?.data?.message || details || 'Failed to create student. Please check all fields and try again.');
+      setCreateError(errMsg);
+      // Also show toast for visibility
+      showError(errMsg);
     } finally {
       setFormLoading(false);
     }
@@ -1488,36 +1523,39 @@ const AdminPage: React.FC = () => {
 
   // Deactivate student
   const handleDeactivate = async (emp: Student) => {
-    if (!window.confirm(`Deactivate ${emp.first_name} ${emp.last_name}? They will no longer be able to log in.`)) return;
+    const roleLabel = emp.role === 'teacher' ? 'teacher' : emp.role === 'admin' ? 'administrator' : 'student';
+    if (!window.confirm(`Deactivate ${roleLabel} ${emp.first_name} ${emp.last_name}? They will no longer be able to log in.`)) return;
     try {
       await adminApi.updateStudent(emp.id, { isActive: false });
       showSuccess(`${emp.first_name} ${emp.last_name} has been deactivated`);
       fetchData();
     } catch (err: any) {
-      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to deactivate student');
+      showError(err.response?.data?.error || err.response?.data?.message || `Failed to deactivate ${roleLabel}`);
     }
   };
 
   // Activate student
   const handleActivate = async (emp: Student) => {
+    const roleLabel = emp.role === 'teacher' ? 'teacher' : emp.role === 'admin' ? 'administrator' : 'student';
     try {
       await adminApi.updateStudent(emp.id, { isActive: true });
       showSuccess(`${emp.first_name} ${emp.last_name} has been activated successfully`);
       fetchData();
     } catch (err: any) {
-      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to activate student');
+      showError(err.response?.data?.error || err.response?.data?.message || `Failed to activate ${roleLabel}`);
     }
   };
 
   // Remove student (hard delete)
   const handleRemoveStudent = async (emp: Student) => {
-    if (!window.confirm(`Are you sure you want to PERMANENTLY remove student ${emp.first_name} ${emp.last_name} and all their records from the database? This action cannot be undone.`)) return;
+    const roleLabel = emp.role === 'teacher' ? 'teacher' : emp.role === 'admin' ? 'administrator' : 'student';
+    if (!window.confirm(`Are you sure you want to PERMANENTLY remove ${roleLabel} ${emp.first_name} ${emp.last_name} and all their records from the database? This action cannot be undone.`)) return;
     try {
       await adminApi.deactivateStudent(emp.id);
-      showSuccess(`Student ${emp.first_name} ${emp.last_name} removed successfully`);
+      showSuccess(`${emp.role === 'teacher' ? 'Teacher' : emp.role === 'admin' ? 'Administrator' : 'Student'} ${emp.first_name} ${emp.last_name} removed successfully`);
       fetchData();
     } catch (err: any) {
-      showError(err.response?.data?.error || err.response?.data?.message || 'Failed to remove student');
+      showError(err.response?.data?.error || err.response?.data?.message || `Failed to remove ${roleLabel}`);
     }
   };
 
@@ -1526,7 +1564,7 @@ const AdminPage: React.FC = () => {
     { id: 'hierarchy', label: 'Org Hierarchy', icon: <FaBuilding /> },
     { id: 'students', label: 'All Students', icon: <FaUsers /> },
     { id: 'teachers', label: 'Teachers', icon: <FaShieldAlt /> },
-    { id: 'timings', label: 'Work Timings', icon: <FaClock /> },
+    { id: 'timings', label: 'Class Timings', icon: <FaClock /> },
     { id: 'mfa', label: 'MFA Status', icon: <FaLock /> },
     { id: 'approvals', label: 'Face Approvals', icon: <FaCheck /> },
     { id: 'leaves', label: 'Leave Approvals', icon: <FaClock /> },
@@ -1550,7 +1588,7 @@ const AdminPage: React.FC = () => {
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => { setCreateError(''); setCreateForm(INITIAL_FORM); setCustomDeptMode(false); setShowCreateModal(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 font-medium text-sm"
             id="create-student-btn"
           >
@@ -1851,7 +1889,7 @@ const AdminPage: React.FC = () => {
                                     <button
                                       onClick={() => openLocationModal(emp)}
                                       className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
-                                      title="Assign work location"
+                                      title="Assign class location"
                                     >
                                       <FaMapMarkerAlt className="text-sm" />
                                     </button>
@@ -1925,7 +1963,7 @@ const AdminPage: React.FC = () => {
                       <p className="text-gray-900 font-semibold text-lg">No teachers configured yet.</p>
                       <p className="text-sm text-gray-500 mt-1">Create a teacher from the Add Student modal.</p>
                       <button
-                        onClick={() => { setCreateForm({ ...INITIAL_FORM, role: 'teacher' }); setShowCreateModal(true); }}
+                        onClick={() => { setCreateError(''); setCreateForm({ ...INITIAL_FORM, role: 'teacher' }); setCustomDeptMode(false); setShowCreateModal(true); }}
                         className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm inline-flex items-center gap-2"
                       >
                         <FaUserPlus /> Create Teacher
@@ -1996,17 +2034,59 @@ const AdminPage: React.FC = () => {
                           </div>
 
                           {/* Interactive Section: View Teacher Profile Button */}
-                          <div className="flex justify-between items-center pt-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const fullSup = students.find(x => x.id === sup.id) || sup;
-                                setSelectedDetailStudent(fullSup);
-                              }}
-                              className="text-xs text-gray-500 hover:text-blue-600 font-semibold flex items-center gap-1 transition-colors"
-                            >
-                              <FaUsers className="text-gray-400 group-hover:text-blue-500" /> View Teacher Profile
-                            </button>
+                          <div className="flex justify-between items-center pt-2 border-t border-gray-150 mt-1">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const fullSup = students.find(x => x.id === sup.id) || sup;
+                                  setSelectedDetailStudent(fullSup);
+                                }}
+                                className="text-xs text-gray-500 hover:text-blue-600 font-semibold flex items-center gap-1 transition-colors"
+                                title="View Teacher Profile"
+                              >
+                                <FaUsers className="text-gray-400 group-hover:text-blue-500" /> Profile
+                              </button>
+                              {sup.student_id !== 'admin' && (
+                                <>
+                                  <span className="text-gray-300 text-xs">|</span>
+                                  {sup.is_active ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeactivate(sup);
+                                      }}
+                                      className="text-xs text-orange-500 hover:text-orange-600 font-semibold flex items-center gap-0.5 transition-colors"
+                                      title="Deactivate Teacher"
+                                    >
+                                      <FaUserSlash className="text-[10px]" /> Deactivate
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleActivate(sup);
+                                      }}
+                                      className="text-xs text-green-600 hover:text-green-700 font-semibold flex items-center gap-0.5 transition-colors"
+                                      title="Activate Teacher"
+                                    >
+                                      <FaUserCheck className="text-[10px]" /> Activate
+                                    </button>
+                                  )}
+                                  <span className="text-gray-300 text-xs">|</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemoveStudent(sup);
+                                    }}
+                                    className="text-xs text-red-500 hover:text-red-655 font-semibold flex items-center gap-0.5 transition-colors"
+                                    title="Remove Teacher"
+                                  >
+                                    <FaUserMinus className="text-[10px]" /> Remove
+                                  </button>
+                                </>
+                              )}
+                            </div>
                             <span className="text-xs text-blue-600 group-hover:underline font-semibold">
                               {isExpanded ? 'Hide Team' : 'Show Team'}
                             </span>
@@ -2076,15 +2156,15 @@ const AdminPage: React.FC = () => {
               </div>
             )}
 
-            {/* ── WORK TIMINGS TAB ── */}
+            {/* ── CLASS TIMINGS TAB ── */}
             {activeTab === 'timings' && (
               <div className="space-y-8">
                 {/* Permanent Timings Section */}
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-6">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h2 className="text-lg font-bold text-gray-900">Work Timings Configuration</h2>
-                      <p className="text-sm text-gray-500">Configure permanent working hours for students and teachers.</p>
+                      <h2 className="text-lg font-bold text-gray-900">Class Timings Configuration</h2>
+                      <p className="text-sm text-gray-500">Configure permanent class hours for students and teachers.</p>
                     </div>
                     <button
                       onClick={() => {
@@ -2106,7 +2186,7 @@ const AdminPage: React.FC = () => {
                   {workTimings.filter(t => !t.is_temporary).length === 0 ? (
                     <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center">
                       <FaClock className="mx-auto text-4xl text-gray-300 mb-3" />
-                      <p className="text-gray-900 font-semibold text-base">No work timings configured.</p>
+                      <p className="text-gray-900 font-semibold text-base">No class timings configured.</p>
                       <p className="text-sm text-gray-500 mt-1">The system will use default 9:00 AM - 6:00 PM schedule.</p>
                     </div>
                   ) : (
@@ -2115,7 +2195,7 @@ const AdminPage: React.FC = () => {
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Hours</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Hours</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lunch Break</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                           </tr>
@@ -2161,8 +2241,8 @@ const AdminPage: React.FC = () => {
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-6">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h2 className="text-lg font-bold text-gray-900">Temporary Work Timings</h2>
-                      <p className="text-sm text-gray-500">Configure temporary work timings with active date ranges.</p>
+                      <h2 className="text-lg font-bold text-gray-900">Temporary Class Timings</h2>
+                      <p className="text-sm text-gray-500">Configure temporary class timings with active date ranges.</p>
                     </div>
                     <button
                       onClick={() => {
@@ -2186,7 +2266,7 @@ const AdminPage: React.FC = () => {
                   {workTimings.filter(t => t.is_temporary).length === 0 ? (
                     <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center">
                       <FaClock className="mx-auto text-4xl text-gray-300 mb-3" />
-                      <p className="text-gray-900 font-semibold text-base">No temporary work timings configured.</p>
+                      <p className="text-gray-900 font-semibold text-base">No temporary class timings configured.</p>
                       <p className="text-sm text-gray-500 mt-1">Standard permanent shifts or default schedule will be used.</p>
                     </div>
                   ) : (
@@ -2247,8 +2327,8 @@ const AdminPage: React.FC = () => {
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-6">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h2 className="text-lg font-bold text-gray-900">Student Work Location Assignment</h2>
-                      <p className="text-sm text-gray-500">Assign individual GPS work locations to students and teachers. These locations override the global office geo-fence during attendance check-in/check-out.</p>
+                      <h2 className="text-lg font-bold text-gray-900">Student Class Location Assignment</h2>
+                      <p className="text-sm text-gray-500">Assign individual GPS class locations to students and teachers. These locations override the global office geo-fence during attendance check-in/check-out.</p>
                     </div>
                     {locationRowsLoading && (
                       <div className="text-xs text-blue-500 flex items-center gap-1">
@@ -2262,7 +2342,7 @@ const AdminPage: React.FC = () => {
                     <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center">
                       <FaMapMarkerAlt className="mx-auto text-4xl text-gray-300 mb-3" />
                       <p className="text-gray-900 font-semibold text-base">No students found.</p>
-                      <p className="text-sm text-gray-500 mt-1">Add students first to assign work locations.</p>
+                      <p className="text-sm text-gray-500 mt-1">Add students first to assign class locations.</p>
                     </div>
                   ) : (
                     <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -2271,7 +2351,7 @@ const AdminPage: React.FC = () => {
                           <tr>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Timing</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Timing</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Location</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                           </tr>
@@ -2320,7 +2400,7 @@ const AdminPage: React.FC = () => {
                                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
                                 >
                                   <FaMapMarkerAlt />
-                                  Assign Location
+                                  Assign Class Location
                                 </button>
                               </td>
                             </tr>
@@ -2336,7 +2416,7 @@ const AdminPage: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <div>
                       <h2 className="text-lg font-bold text-gray-900">Location & Timing Assignment Requests</h2>
-                      <p className="text-sm text-gray-500">Approve or reject student and teacher requests for work timings and custom coordinates in real time.</p>
+                      <p className="text-sm text-gray-500">Approve or reject student and teacher requests for class timings and custom coordinates in real time.</p>
                     </div>
                     {requestsLoading && (
                       <div className="text-xs text-blue-500 flex items-center gap-1">
@@ -3002,7 +3082,7 @@ const AdminPage: React.FC = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={(e) => { if (e.target === e.currentTarget) setShowCreateModal(false); }}
+            onClick={(e) => { if (e.target === e.currentTarget) { setShowCreateModal(false); setCreateForm(INITIAL_FORM); setCreateError(''); setCustomDeptMode(false); } }}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -3016,7 +3096,7 @@ const AdminPage: React.FC = () => {
                   Create New Student
                 </h3>
                 <button
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => { setShowCreateModal(false); setCreateForm(INITIAL_FORM); setCreateError(''); setCustomDeptMode(false); }}
                   className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
                 >
                   <FaTimes />
@@ -3024,6 +3104,16 @@ const AdminPage: React.FC = () => {
               </div>
 
               <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                {/* Inline Error Banner */}
+                {createError && (
+                  <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                    <FaExclamationTriangle className="mt-0.5 flex-shrink-0 text-red-500" />
+                    <div>
+                      <p className="font-semibold">Unable to create student</p>
+                      <p className="mt-0.5">{createError}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Student ID *</label>
@@ -3079,19 +3169,78 @@ const AdminPage: React.FC = () => {
                       className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div>
+                  <div className="col-span-2">
                     <label className="block text-xs font-medium text-gray-700 mb-1">Department *</label>
-                    <input
+                    <select
                       id="new-department"
-                      type="text"
-                      list="dept-list"
-                      value={createForm.department}
-                      onChange={(e) => setCreateForm(f => ({ ...f, department: e.target.value }))}
+                      value={customDeptMode ? '__other__' : createForm.department}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '__other__') {
+                          setCustomDeptMode(true);
+                          setCreateForm(f => ({ ...f, department: '' }));
+                          setTimeout(() => {
+                            const inp = document.getElementById('new-department-custom') as HTMLInputElement;
+                            if (inp) inp.focus();
+                          }, 50);
+                        } else {
+                          setCustomDeptMode(false);
+                          setCreateForm(f => ({ ...f, department: val }));
+                        }
+                      }}
                       className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-                    />
-                    <datalist id="dept-list">
-                      {departments.map(d => <option key={d} value={d} />)}
-                    </datalist>
+                    >
+                      <option value="">— Select Department —</option>
+                      <optgroup label="Administration">
+                        <option value="Administration">Administration</option>
+                        <option value="Management">Management</option>
+                        <option value="Human Resources">Human Resources</option>
+                        <option value="Finance">Finance</option>
+                        <option value="Operations">Operations</option>
+                      </optgroup>
+                      <optgroup label="Engineering — Computer Science">
+                        <option value="Computer Science Engineering (CSE)">Computer Science Engineering (CSE)</option>
+                        <option value="CSE — AI & Machine Learning">CSE — AI & Machine Learning</option>
+                        <option value="CSE — Data Science">CSE — Data Science</option>
+                        <option value="CSE — Cybersecurity">CSE — Cybersecurity</option>
+                        <option value="CSE — Internet of Things (IoT)">CSE — Internet of Things (IoT)</option>
+                        <option value="Information Technology (IT)">Information Technology (IT)</option>
+                      </optgroup>
+                      <optgroup label="Engineering — Electronics">
+                        <option value="Electronics & Communication Engineering (ECE)">Electronics & Communication Engineering (ECE)</option>
+                        <option value="Electrical & Electronics Engineering (EEE)">Electrical & Electronics Engineering (EEE)</option>
+                        <option value="Electronics & Instrumentation Engineering (EIE)">Electronics & Instrumentation Engineering (EIE)</option>
+                      </optgroup>
+                      <optgroup label="Engineering — Mechanical & Civil">
+                        <option value="Mechanical Engineering">Mechanical Engineering</option>
+                        <option value="Civil Engineering">Civil Engineering</option>
+                        <option value="Aerospace Engineering">Aerospace Engineering</option>
+                        <option value="Chemical Engineering">Chemical Engineering</option>
+                        <option value="Biotechnology Engineering">Biotechnology Engineering</option>
+                        <option value="Environmental Engineering">Environmental Engineering</option>
+                        <option value="Mining Engineering">Mining Engineering</option>
+                        <option value="Metallurgical Engineering">Metallurgical Engineering</option>
+                        <option value="Industrial Engineering">Industrial Engineering</option>
+                        <option value="Automobile Engineering">Automobile Engineering</option>
+                      </optgroup>
+                      <optgroup label="Science & Research">
+                        <option value="Physics">Physics</option>
+                        <option value="Chemistry">Chemistry</option>
+                        <option value="Mathematics">Mathematics</option>
+                        <option value="Research & Development">Research & Development</option>
+                      </optgroup>
+                      <option value="__other__">✏️ Other (type manually below)</option>
+                    </select>
+                    {customDeptMode && (
+                      <input
+                        id="new-department-custom"
+                        type="text"
+                        placeholder="Type your department name..."
+                        value={createForm.department}
+                        onChange={(e) => setCreateForm(f => ({ ...f, department: e.target.value }))}
+                        className="w-full mt-2 text-sm border border-blue-400 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                      />
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Position *</label>
@@ -3159,7 +3308,7 @@ const AdminPage: React.FC = () => {
 
               <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
                 <button
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => { setShowCreateModal(false); setCreateForm(INITIAL_FORM); setCreateError(''); setCustomDeptMode(false); }}
                   className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
@@ -3466,7 +3615,7 @@ const AdminPage: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* ── ASSIGN WORK TIMING MODAL ── */}
+      {/* ── ASSIGN CLASS TIMING MODAL ── */}
       <AnimatePresence>
         {isAssignTimingModalOpen && (
           <motion.div
@@ -3485,7 +3634,7 @@ const AdminPage: React.FC = () => {
               <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <FaClock className="text-blue-600" />
-                  Assign {timingModalType === 'permanent' ? 'Permanent' : 'Temporary'} Work Timing
+                  Assign {timingModalType === 'permanent' ? 'Permanent' : 'Temporary'} Class Timing
                 </h3>
                 <button
                   onClick={() => setIsAssignTimingModalOpen(false)}
@@ -3651,7 +3800,7 @@ const AdminPage: React.FC = () => {
               <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gradient-to-r from-green-50 to-emerald-50">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <FaMapMarkerAlt className="text-green-600" />
-                  Assign Work Location
+                  Assign Class Location
                 </h3>
                 <button
                   onClick={() => { setIsLocationModalOpen(false); setSelectedEmpForLocation(null); }}
@@ -3700,7 +3849,7 @@ const AdminPage: React.FC = () => {
                 {/* Google Maps hint */}
                 <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
                   <p className="text-xs font-semibold text-blue-700 mb-1">📍 How to get coordinates</p>
-                  <p className="text-xs text-blue-600">1. Open <a href="https://maps.google.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">Google Maps</a> and navigate to the work location.</p>
+                  <p className="text-xs text-blue-600">1. Open <a href="https://maps.google.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">Google Maps</a> and navigate to the class location.</p>
                   <p className="text-xs text-blue-600">2. Right-click the exact point → click the coordinates shown.</p>
                   <p className="text-xs text-blue-600">3. Paste the latitude and longitude values in the fields below.</p>
                 </div>
@@ -3976,7 +4125,7 @@ const AdminPage: React.FC = () => {
 
                   {/* Assigned Location Card */}
                   <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm space-y-3 col-span-1 md:col-span-2">
-                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Work Location Geo-Fence</h4>
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Class Location Geo-Fence</h4>
                     {studentLocationRows[selectedDetailStudent.id]?.location_name ? (
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
@@ -4047,7 +4196,85 @@ const AdminPage: React.FC = () => {
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-4 border-t border-gray-100 flex justify-end bg-gray-50/50">
+              <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap justify-between items-center bg-gray-50/50 gap-3">
+                <div className="flex flex-wrap gap-2">
+                  {selectedDetailStudent.student_id !== 'admin' && selectedDetailStudent.id !== user?.id && (
+                    <>
+                      <button
+                        onClick={() => {
+                          const emp = selectedDetailStudent;
+                          setSelectedDetailStudent(null);
+                          setSelectedEmpForPassword(emp);
+                          setNewPassword('');
+                          setIsPasswordModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition-colors border border-blue-100 flex items-center gap-1"
+                        title="Change password"
+                      >
+                        <FaKey className="text-xs" /> Password
+                      </button>
+                      {selectedDetailStudent.is_active ? (
+                        <button
+                          onClick={async () => {
+                            const emp = selectedDetailStudent;
+                            if (window.confirm(`Deactivate ${emp.role === 'teacher' ? 'teacher' : emp.role === 'admin' ? 'administrator' : 'student'} ${emp.first_name} ${emp.last_name}? They will no longer be able to log in.`)) {
+                              try {
+                                await adminApi.updateStudent(emp.id, { isActive: false });
+                                showSuccess(`${emp.first_name} ${emp.last_name} has been deactivated`);
+                                setSelectedDetailStudent(prev => prev ? { ...prev, is_active: false } : null);
+                                fetchData();
+                              } catch (err: any) {
+                                showError(err.response?.data?.error || err.response?.data?.message || 'Failed to deactivate');
+                              }
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs font-semibold bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-xl transition-colors border border-orange-100 flex items-center gap-1"
+                          title="Deactivate account"
+                        >
+                          <FaUserSlash className="text-xs" /> Deactivate
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            const emp = selectedDetailStudent;
+                            try {
+                              await adminApi.updateStudent(emp.id, { isActive: true });
+                              showSuccess(`${emp.first_name} ${emp.last_name} has been activated successfully`);
+                              setSelectedDetailStudent(prev => prev ? { ...prev, is_active: true } : null);
+                              fetchData();
+                            } catch (err: any) {
+                              showError(err.response?.data?.error || err.response?.data?.message || 'Failed to activate');
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs font-semibold bg-green-50 hover:bg-green-100 text-green-700 rounded-xl transition-colors border border-green-100 flex items-center gap-1"
+                          title="Activate account"
+                        >
+                          <FaUserCheck className="text-xs" /> Activate
+                        </button>
+                      )}
+                      <button
+                        onClick={async () => {
+                          const emp = selectedDetailStudent;
+                          const roleLabel = emp.role === 'teacher' ? 'teacher' : emp.role === 'admin' ? 'administrator' : 'student';
+                          if (window.confirm(`Are you sure you want to PERMANENTLY remove ${roleLabel} ${emp.first_name} ${emp.last_name} and all their records from the database? This action cannot be undone.`)) {
+                            try {
+                              setSelectedDetailStudent(null);
+                              await adminApi.deactivateStudent(emp.id);
+                              showSuccess(`${emp.role === 'teacher' ? 'Teacher' : emp.role === 'admin' ? 'Administrator' : 'Student'} ${emp.first_name} ${emp.last_name} removed successfully`);
+                              fetchData();
+                            } catch (err: any) {
+                              showError(err.response?.data?.error || err.response?.data?.message || 'Failed to remove');
+                            }
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-colors border border-red-100 flex items-center gap-1"
+                        title="Remove user"
+                      >
+                        <FaUserMinus className="text-xs" /> Remove {selectedDetailStudent.role === 'teacher' ? 'Teacher' : 'Student'}
+                      </button>
+                    </>
+                  )}
+                </div>
                 <button
                   onClick={() => setSelectedDetailStudent(null)}
                   className="px-5 py-2.5 text-sm font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors shadow-sm"

@@ -1,13 +1,4 @@
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-} from 'recharts';
+import * as Recharts from 'recharts';
 
 interface AttendanceData {
   date: string;
@@ -21,12 +12,21 @@ interface AttendanceHeatmapProps {
   className?: string;
 }
 
+const AreaChart = Recharts.AreaChart as any;
+const Area = Recharts.Area as any;
+const XAxis = Recharts.XAxis as any;
+const YAxis = Recharts.YAxis as any;
+const CartesianGrid = Recharts.CartesianGrid as any;
+const Tooltip = Recharts.Tooltip as any;
+const Legend = Recharts.Legend as any;
+const ResponsiveContainer = Recharts.ResponsiveContainer as any;
+
 const AttendanceHeatmap = (props: AttendanceHeatmapProps) => {
   const { data, className = '' } = props;
 
   return (
     <div className={`w-full h-80 ${className}`}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <AreaChart
           data={data}
           margin={{

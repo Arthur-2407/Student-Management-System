@@ -219,65 +219,78 @@ const LoginPage: React.FC = () => {
 
   // ── Role badge ──
   const roleBadge = preLoginData?.role ? (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-      preLoginData.role === 'admin' ? 'bg-red-100 text-red-800' :
-      preLoginData.role === 'teacher' ? 'bg-yellow-100 text-yellow-800' :
-      'bg-green-100 text-green-800'
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${
+      preLoginData.role === 'admin' ? 'bg-red-500/15 text-red-400 border border-red-500/20' :
+      preLoginData.role === 'teacher' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' :
+      'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
     }`}>
-      {preLoginData.role.charAt(0).toUpperCase() + preLoginData.role.slice(1)}
+      {preLoginData.role}
     </span>
   ) : null;
 
   // ── Login method indicator ──
   const loginMethodInfo = preLoginData ? (
     preLoginData.required_method === 'face_and_password' ? (
-      <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-        <FaShieldAlt className="text-amber-500 flex-shrink-0" />
-        <span>Your role requires <strong>password + face verification</strong> for enhanced security.</span>
+      <div className="flex items-start gap-3 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3.5 mb-5 backdrop-blur-sm">
+        <FaShieldAlt className="text-amber-400 flex-shrink-0 mt-0.5 text-sm" />
+        <div>
+          Your role requires <strong className="text-amber-200">password + face verification</strong> for enhanced security.
+        </div>
       </div>
     ) : (
-      <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-        <FaCheckCircle className="text-blue-500 flex-shrink-0" />
-        <span>You may sign in with <strong>password</strong> or <strong>face authentication</strong>.</span>
+      <div className="flex items-start gap-3 text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3.5 mb-5 backdrop-blur-sm">
+        <FaCheckCircle className="text-cyan-400 flex-shrink-0 mt-0.5 text-sm" />
+        <div>
+          You may sign in with <strong className="text-cyan-200">password</strong> or <strong className="text-cyan-200">face authentication</strong>.
+        </div>
       </div>
     )
   ) : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
+      {/* Ambient background glows */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none -z-10">
+        <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-cyan-500/10 to-blue-500/10 blur-[120px]" />
+        <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-purple-500/10 to-pink-500/10 blur-[120px]" />
+      </div>
+
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md relative z-10"
       >
-        {/* Card */}
-        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600/80 to-indigo-700/80 p-8 text-center">
-            <motion.div
-              initial={{ scale: 0.8 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-            >
-              <FaBuilding className="mx-auto text-5xl text-white drop-shadow-lg" />
-            </motion.div>
-            <h1 className="text-2xl font-bold text-white mt-4 tracking-tight">Student Management</h1>
-            <p className="text-blue-200 mt-1 text-sm">Secure Student Management Platform</p>
-          </div>
+        {/* Uiverse neon gradient border wrapper */}
+        <div className="relative w-full rounded-2xl p-[1.5px] bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 shadow-2xl transition-all duration-300 hover:shadow-cyan-500/10 hover:scale-[1.01]">
+          {/* Card inner body with glassmorphic transparency */}
+          <div className="bg-slate-950/85 backdrop-blur-xl border border-white/10 rounded-[15px] p-8 flex flex-col relative overflow-hidden">
+            
+            {/* Brand Header */}
+            <div className="flex flex-col items-center mb-8 text-center">
+              <motion.div
+                initial={{ scale: 0.8 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                className="w-14 h-14 bg-gradient-to-tr from-cyan-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-3"
+              >
+                <FaBuilding className="text-2xl text-white drop-shadow-md" />
+              </motion.div>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight">Student Management</h1>
+              <p className="text-slate-400 text-xs mt-1">Secure Management Portal</p>
+            </div>
 
-          <div className="p-8 bg-white">
             <AnimatePresence mode="wait">
               {/* ── Step: ID Entry ── */}
               {step === 'id_entry' && (
                 <motion.div key="id" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
-                  <h2 className="text-xl font-bold text-gray-800 mb-1">Welcome Back</h2>
-                  <p className="text-gray-500 text-sm mb-6">Enter your Student ID to continue</p>
+                  <h2 className="text-xl font-bold text-white mb-1">Welcome Back</h2>
+                  <p className="text-slate-400 text-sm mb-6">Enter your Student ID to continue</p>
                   <form onSubmit={handleCheckStudentId}>
                     <div className="mb-5">
-                      <label htmlFor="studentId" className="block text-sm font-medium text-gray-700 mb-1.5">Student ID</label>
-                      <div className="relative">
-                        <FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <label htmlFor="studentId" className="block text-sm font-medium text-slate-300 mb-2">Student ID</label>
+                      <div className="relative group/input">
+                        <FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within/input:text-cyan-400 transition-colors" />
                         <input
                           id="studentId"
                           type="text"
@@ -291,33 +304,44 @@ const LoginPage: React.FC = () => {
                             }
                             setIdError('');
                           }}
-                          className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${idError ? 'border-red-400' : 'border-gray-300'}`}
+                          className={`w-full pl-10 pr-4 py-3 bg-slate-900/60 border rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 transition-all duration-300 ${
+                            idError 
+                              ? 'border-red-500/50 focus:ring-red-500/20' 
+                              : 'border-slate-700/50 focus:border-cyan-500 focus:ring-cyan-500/20'
+                          }`}
                           placeholder="e.g. EMP001 or ADMIN"
                           autoFocus
                           autoComplete="username"
                           required
                         />
                       </div>
-                      {idError && <p className="mt-1.5 text-xs text-red-500">{idError}</p>}
+                      {idError && (
+                        <p className="mt-2 text-xs text-red-400 flex items-center gap-1.5">
+                          <FaExclamationTriangle className="text-[10px]" />
+                          {idError}
+                        </p>
+                      )}
                     </div>
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-lg transition-all disabled:opacity-60"
+                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all duration-300 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-cyan-500/50 disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20"
                     >
-                      Continue <FaArrowRight />
+                      Continue <FaArrowRight className="text-xs" />
                     </button>
                   </form>
 
-                  <div className="mt-6 relative">
-                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
-                    <div className="relative flex justify-center text-xs"><span className="px-2 bg-white text-gray-500">Or sign in with face</span></div>
+                  <div className="relative my-6">
+                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800" /></div>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="px-3 bg-slate-950 text-slate-500 rounded-full py-0.5 border border-slate-800/80">Or sign in with face</span>
+                    </div>
                   </div>
                   <button
                     onClick={() => navigate('/face-login')}
-                    className="mt-4 w-full flex items-center justify-center gap-2 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-slate-900/80 hover:bg-slate-800/80 border border-slate-700/50 text-slate-300 hover:text-white rounded-xl transition-all duration-300 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-slate-700"
                   >
-                    <FaFingerprint className="text-blue-500" /> Face Authentication
+                    <FaFingerprint className="text-cyan-400" /> Face Authentication
                   </button>
                 </motion.div>
               )}
@@ -325,47 +349,51 @@ const LoginPage: React.FC = () => {
               {/* ── Step: Checking ── */}
               {step === 'checking' && (
                 <motion.div key="checking" className="text-center py-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <FaSpinner className="mx-auto text-3xl text-blue-500 animate-spin mb-3" />
-                  <p className="text-gray-600">Verifying student ID...</p>
+                  <FaSpinner className="mx-auto text-3xl text-cyan-400 animate-spin mb-3" />
+                  <p className="text-slate-300 text-sm">Verifying student ID...</p>
                 </motion.div>
               )}
 
               {/* ── Step: Account Locked ── */}
               {step === 'locked' && (
                 <motion.div key="locked" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-6">
-                  <FaExclamationTriangle className="mx-auto text-4xl text-red-500 mb-3" />
-                  <h3 className="text-lg font-bold text-gray-800 mb-2">Account Locked</h3>
-                  <p className="text-gray-600 text-sm mb-2">Too many failed attempts. Your account is temporarily locked.</p>
+                  <FaExclamationTriangle className="mx-auto text-4xl text-red-500 mb-4 animate-pulse" />
+                  <h3 className="text-lg font-bold text-white mb-2">Account Locked</h3>
+                  <p className="text-slate-400 text-sm mb-4">Too many failed attempts. Your account is temporarily locked.</p>
                   {preLoginData?.locked_until && (
-                    <p className="text-xs text-gray-500">Locked until: {new Date(preLoginData.locked_until).toLocaleString()}</p>
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 mb-6 max-w-xs mx-auto">
+                      Locked until: {new Date(preLoginData.locked_until).toLocaleString()}
+                    </div>
                   )}
                   <button
                     onClick={() => { setStep('id_entry'); setPassword(''); }}
-                    className="mt-6 text-blue-600 hover:text-blue-700 text-sm font-medium"
-                  >← Try different account</button>
+                    className="text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors hover:underline"
+                  >
+                    ← Try different account
+                  </button>
                 </motion.div>
               )}
 
               {/* ── Step: Recovery Needed ── */}
               {step === 'recovery_needed' && (
-                <motion.div key="recovery" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-4">
+                <motion.div key="recovery" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-2">
                   {!preLoginData?.recovery_request ? (
                     /* Case 1: No request submitted yet */
                     <>
-                      <FaExclamationTriangle className="mx-auto text-4xl text-amber-500 mb-3 block text-center w-full" />
-                      <h3 className="text-lg font-bold text-gray-800 mb-2 text-center">Credentials Missing</h3>
-                      <p className="text-gray-600 text-sm mb-4 text-center">
+                      <FaExclamationTriangle className="mx-auto text-4xl text-amber-400 mb-3 block text-center w-full" />
+                      <h3 className="text-lg font-bold text-white mb-2 text-center">Credentials Missing</h3>
+                      <p className="text-slate-400 text-sm mb-4 text-center">
                         Some required credentials for your account are missing:
                       </p>
                       {preLoginData?.missing_credentials && (
-                        <ul className="list-disc list-inside text-sm text-red-600 mb-4 bg-red-50 rounded-lg p-3">
+                        <ul className="list-disc list-inside text-sm text-red-400 mb-4 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
                           {preLoginData.missing_credentials.map((c) => <li key={c}>{c}</li>)}
                         </ul>
                       )}
-                      <p className="text-xs text-gray-500 text-center mb-4">Please contact your administrator to recover your credentials, or submit a recovery request below.</p>
+                      <p className="text-xs text-slate-500 text-center mb-5">Please contact your administrator to recover your credentials, or submit a recovery request below.</p>
                       <button
                         onClick={() => navigate('/recovery-request', { state: { studentId, missingCredentials: preLoginData?.missing_credentials } })}
-                        className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium text-sm transition-colors"
+                        className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white rounded-xl font-semibold text-sm transition-all duration-300 active:scale-[0.98] shadow-lg shadow-amber-500/10"
                       >
                         Request Credential Recovery
                       </button>
@@ -373,18 +401,18 @@ const LoginPage: React.FC = () => {
                   ) : preLoginData.recovery_request.status === 'pending' ? (
                     /* Case 2: Request pending */
                     <>
-                      <div className="text-center py-6">
-                        <div className="h-10 w-10 rounded-full border-4 border-amber-200 border-t-amber-500 animate-spin mx-auto mb-3" />
-                        <h3 className="text-lg font-bold text-gray-800 mb-2">Request Pending</h3>
-                        <p className="text-gray-600 text-sm mb-4 px-2">
+                      <div className="text-center py-4">
+                        <div className="h-10 w-10 rounded-full border-4 border-amber-500/20 border-t-amber-400 animate-spin mx-auto mb-4" />
+                        <h3 className="text-lg font-bold text-white mb-2">Request Pending</h3>
+                        <p className="text-slate-400 text-sm mb-4 px-2">
                           Your recovery request is pending administrator approval. Please wait for confirmation.
                         </p>
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 text-left mb-4">
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-300 text-left mb-6">
                           <strong>Type:</strong> {preLoginData.recovery_request.request_type.replace('_', ' ').toUpperCase()}
                         </div>
                         <button
                           disabled
-                          className="w-full py-2.5 bg-amber-200 text-amber-500 rounded-lg font-medium text-sm cursor-not-allowed"
+                          className="w-full py-3 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-xl font-medium text-sm cursor-not-allowed"
                         >
                           Request Pending Admin Approval
                         </button>
@@ -394,20 +422,20 @@ const LoginPage: React.FC = () => {
                     /* Case 3: Request rejected */
                     <>
                       <FaExclamationTriangle className="mx-auto text-4xl text-red-500 mb-3 block text-center w-full" />
-                      <h3 className="text-lg font-bold text-gray-800 mb-2 text-center">Request Rejected</h3>
-                      <p className="text-gray-600 text-sm mb-4 text-center">
+                      <h3 className="text-lg font-bold text-white mb-2 text-center">Request Rejected</h3>
+                      <p className="text-slate-400 text-sm mb-4 text-center">
                         Admin has rejected your recovery request.
                       </p>
                       {preLoginData.recovery_request.review_notes && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 text-left mb-4">
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 text-left mb-5">
                           <strong>Rejection Comment:</strong>
-                          <p className="mt-1 italic">"{preLoginData.recovery_request.review_notes}"</p>
+                          <p className="mt-1 italic text-slate-300">"{preLoginData.recovery_request.review_notes}"</p>
                         </div>
                       )}
-                      <p className="text-xs text-gray-500 text-center mb-4">Please submit another recovery request or contact your administrator.</p>
+                      <p className="text-xs text-slate-500 text-center mb-5">Please submit another recovery request or contact your administrator.</p>
                       <button
                         onClick={() => navigate('/recovery-request', { state: { studentId, missingCredentials: preLoginData?.missing_credentials } })}
-                        className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium text-sm transition-colors"
+                        className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white rounded-xl font-semibold text-sm transition-all duration-300 active:scale-[0.98] shadow-lg shadow-amber-500/10"
                       >
                         Request Credential Recovery Again
                       </button>
@@ -415,10 +443,10 @@ const LoginPage: React.FC = () => {
                   ) : preLoginData.recovery_request.status === 'approved' ? (
                     /* Case 4: Request approved */
                     recoverySuccess ? (
-                      <div className="text-center py-6">
-                        <FaCheckCircle className="mx-auto text-5xl text-emerald-500 mb-4" />
-                        <h3 className="text-lg font-bold text-gray-800 mb-2">Setup Completed</h3>
-                        <p className="text-gray-600 text-sm mb-6">
+                      <div className="text-center py-4">
+                        <FaCheckCircle className="mx-auto text-5xl text-emerald-400 mb-4 animate-bounce" />
+                        <h3 className="text-lg font-bold text-white mb-2">Setup Completed</h3>
+                        <p className="text-slate-400 text-sm mb-6">
                           Your face has been successfully registered in the database in real-time.
                         </p>
                         <button
@@ -429,25 +457,25 @@ const LoginPage: React.FC = () => {
                             setRecoverySuccess(false);
                             setRecoveryError('');
                           }}
-                          className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-semibold text-sm transition-colors"
+                          className="w-full py-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white rounded-xl font-semibold text-sm transition-all duration-300 active:scale-[0.98]"
                         >
                           Continue to Login
                         </button>
                       </div>
                     ) : (
                       <div>
-                        <h3 className="text-lg font-bold text-gray-800 mb-2 text-center">Face Profile Enrollment</h3>
-                        <p className="text-gray-600 text-xs mb-4 text-center">
+                        <h3 className="text-lg font-bold text-white mb-2 text-center">Face Profile Enrollment</h3>
+                        <p className="text-slate-400 text-xs mb-4 text-center">
                           Your recovery request was approved! Position your face in the camera frame to register.
                         </p>
 
                         {recoveryError && (
-                          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600 mb-4 text-center">
+                          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 mb-4 text-center">
                             {recoveryError}
                           </div>
                         )}
 
-                        <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden mb-4 relative max-h-60 border border-gray-200">
+                        <div className="aspect-video bg-slate-900 rounded-xl overflow-hidden mb-4 relative max-h-60 border border-slate-800">
                           <FaceCamera
                             onCapture={handleRecoveryFrameCapture}
                             className="w-full h-full"
@@ -457,7 +485,7 @@ const LoginPage: React.FC = () => {
                           />
                           {recoveryFrames.length > 0 && (
                             <div className="absolute inset-0 bg-slate-950/60 flex flex-col items-center justify-center">
-                              <div className="text-blue-400 text-lg font-bold mb-1 animate-pulse">
+                              <div className="text-cyan-400 text-lg font-bold mb-1 animate-pulse">
                                 Capturing: {recoveryFrames.length} / 15
                               </div>
                               <p className="text-[10px] text-slate-400">Keep looking at the camera</p>
@@ -467,20 +495,20 @@ const LoginPage: React.FC = () => {
 
                         {/* Progress Bar */}
                         <div className="mb-4">
-                          <div className="w-full bg-gray-200 rounded-full h-1.5">
+                          <div className="w-full bg-slate-800 rounded-full h-1.5">
                             <div
-                              className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                              className="bg-gradient-to-r from-cyan-500 to-indigo-500 h-1.5 rounded-full transition-all duration-300"
                               style={{ width: `${(recoveryFrames.length / 15) * 100}%` }}
                             />
                           </div>
                         </div>
 
-                        <div className="flex justify-between text-xs text-gray-500 mb-4">
+                        <div className="flex justify-between items-center text-xs text-slate-400 mb-4">
                           <span>Captured {recoveryFrames.length}/15 frames</span>
                           {recoveryFrames.length > 0 && (
                             <button
                               onClick={() => setRecoveryFrames([])}
-                              className="text-red-500 hover:underline"
+                              className="text-red-400 hover:text-red-300 hover:underline"
                             >
                               Reset
                             </button>
@@ -488,8 +516,8 @@ const LoginPage: React.FC = () => {
                         </div>
 
                         {isRecoverySubmitting && (
-                          <div className="text-xs text-blue-500 text-center py-2 flex items-center justify-center gap-1.5">
-                            <FaSpinner className="animate-spin" /> Processing face image...
+                          <div className="text-xs text-cyan-400 text-center py-2 flex items-center justify-center gap-1.5">
+                            <FaSpinner className="animate-spin text-sm" /> Processing face image...
                           </div>
                         )}
                       </div>
@@ -497,11 +525,11 @@ const LoginPage: React.FC = () => {
                   ) : (
                     /* Other states: fallback */
                     <>
-                      <FaExclamationTriangle className="mx-auto text-4xl text-amber-500 mb-3 block text-center w-full" />
-                      <h3 className="text-lg font-bold text-gray-800 mb-2 text-center">Credentials Missing</h3>
+                      <FaExclamationTriangle className="mx-auto text-4xl text-amber-400 mb-3 block text-center w-full" />
+                      <h3 className="text-lg font-bold text-white mb-2 text-center">Credentials Missing</h3>
                       <button
                         onClick={() => navigate('/recovery-request', { state: { studentId } })}
-                        className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium text-sm transition-colors"
+                        className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white rounded-xl font-semibold text-sm transition-all duration-300 active:scale-[0.98]"
                       >
                         Request Credential Recovery
                       </button>
@@ -515,35 +543,37 @@ const LoginPage: React.FC = () => {
                       setRecoverySuccess(false);
                       setRecoveryError('');
                     }}
-                    className="mt-3 w-full text-gray-600 hover:text-gray-800 text-sm"
-                  >← Back</button>
+                    className="mt-4 w-full text-slate-400 hover:text-white text-sm text-center font-medium transition-colors"
+                  >
+                    ← Back
+                  </button>
                 </motion.div>
               )}
 
               {/* ── Step: Password ── */}
               {step === 'password' && (
                 <motion.div key="password" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  <div className="flex items-center justify-between mb-1">
-                    <h2 className="text-xl font-bold text-gray-800">Sign In</h2>
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-xl font-bold text-white">Sign In</h2>
                     {roleBadge}
                   </div>
-                  <p className="text-gray-500 text-sm mb-4">
-                    {studentId && <span className="font-medium text-gray-700">{studentId}</span>}
+                  <p className="text-slate-400 text-sm mb-4">
+                    {studentId && <span className="font-semibold text-slate-200">{studentId}</span>}
                   </p>
 
                   {loginMethodInfo}
 
                   <form onSubmit={handlePasswordLogin}>
                     <div className="mb-5">
-                      <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
-                      <div className="relative">
-                        <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+                      <div className="relative group/input">
+                        <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within/input:text-cyan-400 transition-colors" />
                         <input
                           id="password"
                           type="password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
                           placeholder="Enter your password"
                           autoFocus
                           autoComplete="current-password"
@@ -555,53 +585,57 @@ const LoginPage: React.FC = () => {
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-lg transition-all disabled:opacity-60"
+                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all duration-300 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-cyan-500/50 disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20"
                     >
-                      {isLoading ? <><FaSpinner className="animate-spin" /> Signing in...</> : 'Sign In'}
+                      {isLoading ? <><FaSpinner className="animate-spin text-sm" /> Signing in...</> : 'Sign In'}
                     </button>
                   </form>
 
                   {/* Student can also use face-only */}
                   {preLoginData?.required_method === 'password_or_face' && (
                     <div className="mt-4">
-                      <div className="relative">
-                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
-                        <div className="relative flex justify-center text-xs"><span className="px-2 bg-white text-gray-500">Or</span></div>
+                      <div className="relative my-4">
+                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800" /></div>
+                        <div className="relative flex justify-center text-xs">
+                          <span className="px-3 bg-slate-950 text-slate-500 rounded-full py-0.5 border border-slate-800/80">Or</span>
+                        </div>
                       </div>
                       <button
                         onClick={goToFaceLogin}
-                        className="mt-4 w-full flex items-center justify-center gap-2 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="w-full flex items-center justify-center gap-2 py-3 border border-slate-700/50 bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 hover:text-white rounded-xl transition-all duration-300 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-slate-700"
                       >
-                        <FaFingerprint className="text-blue-500" /> Use Face Authentication Instead
+                        <FaFingerprint className="text-cyan-400" /> Use Face Authentication Instead
                       </button>
                     </div>
                   )}
 
                   <button
                     onClick={() => { setStep('id_entry'); setPassword(''); }}
-                    className="mt-4 w-full text-gray-500 hover:text-gray-700 text-sm text-center"
-                  >← Use a different ID</button>
+                    className="mt-5 w-full text-slate-400 hover:text-white text-sm text-center font-medium transition-colors"
+                  >
+                    ← Use a different ID
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Footer */}
-            <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+            <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
               {adminContact?.email ? (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-500">
                   Need an account?{' '}
                   <a
                     href={adminContact.mailtoLink || `mailto:${adminContact.email}`}
-                    className="font-medium text-blue-600 hover:text-blue-500 inline-flex items-center gap-1"
+                    className="font-medium text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1.5 transition-colors"
                   >
-                    <FaEnvelope className="text-xs" />
+                    <FaEnvelope className="text-[10px]" />
                     Contact {adminContact.name || 'administrator'}
                   </a>
                 </p>
               ) : (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-500">
                   Need an account?{' '}
-                  <a href="mailto:admin@company.com" className="font-medium text-blue-600 hover:text-blue-500">
+                  <a href="mailto:admin@company.com" className="font-medium text-cyan-400 hover:text-cyan-300 transition-colors">
                     Contact administrator
                   </a>
                 </p>

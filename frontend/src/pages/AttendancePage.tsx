@@ -12,6 +12,7 @@ import { attendanceApi } from '@api/attendanceApi';
 import { useNotification } from '@contexts/NotificationContext';
 import { locationService } from '@services/locationService';
 import { stateReconciliationEngine } from '@services/reconciliationEngine';
+import { GooeyButton } from '@components/ui/GooeyButton';
 
 interface AttendanceRecord {
   id: number;
@@ -43,6 +44,8 @@ const AttendancePage: React.FC = () => {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [checkInStatus, setCheckInStatus] = useState<'checked-in' | 'checked-out' | 'loading'>('loading');
   const isLoading = checkInStatus === 'loading';
+  const [actionSuccess, setActionSuccess] = useState<'check-in' | 'check-out' | null>(null);
+
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
@@ -146,6 +149,8 @@ const AttendancePage: React.FC = () => {
       const response = await attendanceApi.checkIn({ location: freshLocation });
       setCheckInStatus('checked-in');
       showSuccess('Successfully checked in!');
+      setActionSuccess('check-in');
+      setTimeout(() => setActionSuccess(null), 3000);
       setRecords((current) => [response.data.record, ...current]);
     } catch (error: any) {
       console.error('Check-in error, rolling back local state:', error);
@@ -185,6 +190,8 @@ const AttendancePage: React.FC = () => {
       const response = await attendanceApi.checkOut({ location: freshLocation || undefined });
       setCheckInStatus('checked-out');
       showSuccess('Successfully checked out!');
+      setActionSuccess('check-out');
+      setTimeout(() => setActionSuccess(null), 3000);
       setRecords((current) =>
         current.map((record, index) =>
           record.id === response.data.record.id || index === 0 ? response.data.record : record
@@ -245,35 +252,44 @@ const AttendancePage: React.FC = () => {
             </div>
             
             <div className="flex items-center justify-center">
-              {checkInStatus === 'checked-out' ? (
-                <button
+              {actionSuccess === 'check-in' ? (
+                <GooeyButton
+                  type="success-in"
+                  icon={<FaCamera />}
+                >
+                  Checked In
+                </GooeyButton>
+              ) : actionSuccess === 'check-out' ? (
+                <GooeyButton
+                  type="success-out"
+                  icon={<FaClock />}
+                >
+                  Checked Out
+                </GooeyButton>
+              ) : isLoading ? (
+                <GooeyButton
+                  type="loading"
+                >
+                  Processing...
+                </GooeyButton>
+              ) : checkInStatus === 'checked-out' ? (
+                <GooeyButton
                   onClick={handleCheckIn}
                   disabled={isLoading}
-                  className="w-full flex items-center justify-center px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
+                  type="check-in"
+                  icon={<FaCamera />}
                 >
-                  <FaCamera className="mr-2" />
                   Check In
-                </button>
-              ) : checkInStatus === 'checked-in' ? (
-                <button
+                </GooeyButton>
+              ) : (
+                <GooeyButton
                   onClick={handleCheckOut}
                   disabled={isLoading}
-                  className="w-full flex items-center justify-center px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
+                  type="check-out"
+                  icon={<FaClock />}
                 >
-                  <FaClock className="mr-2" />
                   Check Out
-                </button>
-              ) : (
-                <button
-                  disabled
-                  className="w-full flex items-center justify-center px-6 py-3 bg-gray-300 text-gray-600 rounded-lg"
-                >
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Processing...
-                </button>
+                </GooeyButton>
               )}
             </div>
           </div>

@@ -14,6 +14,7 @@ import {
 import { leaveApi } from '@api/leaveApi';
 import { useNotification } from '@contexts/NotificationContext';
 import { websocketService } from '@services/websocketService';
+import { ButtonWithIcon } from '@components/ui/ButtonWithIcon';
 
 interface LeaveRequest {
   id: number;
@@ -56,6 +57,9 @@ const LeavePage: React.FC = () => {
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<string | null>('total');
   const [now, setNow] = useState<Date>(new Date());
+  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitSuccess, setIsSubmitSuccess] = useState(false);
   
   const [formData, setFormData] = useState({
     leaveType: 'vacation',
@@ -175,6 +179,7 @@ const LeavePage: React.FC = () => {
     }
     
     try {
+      setIsSubmitting(true);
       await leaveApi.submitRequest({
         leaveType: formData.leaveType,
         startDate: formData.startDate,
@@ -184,21 +189,29 @@ const LeavePage: React.FC = () => {
         attachmentName,
       });
       
+      setIsSubmitting(false);
+      setIsSubmitSuccess(true);
       showSuccess('Leave request submitted successfully!');
-      setShowRequestForm(false);
-      handleRemoveAttachment();
       
-      // Auto-refresh stats and requests
+      // Auto-refresh stats and requests in the background
       fetchData();
       
-      // Reset form
-      setFormData({
-        leaveType: 'vacation',
-        startDate: '',
-        endDate: '',
-        reason: '',
-      });
+      // Keep success state for 3 seconds before closing form
+      setTimeout(() => {
+        setIsSubmitSuccess(false);
+        setShowRequestForm(false);
+        handleRemoveAttachment();
+        
+        // Reset form
+        setFormData({
+          leaveType: 'vacation',
+          startDate: '',
+          endDate: '',
+          reason: '',
+        });
+      }, 3000);
     } catch (error: any) {
+      setIsSubmitting(false);
       console.error('Leave request submission error:', error);
       showError('Failed to submit leave request');
     }
@@ -404,13 +417,11 @@ const LeavePage: React.FC = () => {
             <h1 className="text-3xl font-bold text-gray-900">Leave Management</h1>
             <p className="text-gray-600 mt-1">Request and manage your leave</p>
           </div>
-          <button
+          <ButtonWithIcon
             onClick={() => setShowRequestForm(!showRequestForm)}
-            className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-          >
-            <FaPaperPlane className="mr-2" />
-            Request Leave
-          </button>
+            text="REQUEST LEAVE"
+            icon={<FaPaperPlane className="transition-transform duration-300 group-hover:scale-110" />}
+          />
         </div>
       </header>
 
@@ -573,12 +584,13 @@ const LeavePage: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button
+                <ButtonWithIcon
                   type="submit"
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                >
-                  Submit Request
-                </button>
+                  text="SUBMIT REQUEST"
+                  loading={isSubmitting}
+                  success={isSubmitSuccess}
+                  icon={<FaPaperPlane className="transition-transform duration-300 group-hover:scale-110" />}
+                />
               </div>
             </form>
           </motion.div>
@@ -615,12 +627,14 @@ const LeavePage: React.FC = () => {
             <div className="py-12 text-center">
               <FaCalendarAlt className="mx-auto text-4xl text-gray-300" />
               <p className="mt-4 text-gray-600">No requests found matching this category.</p>
-              <button
-                onClick={() => setShowRequestForm(true)}
-                className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-              >
-                Request Leave
-              </button>
+              <div className="flex justify-center">
+                <ButtonWithIcon
+                  onClick={() => setShowRequestForm(true)}
+                  text="REQUEST LEAVE"
+                  icon={<FaCalendarAlt className="transition-transform duration-300 group-hover:scale-110" />}
+                  className="mt-4"
+                />
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">

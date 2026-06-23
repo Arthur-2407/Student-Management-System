@@ -5,21 +5,28 @@ import {
   FaExclamationTriangle, 
   FaMapMarkerAlt,
   FaUserCheck,
-  FaUserClock
+  FaUserClock,
+  FaPlus,
+  FaEdit,
+  FaTrashAlt,
+  FaFileAlt,
+  FaBookOpen,
+  FaDownload,
+  FaGraduationCap
 } from 'react-icons/fa';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
-} from 'recharts';
+import { assignmentApi, Assignment, StudentSubmission, AssignmentDetailResponse } from '@api/assignmentApi';
+import * as Recharts from 'recharts';
+const BarChart = Recharts.BarChart as any;
+const Bar = Recharts.Bar as any;
+const XAxis = Recharts.XAxis as any;
+const YAxis = Recharts.YAxis as any;
+const CartesianGrid = Recharts.CartesianGrid as any;
+const Tooltip = Recharts.Tooltip as any;
+const Legend = Recharts.Legend as any;
+const ResponsiveContainer = Recharts.ResponsiveContainer as any;
+const PieChart = Recharts.PieChart as any;
+const Pie = Recharts.Pie as any;
+const Cell = Recharts.Cell as any;
 import { securityApi } from '@api/securityApi';
 import { attendanceApi } from '@api/attendanceApi';
 import { adminApi, TeamMember } from '@api/adminApi';
@@ -95,6 +102,34 @@ const TeacherDashboard: React.FC = () => {
     startDate: new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
   });
+
+  // Assignment state variables
+  const [activeTab, setActiveTab] = useState<'overview' | 'assignments'>('overview');
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
+  const [assignmentDetails, setAssignmentDetails] = useState<AssignmentDetailResponse | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  
+  // Create / Edit Assignment Form Modal state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
+  const [formTitle, setFormTitle] = useState('');
+  const [formSubject, setFormSubject] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formInstructions, setFormInstructions] = useState('');
+  const [formDueDate, setFormDueDate] = useState('');
+  const [formTotalMarks, setFormTotalMarks] = useState('20');
+  const [formAllowedFileTypes, setFormAllowedFileTypes] = useState('pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,zip,txt');
+  const [formMaxFileSize, setFormMaxFileSize] = useState('25');
+  const [formSaving, setFormSaving] = useState(false);
+  
+  // Grading Modal state
+  const [showGradingModal, setShowGradingModal] = useState(false);
+  const [gradingSubmission, setGradingSubmission] = useState<StudentSubmission | null>(null);
+  const [gradingMarks, setGradingMarks] = useState('');
+  const [gradingFeedback, setGradingFeedback] = useState('');
+  const [gradingSaving, setGradingSaving] = useState(false);
 
   // Fetch pending face change requests
   const fetchFaceRequests = async () => {
@@ -302,6 +337,216 @@ const TeacherDashboard: React.FC = () => {
     };
   }, [fetchData]);
 
+  // Assignments helper functions
+  const fetchTeacherAssignments = async () => {
+    try {
+      setAssignmentsLoading(true);
+      const response = await assignmentApi.getTeacherAssignments();
+      if (response.data.success) {
+        setAssignments(response.data.data);
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to fetch assignments');
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  };
+
+  const fetchAssignmentDetails = async (id: number) => {
+    try {
+      setDetailsLoading(true);
+      const response = await assignmentApi.getAssignmentDetails(id);
+      if (response.data.success) {
+        setAssignmentDetails(response.data.data);
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to fetch assignment details');
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const handleSelectAssignment = (id: number) => {
+    setSelectedAssignmentId(id);
+    fetchAssignmentDetails(id);
+  };
+
+  const resetForm = () => {
+    setEditingAssignment(null);
+    setFormTitle('');
+    setFormSubject('');
+    setFormDescription('');
+    setFormInstructions('');
+    setFormDueDate('');
+    setFormTotalMarks('20');
+    setFormAllowedFileTypes('pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,zip,txt');
+    setFormMaxFileSize('25');
+  };
+
+  const handleOpenEdit = (assignment: Assignment) => {
+    setEditingAssignment(assignment);
+    setFormTitle(assignment.title);
+    setFormSubject(assignment.subject);
+    setFormDescription(assignment.description || '');
+    setFormInstructions(assignment.instructions || '');
+    if (assignment.due_date) {
+      const date = new Date(assignment.due_date);
+      const tzoffset = date.getTimezoneOffset() * 60000;
+      const localISOTime = (new Date(date.getTime() - tzoffset)).toISOString().slice(0, 16);
+      setFormDueDate(localISOTime);
+    } else {
+      setFormDueDate('');
+    }
+    setFormTotalMarks(String(assignment.total_marks));
+    setFormAllowedFileTypes(assignment.allowed_file_types || 'pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,zip,txt');
+    setFormMaxFileSize(String(assignment.max_file_size_mb));
+    setShowCreateModal(true);
+  };
+
+  const handleCreateOrUpdateAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formTitle || !formSubject || !formDueDate || !formTotalMarks) {
+      showError('Title, Subject, Due Date, and Total Marks are required');
+      return;
+    }
+
+    const payload = {
+      title: formTitle,
+      subject: formSubject,
+      description: formDescription,
+      instructions: formInstructions,
+      dueDate: formDueDate,
+      totalMarks: parseInt(formTotalMarks, 10),
+      allowedFileTypes: formAllowedFileTypes,
+      maxFileSizeMb: parseInt(formMaxFileSize, 10)
+    };
+
+    try {
+      setFormSaving(true);
+      let response;
+      if (editingAssignment) {
+        response = await assignmentApi.updateAssignment(editingAssignment.id, payload);
+      } else {
+        response = await assignmentApi.createAssignment(payload);
+      }
+
+      if (response.data.success) {
+        showSuccess(editingAssignment ? 'Assignment updated successfully!' : 'Assignment created successfully!');
+        setShowCreateModal(false);
+        resetForm();
+        fetchTeacherAssignments();
+        if (selectedAssignmentId && editingAssignment?.id === selectedAssignmentId) {
+          fetchAssignmentDetails(selectedAssignmentId);
+        }
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to save assignment');
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const handleDeleteAssignment = async (id: number) => {
+    if (!window.confirm('Are you sure you want to permanently delete this assignment? All student submissions will be lost.')) return;
+    try {
+      const response = await assignmentApi.deleteAssignment(id);
+      if (response.data.success) {
+        showSuccess('Assignment deleted successfully!');
+        if (selectedAssignmentId === id) {
+          setSelectedAssignmentId(null);
+          setAssignmentDetails(null);
+        }
+        fetchTeacherAssignments();
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to delete assignment');
+    }
+  };
+
+  const handleOpenGrading = (submission: StudentSubmission) => {
+    setGradingSubmission(submission);
+    setGradingMarks(submission.marks !== null && submission.marks !== undefined ? String(submission.marks) : '');
+    setGradingFeedback(submission.feedback || '');
+    setShowGradingModal(true);
+  };
+
+  const handleGradeSubmission = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gradingSubmission || !gradingSubmission.submission_id) return;
+    
+    const marksNum = parseInt(gradingMarks, 10);
+    if (isNaN(marksNum) || marksNum < 0 || (assignmentDetails && marksNum > assignmentDetails.assignment.total_marks)) {
+      showError(`Marks must be between 0 and ${assignmentDetails?.assignment.total_marks}`);
+      return;
+    }
+
+    try {
+      setGradingSaving(true);
+      const response = await assignmentApi.gradeSubmission(
+        gradingSubmission.submission_id,
+        marksNum,
+        gradingFeedback
+      );
+
+      if (response.data.success) {
+        showSuccess('Submission graded successfully!');
+        setShowGradingModal(false);
+        if (selectedAssignmentId) {
+          fetchAssignmentDetails(selectedAssignmentId);
+        }
+        fetchTeacherAssignments();
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to grade submission');
+    } finally {
+      setGradingSaving(false);
+    }
+  };
+
+  const getFileIcon = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    switch (ext) {
+      case 'pdf': return <FaFileAlt className="text-red-500 text-lg" />;
+      case 'doc':
+      case 'docx': return <FaFileAlt className="text-blue-500 text-lg" />;
+      case 'xls':
+      case 'xlsx': return <FaFileAlt className="text-green-500 text-lg" />;
+      default: return <FaFileAlt className="text-gray-500 text-lg" />;
+    }
+  };
+
+  const formatBytes = (bytes: number, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  const handleDownloadFile = async (fileId: number, fileName: string) => {
+    try {
+      const response = await assignmentApi.downloadFile(fileId);
+      const blob = new Blob([response.data], { type: (response.headers['content-type'] as string) || undefined });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to download file');
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'assignments') {
+      fetchTeacherAssignments();
+    }
+  }, [activeTab]);
+
   // Format geo-fence distance helper
   const formatDistance = (dist: number | null | undefined) => {
     if (dist === null || dist === undefined) return '—';
@@ -378,16 +623,44 @@ const TeacherDashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
-          <p className="text-gray-600 mt-1">Monitor your team's attendance and security events</p>
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Teacher Portal</h1>
+            <p className="text-gray-500 text-sm mt-1">Manage team attendance, requests, and student assignments.</p>
+          </div>
+          <div className="flex bg-gray-100 p-1 rounded-xl self-start md:self-auto border border-gray-200/50">
+            <button
+              type="button"
+              onClick={() => setActiveTab('overview')}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 ${
+                activeTab === 'overview'
+                  ? 'bg-white text-gray-900 shadow shadow-gray-250/20'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              Dashboard Overview
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('assignments')}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 ${
+                activeTab === 'assignments'
+                  ? 'bg-white text-gray-900 shadow shadow-gray-250/20'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              Assignments Manager
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        {/* Stats Overview — All metrics from real API data */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {activeTab === 'overview' ? (
+          <>
+            {/* Stats Overview — All metrics from real API data */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <motion.div
             whileHover={{ y: -5 }}
             onClick={() => setShowTeamModal(true)}
@@ -475,7 +748,7 @@ const TeacherDashboard: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
                       data={securityEventData.filter(d => d.value > 0)}
@@ -486,7 +759,7 @@ const TeacherDashboard: React.FC = () => {
                       fill="#8884d8"
                       dataKey="value"
                       nameKey="name"
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }: any) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     >
                       {securityEventData.filter(d => d.value > 0).map((_entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -513,7 +786,7 @@ const TeacherDashboard: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={departmentAttendanceData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="department" />
@@ -800,8 +1073,17 @@ const TeacherDashboard: React.FC = () => {
                               {event.student.student_id}
                             </div>
                           </div>
+                        ) : (event as any).first_name ? (
+                          <div>
+                            <div className="font-medium">
+                              {(event as any).first_name} {(event as any).last_name}
+                            </div>
+                            <div className="text-gray-500 text-xs">
+                              {(event as any).student_id}
+                            </div>
+                          </div>
                         ) : (
-                          'Unknown'
+                          <span className="text-gray-400 italic">System</span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -980,6 +1262,215 @@ const TeacherDashboard: React.FC = () => {
             </div>
           )}
         </div>
+          </>
+        ) : (
+          <div className="space-y-6">
+            {/* Top Toolbar */}
+            <div className="flex justify-between items-center bg-white p-6 rounded-xl border border-gray-150 shadow-sm flex-wrap gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <FaBookOpen className="text-primary-500" />
+                  Course Tasks & Assignments
+                </h2>
+                <p className="text-gray-500 text-xs mt-0.5">Create homework and track submission evaluation progress.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { resetForm(); setShowCreateModal(true); }}
+                className="btn btn-primary px-4 py-2.5 text-xs font-semibold flex items-center gap-2 rounded-lg"
+              >
+                <FaPlus className="text-3xs" />
+                New Assignment
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Side: Assignments List */}
+              <div className="lg:col-span-5 bg-white rounded-xl border border-gray-150 p-4 shadow-sm space-y-4">
+                <h3 className="font-bold text-gray-800 text-sm border-b border-gray-100 pb-2 flex items-center gap-2">
+                  <FaFileAlt className="text-primary-500 text-xs" />
+                  Assignments List
+                </h3>
+                
+                {assignmentsLoading ? (
+                  <div className="py-12 flex justify-center">
+                    <div className="h-6 w-6 rounded-full border-2 border-primary-200 border-t-primary-600 animate-spin" />
+                  </div>
+                ) : assignments.length === 0 ? (
+                  <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                    <FaFileAlt className="mx-auto text-2xl mb-2 text-gray-300" />
+                    <p className="text-sm font-medium">No assignments created yet</p>
+                    <p className="text-xs mt-1">Get started by creating your first assignment!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                    {assignments.map(item => {
+                      const isSelected = item.id === selectedAssignmentId;
+                      const progress = item.total_students && item.total_students > 0
+                        ? Math.round(((item.submission_count || 0) / item.total_students) * 100)
+                        : 0;
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => handleSelectAssignment(item.id)}
+                          className={`p-4 rounded-lg border transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'bg-primary-50 border-primary-300 text-primary-950 shadow-sm'
+                              : 'bg-white border-gray-100 hover:bg-gray-50/50'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-3xs font-extrabold uppercase bg-primary-100/50 text-primary-700 px-2 py-0.5 rounded">
+                              {item.subject}
+                            </span>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleOpenEdit(item); }}
+                                className="p-1 hover:bg-gray-200 text-gray-500 rounded transition-colors"
+                                title="Edit Assignment"
+                              >
+                                <FaEdit size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteAssignment(item.id); }}
+                                className="p-1 hover:bg-red-50 text-red-500 rounded transition-colors"
+                                title="Delete Assignment"
+                              >
+                                <FaTrashAlt size={12} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <h4 className="font-bold text-sm text-gray-800 line-clamp-1 mb-1">{item.title}</h4>
+                          <p className="text-3xs text-gray-500 line-clamp-2 mb-3 leading-relaxed">{item.description}</p>
+                          
+                          {/* Progress */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-4xs font-bold text-gray-400">
+                              <span>Submissions: {item.submission_count} / {item.total_students || teamMembers.length}</span>
+                              <span>{progress}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-1">
+                              <div
+                                className="bg-primary-600 h-1 rounded-full transition-all duration-300"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between text-4xs text-gray-400 font-medium mt-3 border-t border-gray-100/50 pt-2">
+                            <span>Due: {new Date(item.due_date).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                            <span>Max Marks: {item.total_marks}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Side: Assignment Details & Student Submissions */}
+              <div className="lg:col-span-7">
+                {!selectedAssignmentId ? (
+                  <div className="bg-white rounded-xl border border-gray-150 shadow-sm p-12 text-center text-gray-400 min-h-[50vh] flex flex-col justify-center items-center">
+                    <FaFileAlt className="text-5xl text-gray-200 mb-4 bg-gray-50 p-3 rounded-full" />
+                    <h4 className="font-bold text-gray-700 text-lg mb-1">Select an Assignment</h4>
+                    <p className="text-sm max-w-sm">Select an assignment from the list to view detailed submissions progress and grade students.</p>
+                  </div>
+                ) : detailsLoading ? (
+                  <div className="bg-white rounded-xl border border-gray-150 shadow-sm p-12 text-center min-h-[50vh] flex justify-center items-center">
+                    <div className="h-8 w-8 rounded-full border-2 border-primary-200 border-t-primary-600 animate-spin" />
+                  </div>
+                ) : assignmentDetails ? (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    {/* Assignment meta */}
+                    <div className="bg-white rounded-xl border border-gray-150 shadow-sm p-6 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary-500 to-secondary-500" />
+                      <span className="text-3xs font-extrabold uppercase tracking-wider text-primary-600">{assignmentDetails.assignment.subject}</span>
+                      <h3 className="text-xl font-bold text-gray-900 mt-1">{assignmentDetails.assignment.title}</h3>
+                      <p className="text-xs text-gray-500 mt-2 leading-relaxed whitespace-pre-line bg-gray-50 p-4 rounded-lg border border-gray-100">{assignmentDetails.assignment.description}</p>
+                      
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 pt-4 border-t border-gray-100 text-3xs font-bold text-gray-400 uppercase tracking-wider">
+                        <span>Due: {new Date(assignmentDetails.assignment.due_date).toLocaleString()}</span>
+                        <span>Marks: {assignmentDetails.assignment.total_marks} Points</span>
+                      </div>
+                    </div>
+
+                    {/* Submissions List */}
+                    <div className="bg-white rounded-xl border border-gray-150 shadow-sm p-4">
+                      <h4 className="font-bold text-gray-800 text-sm border-b border-gray-100 pb-2 mb-3">Student Submissions</h4>
+                      
+                      <div className="divide-y divide-gray-100 max-h-[50vh] overflow-y-auto pr-1">
+                        {assignmentDetails.submissions.map(student => {
+                          const hasSubmitted = student.submission_id !== null;
+                          const isReviewed = student.submission_status === 'reviewed';
+
+                          return (
+                            <div key={student.student_id} className="py-3 flex items-center justify-between hover:bg-gray-50/50 px-2 rounded-lg transition-colors gap-4">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm text-gray-800">{student.first_name} {student.last_name}</span>
+                                  <span className="text-4xs text-gray-400 font-mono">({student.student_code})</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-3xs text-gray-500 mt-0.5">
+                                  <span>{student.department || 'No Dept'}</span>
+                                  {hasSubmitted && (
+                                    <>
+                                      <span>&bull;</span>
+                                      <span>Submitted: {new Date(student.submitted_at!).toLocaleDateString()}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                {isReviewed ? (
+                                  <div className="text-right">
+                                    <span className="text-3xs font-extrabold uppercase bg-success-50 text-success-700 px-2 py-0.5 rounded border border-success-100">
+                                      {student.marks} / {assignmentDetails.assignment.total_marks}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenGrading(student)}
+                                      className="block text-4xs font-bold text-primary-600 hover:text-primary-700 mt-1 hover:underline text-right w-full"
+                                    >
+                                      Re-grade
+                                    </button>
+                                  </div>
+                                ) : hasSubmitted ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-3xs font-extrabold uppercase bg-warning-50 text-warning-700 px-2 py-0.5 rounded border border-warning-100">
+                                      Needs Grade
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenGrading(student)}
+                                      className="btn btn-primary px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5"
+                                    >
+                                      <FaGraduationCap size={12} />
+                                      Grade
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-3xs font-extrabold uppercase bg-gray-50 text-gray-400 px-2 py-0.5 rounded border border-gray-100">
+                                    Not Submitted
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Team Members Details Modal */}
@@ -1309,6 +1800,238 @@ const TeacherDashboard: React.FC = () => {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create / Edit Assignment Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center pb-4 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-800">
+                {editingAssignment ? 'Edit Assignment' : 'Create New Assignment'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl font-semibold focus:outline-none"
+              >
+                &times;
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateOrUpdateAssignment} className="overflow-y-auto my-4 flex-1 space-y-4 pr-1 animate-in fade-in duration-200">
+              <div>
+                <label className="form-label text-xs">Assignment Title</label>
+                <input
+                  type="text"
+                  required
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  className="input text-xs"
+                  placeholder="e.g. Database Normalization Assignment"
+                />
+              </div>
+
+              <div>
+                <label className="form-label text-xs">Subject / Course Name</label>
+                <input
+                  type="text"
+                  required
+                  value={formSubject}
+                  onChange={(e) => setFormSubject(e.target.value)}
+                  className="input text-xs"
+                  placeholder="e.g. Database Management Systems"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label text-xs">Due Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={formDueDate}
+                    onChange={(e) => setFormDueDate(e.target.value)}
+                    className="input text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="form-label text-xs">Total Marks</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={formTotalMarks}
+                    onChange={(e) => setFormTotalMarks(e.target.value)}
+                    className="input text-xs"
+                    placeholder="e.g. 20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label text-xs">Description / Requirements</label>
+                <textarea
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 p-3 text-xs focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  rows={4}
+                  placeholder="Describe the tasks, requirements, ERD details, normalization, etc..."
+                />
+              </div>
+
+              <div>
+                <label className="form-label text-xs">Instructions (Optional)</label>
+                <textarea
+                  value={formInstructions}
+                  onChange={(e) => setFormInstructions(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 p-3 text-xs focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  rows={3}
+                  placeholder="e.g. 1. Normalise to 3NF. 2. Prepare relational schema. 3. Upload PDF."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label text-xs">Allowed File Types</label>
+                  <input
+                    type="text"
+                    value={formAllowedFileTypes}
+                    onChange={(e) => setFormAllowedFileTypes(e.target.value)}
+                    className="input text-xs"
+                    placeholder="pdf,doc,docx,jpg,zip"
+                  />
+                </div>
+                <div>
+                  <label className="form-label text-xs">Max File Size (MB)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={formMaxFileSize}
+                    onChange={(e) => setFormMaxFileSize(e.target.value)}
+                    className="input text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-gray-250 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={formSaving}
+                  className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                >
+                  {formSaving ? 'Saving...' : 'Save Assignment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Grading / Feedback Modal */}
+      {showGradingModal && gradingSubmission && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center pb-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  Grade Submission
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">Student: {gradingSubmission.first_name} {gradingSubmission.last_name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGradingModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl font-semibold focus:outline-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleGradeSubmission} className="overflow-y-auto my-4 flex-1 space-y-4 pr-1 animate-in fade-in duration-200">
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-600 space-y-2">
+                <p><span className="font-semibold">Submitted comments:</span> {gradingSubmission.comments || 'No comments'}</p>
+                
+                {gradingSubmission.files.length > 0 && (
+                  <div>
+                    <span className="font-semibold block mb-1.5">Submitted files ({gradingSubmission.files.length}):</span>
+                    <div className="space-y-1">
+                      {gradingSubmission.files.map(file => (
+                        <div key={file.id} className="flex items-center justify-between p-2 bg-white rounded border border-gray-150">
+                          <div className="flex items-center gap-2 truncate">
+                            {getFileIcon(file.file_name)}
+                            <span className="text-2xs text-gray-800 font-medium truncate" title={file.file_name}>{file.file_name}</span>
+                            <span className="text-4xs text-gray-400">({formatBytes(file.file_size)})</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadFile(file.id, file.file_name)}
+                            className="p-1 hover:bg-gray-100 text-primary-600 rounded transition-colors focus:outline-none"
+                            title="Download File"
+                          >
+                            <FaDownload size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="form-label text-xs">
+                  Marks Obtained (out of {assignmentDetails?.assignment.total_marks})
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  max={assignmentDetails?.assignment.total_marks}
+                  value={gradingMarks}
+                  onChange={(e) => setGradingMarks(e.target.value)}
+                  className="input text-xs"
+                  placeholder="e.g. 18"
+                />
+              </div>
+
+              <div>
+                <label className="form-label text-xs">Feedback / Comments</label>
+                <textarea
+                  value={gradingFeedback}
+                  onChange={(e) => setGradingFeedback(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 p-3 text-xs focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  rows={4}
+                  placeholder="Provide feedback on ERD design, Normalization process, code formatting etc..."
+                />
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-gray-250 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowGradingModal(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={gradingSaving}
+                  className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                >
+                  {gradingSaving ? 'Saving...' : 'Submit Grade'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

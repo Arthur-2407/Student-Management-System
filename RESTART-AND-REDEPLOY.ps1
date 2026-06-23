@@ -170,6 +170,23 @@ foreach ($image in $imagesToPull) {
 # ============================================================================
 Write-Header "PHASE 5: Building All Services"
 
+Write-Info "Compiling frontend assets on host..."
+Push-Location "frontend"
+try {
+    npm run build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Frontend compilation failed"
+        Pop-Location
+        exit 1
+    }
+    Write-Success "Frontend compilation completed successfully"
+} catch {
+    Write-Error "Failed to compile frontend: $_"
+    Pop-Location
+    exit 1
+}
+Pop-Location
+
 if ($Quick) {
     Write-Info "Quick build requested. Building all Docker images (using cache)..."
     docker-compose -f docker-compose.prod.yml build 2>&1 | Tee-Object -Variable buildOutput | Out-Host

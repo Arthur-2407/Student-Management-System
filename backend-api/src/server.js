@@ -43,6 +43,7 @@ const mfaRoutes = require('./modules/auth/mfaRoutes');
 const adminRoutes = require('./modules/admin/routes');
 const locationRoutes = require('./modules/locations/routes');
 const faceManagementRoutes = require('./modules/face-management/routes');
+const assignmentRoutes = require('./modules/assignments/routes');
 
 // Import middleware
 const { errorHandler } = require('./middleware/errorHandler');
@@ -153,6 +154,7 @@ app.use('/api/excel', authenticateToken, excelRoutes);
 app.use('/api/geofence', authenticateToken, geofenceRoutes);
 app.use('/api/notifications', authenticateToken, notificationRoutes);
 app.use('/api/security', authenticateToken, securityRoutes);
+app.use('/api/assignments', authenticateToken, assignmentRoutes);
 
 // ADMIN MANAGEMENT ROUTES
 // WEBSITECHK_ADMIN_CONTACT: /api/admin/contact-info is a public endpoint (no auth).
