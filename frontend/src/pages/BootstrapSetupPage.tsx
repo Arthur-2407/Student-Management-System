@@ -27,6 +27,19 @@ interface RecoveryInfo {
   recoveryPhone: string;
 }
 
+const POSE_PROMPTS = [
+  "Look straight at the camera",
+  "Turn slightly to the left",
+  "Turn slightly to the right",
+  "Tilt your head slightly up",
+  "Tilt your head slightly down",
+  "Blink your eyes",
+  "Smile warmly",
+  "Maintain a neutral expression",
+  "Rotate your head slightly in a circle",
+  "Move naturally"
+];
+
 const BootstrapSetupPage = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState<SetupStep>(1);
@@ -775,16 +788,18 @@ const BootstrapSetupPage = () => {
                         onCapture={handleFrameCapture}
                         showControls={false}
                         autoCapture={frames.length < 10}
-                        captureInterval={300}
+                        captureInterval={1500}
                         className="w-full h-full object-cover scale-x-[-1]"
                       />
                       
-                      {frames.length > 0 && frames.length < 10 && (
-                        <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-[2px] flex flex-col items-center justify-center z-20">
-                          <div className="text-indigo-400 text-2xl font-black mb-1 animate-pulse tracking-wide font-mono">
+                      {frames.length < 10 && (
+                        <div className="absolute bottom-4 inset-x-4 bg-slate-950/80 border border-indigo-500/30 rounded-xl p-3 flex flex-col items-center justify-center z-20 shadow-lg">
+                          <div className="text-indigo-400 text-sm font-black tracking-wide font-mono">
                             CAPTURING: {frames.length} / 10
                           </div>
-                          <p className="text-xs text-slate-400 font-semibold tracking-wider uppercase">Align face inside the scanner boundary</p>
+                          <p className="text-xs text-slate-200 font-bold text-center mt-1 animate-pulse">
+                            {POSE_PROMPTS[frames.length] || 'Prepare...'}
+                          </p>
                         </div>
                       )}
                       

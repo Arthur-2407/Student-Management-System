@@ -1111,7 +1111,7 @@ router.get('/prediction-metrics/:studentId', async (req, res) => {
   try {
     // 1. Calculate Attendance Rate
     const termDaysRes = await query(`SELECT COUNT(DISTINCT check_in_time::DATE) as term_days FROM student_attendance`);
-    const studentCheckinsRes = await query(`SELECT COUNT(*) as student_checkins FROM student_attendance WHERE student_id = $1`, [targetStudentId]);
+    const studentCheckinsRes = await query(`SELECT COUNT(DISTINCT check_in_time::DATE) as student_checkins FROM student_attendance WHERE student_id = $1`, [targetStudentId]);
     const termDays = parseInt(termDaysRes.rows[0]?.term_days || '0', 10) || 30;
     const studentCheckins = parseInt(studentCheckinsRes.rows[0]?.student_checkins || '0', 10);
     const attendanceRate = Math.min(Math.round((studentCheckins / termDays) * 100), 100);
@@ -1146,6 +1146,27 @@ router.get('/prediction-metrics/:studentId', async (req, res) => {
       ? Math.round(parseFloat(avgGradeRes.rows[0]?.avg_grade))
       : 75; // Default to 75% if no assignments reviewed
 
+    // 4. Calculate Mock Test Marks from Database Attempts
+    const mockAttemptsRes = await query(
+      `SELECT AVG(percentage) as avg_percent FROM mock_exam_attempts WHERE student_id = $1`,
+      [targetStudentId]
+    );
+    const mockTestMarks = mockAttemptsRes.rows[0]?.avg_percent !== null
+      ? Math.min(100, Math.max(0, Math.round(parseFloat(mockAttemptsRes.rows[0].avg_percent))))
+      : 70; // Default to 70% if no mock tests attempted
+
+    // 5. Calculate Study Hours from Previous Predictions
+    const lastPredictionRes = await query(
+      `SELECT study_hours, previous_semester_marks FROM student_mark_predictions WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [targetStudentId]
+    );
+    const studyHours = lastPredictionRes.rows[0]?.study_hours !== null && lastPredictionRes.rows[0]?.study_hours !== undefined
+      ? parseFloat(lastPredictionRes.rows[0].study_hours)
+      : 6.0; // Default to 6 hours if no previous predictions
+    const previousSemesterMarks = lastPredictionRes.rows[0]?.previous_semester_marks !== null && lastPredictionRes.rows[0]?.previous_semester_marks !== undefined
+      ? parseFloat(lastPredictionRes.rows[0].previous_semester_marks)
+      : 75.0; // Default to 75% if no previous predictions
+
     res.json({
       success: true,
       data: {
@@ -1153,7 +1174,10 @@ router.get('/prediction-metrics/:studentId', async (req, res) => {
         attendanceRate,
         assignmentCompletionRate,
         internalAssessmentMarks: Math.round(avgGrade * 0.2), // Scale to out of 20
-        averageAssignmentMarksPercent: avgGrade
+        averageAssignmentMarksPercent: avgGrade,
+        mockTestMarks,
+        studyHours,
+        previousSemesterMarks
       }
     });
   } catch (err) {
@@ -1165,12 +1189,7 @@ router.get('/prediction-metrics/:studentId', async (req, res) => {
 // POST /predict-marks - Calibrated Regression Marks Predictor Heuristic
 router.post('/predict-marks', async (req, res) => {
   const {
-    attendanceRate,
     previousSemesterMarks,
-    assignmentCompletionRate,
-    internalAssessmentMarks,
-    studyHours,
-    mockTestMarks,
     studentId
   } = req.body;
 
@@ -1183,73 +1202,145 @@ router.post('/predict-marks', async (req, res) => {
     return res.status(403).json({ success: false, message: 'Unauthorized' });
   }
 
-  // Regression coefficients (weighted algorithm)
-  const prevWeight = 0.35;
-  const mockWeight = 0.20;
-  const attWeight = 0.15;
-  const compWeight = 0.10;
-  const internalWeight = 0.05;
-  const studyWeight = 0.10;
-  const intercept = 8.0;
-
-  let predictedMarks = 
-    intercept +
-    (parseFloat(previousSemesterMarks) * prevWeight) +
-    (parseFloat(mockTestMarks) * mockWeight) +
-    (parseFloat(attendanceRate) * attWeight) +
-    (parseFloat(assignmentCompletionRate) * compWeight) +
-    ((parseFloat(internalAssessmentMarks) / 20) * 100 * internalWeight) +
-    (Math.min(parseFloat(studyHours), 10) * 10 * studyWeight);
-
-  // Non-linear penalties
-  if (attendanceRate < 75) {
-    predictedMarks -= (75 - attendanceRate) * 0.15;
-  }
-  if (studyHours < 3) {
-    predictedMarks -= (3 - studyHours) * 2;
-  }
-
-  predictedMarks = Math.max(10, Math.min(100, Math.round(predictedMarks)));
-
-  // Calculate Grade
-  let grade = 'F';
-  if (predictedMarks >= 90) grade = 'A+';
-  else if (predictedMarks >= 80) grade = 'A';
-  else if (predictedMarks >= 70) grade = 'B';
-  else if (predictedMarks >= 60) grade = 'C';
-  else if (predictedMarks >= 50) grade = 'D';
-
-  // Calculate Pass Probability (Logistic mapping)
-  const passProbability = Math.max(0, Math.min(100, Math.round(100 / (1 + Math.exp(-0.15 * (predictedMarks - 45))))));
-
-  // Determine Risk Level
-  let riskLevel = 'High';
-  if (predictedMarks >= 85) riskLevel = 'Very Low';
-  else if (predictedMarks >= 70) riskLevel = 'Low';
-  else if (predictedMarks >= 50) riskLevel = 'Medium';
-
-  // Personalized suggestions
-  const suggestions = [];
-  if (attendanceRate < 80) {
-    suggestions.push('Attend more classes to ensure core concept understanding and meet eligibility requirements.');
-  }
-  if (studyHours < 4) {
-    suggestions.push('Increase daily self-study time to at least 4-5 hours to solidify subjects.');
-  }
-  if (assignmentCompletionRate < 85) {
-    suggestions.push('Submit pending assignments to boost grades and practice regular coursework.');
-  }
-  if (mockTestMarks < 70) {
-    suggestions.push('Revise exam-style questions, solve mock tests under time limit, and focus on weak topics.');
-  }
-  if (previousSemesterMarks < 60) {
-    suggestions.push('Review fundamental syllabus from previous semesters to build missing conceptual blocks.');
-  }
-  if (suggestions.length === 0) {
-    suggestions.push('Maintain your current excellent performance and study discipline!');
+  if (role === 'teacher') {
+    const isAssigned = await query(
+      `SELECT 1 FROM students s
+       WHERE s.id = $1 AND (
+         s.teacher_id = $2 OR EXISTS (
+           SELECT 1 FROM teacher_assignments ta 
+           WHERE ta.student_id = $1 AND ta.teacher_id = $2 AND ta.is_active = TRUE
+         )
+       )`,
+      [targetStudentId, userId]
+    );
+    if (isAssigned.rows.length === 0) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
   }
 
   try {
+    // 1. Calculate Attendance Rate
+    const termDaysRes = await query(`SELECT COUNT(DISTINCT check_in_time::DATE) as term_days FROM student_attendance`);
+    const studentCheckinsRes = await query(`SELECT COUNT(DISTINCT check_in_time::DATE) as student_checkins FROM student_attendance WHERE student_id = $1`, [targetStudentId]);
+    const termDays = parseInt(termDaysRes.rows[0]?.term_days || '0', 10) || 30;
+    const studentCheckins = parseInt(studentCheckinsRes.rows[0]?.student_checkins || '0', 10);
+    const attendanceRate = Math.min(Math.round((studentCheckins / termDays) * 100), 100);
+
+    // 2. Calculate Assignment Completion Rate
+    const totalAssignmentsRes = await query(
+      `SELECT COUNT(*)::int as total FROM assignments a 
+       WHERE a.teacher_id = (SELECT teacher_id FROM students WHERE id = $1)
+          OR a.teacher_id IN (SELECT teacher_id FROM teacher_assignments WHERE student_id = $1 AND is_active = TRUE)`,
+      [targetStudentId]
+    );
+    const submittedAssignmentsRes = await query(
+      `SELECT COUNT(*)::int as total FROM assignment_submissions sub
+       WHERE sub.student_id = $1 AND sub.status IN ('submitted', 'reviewed')`,
+      [targetStudentId]
+    );
+    const totalAssignments = totalAssignmentsRes.rows[0]?.total || 0;
+    const submittedAssignments = submittedAssignmentsRes.rows[0]?.total || 0;
+    const assignmentCompletionRate = totalAssignments > 0 
+      ? Math.round((submittedAssignments / totalAssignments) * 100)
+      : 100;
+
+    // 3. Calculate Average Grade / Internal Assessment Marks
+    const avgGradeRes = await query(
+      `SELECT AVG(sub.marks::float / NULLIF(a.total_marks, 0)) * 100 as avg_grade
+       FROM assignment_submissions sub
+       JOIN assignments a ON sub.assignment_id = a.id
+       WHERE sub.student_id = $1 AND sub.status = 'reviewed'`,
+      [targetStudentId]
+    );
+    const avgGrade = avgGradeRes.rows[0]?.avg_grade !== null 
+      ? Math.round(parseFloat(avgGradeRes.rows[0]?.avg_grade))
+      : 75; // Default to 75% if no assignments reviewed
+    const internalAssessmentMarks = Math.round(avgGrade * 0.2); // Scale to out of 20
+
+    // 4. Calculate Mock Test Marks from Database Attempts
+    const mockAttemptsRes = await query(
+      `SELECT AVG(percentage) as avg_percent FROM mock_exam_attempts WHERE student_id = $1`,
+      [targetStudentId]
+    );
+    const mockTestMarks = mockAttemptsRes.rows[0]?.avg_percent !== null
+      ? Math.min(100, Math.max(0, Math.round(parseFloat(mockAttemptsRes.rows[0].avg_percent))))
+      : 70; // Default to 70% if no mock tests attempted
+
+    // 5. Calculate Study Hours from Previous Predictions
+    const lastPredictionRes = await query(
+      `SELECT study_hours FROM student_mark_predictions WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [targetStudentId]
+    );
+    const studyHours = lastPredictionRes.rows[0]?.study_hours !== null && lastPredictionRes.rows[0]?.study_hours !== undefined
+      ? parseFloat(lastPredictionRes.rows[0].study_hours)
+      : 6.0; // Default to 6 hours if no previous predictions
+
+    // Regression coefficients (weighted algorithm)
+    const prevWeight = 0.35;
+    const mockWeight = 0.20;
+    const attWeight = 0.15;
+    const compWeight = 0.10;
+    const internalWeight = 0.05;
+    const studyWeight = 0.10;
+    const intercept = 8.0;
+
+    let predictedMarks = 
+      intercept +
+      (parseFloat(previousSemesterMarks) * prevWeight) +
+      (parseFloat(mockTestMarks) * mockWeight) +
+      (parseFloat(attendanceRate) * attWeight) +
+      (parseFloat(assignmentCompletionRate) * compWeight) +
+      ((parseFloat(internalAssessmentMarks) / 20) * 100 * internalWeight) +
+      (Math.min(parseFloat(studyHours), 10) * 10 * studyWeight);
+
+    // Non-linear penalties
+    if (attendanceRate < 75) {
+      predictedMarks -= (75 - attendanceRate) * 0.15;
+    }
+    if (studyHours < 3) {
+      predictedMarks -= (3 - studyHours) * 2;
+    }
+
+    predictedMarks = Math.max(10, Math.min(100, Math.round(predictedMarks)));
+
+    // Calculate Grade
+    let grade = 'F';
+    if (predictedMarks >= 90) grade = 'A+';
+    else if (predictedMarks >= 80) grade = 'A';
+    else if (predictedMarks >= 70) grade = 'B';
+    else if (predictedMarks >= 60) grade = 'C';
+    else if (predictedMarks >= 50) grade = 'D';
+
+    // Calculate Pass Probability (Logistic mapping)
+    const passProbability = Math.max(0, Math.min(100, Math.round(100 / (1 + Math.exp(-0.15 * (predictedMarks - 45))))));
+
+    // Determine Risk Level
+    let riskLevel = 'High';
+    if (predictedMarks >= 85) riskLevel = 'Very Low';
+    else if (predictedMarks >= 70) riskLevel = 'Low';
+    else if (predictedMarks >= 50) riskLevel = 'Medium';
+
+    // Personalized suggestions
+    const suggestions = [];
+    if (attendanceRate < 80) {
+      suggestions.push('Attend more classes to ensure core concept understanding and meet eligibility requirements.');
+    }
+    if (studyHours < 4) {
+      suggestions.push('Increase daily self-study time to at least 4-5 hours to solidify subjects.');
+    }
+    if (assignmentCompletionRate < 85) {
+      suggestions.push('Submit pending assignments to boost grades and practice regular coursework.');
+    }
+    if (mockTestMarks < 70) {
+      suggestions.push('Revise exam-style questions, solve mock tests under time limit, and focus on weak topics.');
+    }
+    if (previousSemesterMarks < 60) {
+      suggestions.push('Review fundamental syllabus from previous semesters to build missing conceptual blocks.');
+    }
+    if (suggestions.length === 0) {
+      suggestions.push('Maintain your current excellent performance and study discipline!');
+    }
+
     // Save to database
     await query(
       `INSERT INTO student_mark_predictions 
@@ -1278,7 +1369,12 @@ router.post('/predict-marks', async (req, res) => {
         grade,
         passProbability,
         riskLevel,
-        suggestions
+        suggestions,
+        attendanceRate,
+        assignmentCompletionRate,
+        internalAssessmentMarks,
+        mockTestMarks,
+        studyHours
       }
     });
   } catch (err) {
@@ -1687,6 +1783,20 @@ router.post('/mock-exams/:id/attempt', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Mock exam not found' });
     }
     const exam = examResult.rows[0];
+
+    const isAssigned = await query(
+      `SELECT 1 FROM students s
+       WHERE s.id = $1 AND (
+         s.teacher_id = $2 OR EXISTS (
+           SELECT 1 FROM teacher_assignments ta 
+           WHERE ta.student_id = $1 AND ta.teacher_id = $2 AND ta.is_active = TRUE
+         )
+       )`,
+      [studentId, exam.teacher_id]
+    );
+    if (isAssigned.rows.length === 0) {
+      return res.status(403).json({ success: false, message: 'Unauthorized to attempt this mock exam' });
+    }
 
     const questionsResult = await query(
       `SELECT id, correct_option, question_marks FROM mock_exam_questions WHERE exam_id = $1 ORDER BY id ASC`,

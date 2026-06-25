@@ -149,16 +149,18 @@ class ChallengeVerifier:
         dist_chin = abs(nose_y - chin_y)     + 1e-6
         return dist_fore / dist_chin
 
-    def verify_challenge(self, faces: List[np.ndarray], challenge_type: str) -> Dict:
+    def verify_challenge(self, faces: List[np.ndarray], challenge_type: str, original_frames: Optional[List[np.ndarray]] = None) -> Dict:
         """Verify a liveness challenge across the provided face frames."""
         if not _MEDIAPIPE_AVAILABLE:
             return {'passed': False, 'confidence': 0.0, 'reason': 'MediaPipe is not installed in the container'}
         if not faces:
             return {'passed': False, 'confidence': 0.0, 'reason': 'No face frames provided'}
 
+        frames_for_landmarks = original_frames if original_frames is not None else faces
+
         results_per_frame = []
-        for face in faces:
-            lm = self._get_landmarks(face)
+        for frame in frames_for_landmarks:
+            lm = self._get_landmarks(frame)
             if lm is None:
                 continue
             results_per_frame.append(lm)
@@ -487,6 +489,7 @@ class FaceAuthenticationPipeline:
             
             faces_detected = []
             face_boxes = []
+            valid_original_frames = []
             
             for i, frame in enumerate(video_frames):
                 faces, boxes = face_detector.detect_faces(frame)
@@ -502,6 +505,7 @@ class FaceAuthenticationPipeline:
                         return result
                     faces_detected.append(faces[0])  # Take first face
                     face_boxes.append(boxes[0])
+                    valid_original_frames.append(frame)
                 
                 if len(faces_detected) >= self.config["multi_frame_count"]:
                     break
@@ -515,7 +519,7 @@ class FaceAuthenticationPipeline:
             
             # Step 2: Multi-Frame Liveness Detection
             liveness_start = time.time()
-            liveness_result = liveness_detector.analyze_liveness(faces_detected)
+            liveness_result = liveness_detector.analyze_liveness(faces_detected, original_frames=valid_original_frames)
             
             liveness_detection_disabled = os.getenv("FACE_AI_DISABLE_LIVENESS_DETECTION", "false").lower() == "true"
             
@@ -539,7 +543,8 @@ class FaceAuthenticationPipeline:
                 challenge_start = time.time()
                 challenge_result = challenge_verifier.verify_challenge(
                     faces_detected, 
-                    challenge_type
+                    challenge_type,
+                    original_frames=valid_original_frames
                 )
                 
                 if challenge_result["passed"]:
@@ -612,38 +617,47 @@ class FaceAuthenticationPipeline:
             if result["liveness_passed"] and not result["spoof_detected"]:
                 embedding_start = time.time()
                 
-                # Generate embedding from the clearest face
-                clearest_face = self._select_clearest_face(faces_detected)
-                current_embedding = embedding_generator.generate_embedding(clearest_face)
-
+                # Select the top 5 clearest faces to accumulate evidence
+                top_faces = self._select_top_k_clearest_faces(faces_detected, k=5)
+                self.logger.info(f"Generating embeddings for top {len(top_faces)} clearest faces for login comparison.")
+                
                 # Use injected stored_embedding (from PostgreSQL via Express API);
                 # fall back to filesystem cache if not provided.
                 db_embedding = stored_embedding if stored_embedding is not None \
                     else self._get_stored_embedding(student_id)
                 
                 if db_embedding is not None:
-                    match_result = face_matcher.compare_embeddings(
-                        current_embedding,
-                        db_embedding
-                    )
+                    similarities = []
+                    for face in top_faces:
+                        curr_emb = embedding_generator.generate_embedding(face)
+                        match_res = face_matcher.compare_embeddings(curr_emb, db_embedding)
+                        similarities.append(match_res.get("similarity", 0.0))
+                    
+                    avg_similarity = float(np.mean(similarities)) if similarities else 0.0
+                    self.logger.info(f"Multi-frame similarity scores: {similarities} | Average: {avg_similarity:.4f}")
+                    
+                    match_result = {
+                        "similarity": avg_similarity,
+                        "match": avg_similarity >= self.config["similarity_threshold"]
+                    }
                     
                     face_recognition_mock = os.getenv('FACE_RECOGNITION_MODE', 'real') != 'real'
                     
-                    if match_result["similarity"] >= self.config["similarity_threshold"] or face_recognition_mock:
+                    if avg_similarity >= self.config["similarity_threshold"] or face_recognition_mock:
                         result["face_matched"] = True
-                        result["confidence"] = max(result["confidence"], match_result["similarity"])
-                        if face_recognition_mock and match_result["similarity"] < self.config["similarity_threshold"]:
+                        result["confidence"] = max(result["confidence"], avg_similarity)
+                        if face_recognition_mock and avg_similarity < self.config["similarity_threshold"]:
                             self.logger.info(
-                                f"Mock face recognition bypass: similarity={match_result['similarity']:.2f} "
+                                f"Mock face recognition bypass: average similarity={avg_similarity:.2f} "
                                 f"below threshold={self.config['similarity_threshold']}"
                             )
                     else:
                         self.logger.warning(
-                            f"Face mismatch detected: {match_result['similarity']:.2f} "
+                            f"Face mismatch detected: average similarity={avg_similarity:.2f} "
                             f"(threshold: {self.config['similarity_threshold']})"
                         )
                         result["errors"].append(
-                            f"Face mismatch: {match_result['similarity']:.2f} "
+                            f"Face mismatch: average similarity={avg_similarity:.2f} "
                             f"(threshold: {self.config['similarity_threshold']})"
                         )
                         result["security_events"].append("FACE_MISMATCH")
@@ -726,6 +740,14 @@ class FaceAuthenticationPipeline:
         variances = [np.var(cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)) for face in faces]
         clearest_idx = np.argmax(variances)
         return faces[clearest_idx]
+    
+    def _select_top_k_clearest_faces(self, faces: List[np.ndarray], k: int = 5) -> List[np.ndarray]:
+        """Select the top k clearest faces based on sharpness variance"""
+        if len(faces) <= k:
+            return faces
+        variances = [np.var(cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)) for face in faces]
+        sorted_indices = np.argsort(variances)[::-1]
+        return [faces[idx] for idx in sorted_indices[:k]]
     
     def _get_stored_embedding(self, student_id: str) -> Optional[np.ndarray]:
         """
@@ -1070,27 +1092,133 @@ def register_face():
                 'code': 'INVALID_FRAMES'
             }), 400
 
-        # Detect faces
+        # Quality check functions
+        def is_partial_face(box, img_shape) -> bool:
+            x, y, w, h = box
+            img_h, img_w = img_shape[:2]
+            return x <= 2 or y <= 2 or (x + w) >= img_w - 2 or (y + h) >= img_h - 2
+
+        def is_blurry_face(face_img: np.ndarray, threshold: float = 80.0) -> bool:
+            gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+            var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            return var < threshold
+
+        def is_bad_exposure(face_img: np.ndarray) -> Tuple[bool, str]:
+            gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+            mean = np.mean(gray)
+            if mean < 40:
+                return True, "underexposed"
+            if mean > 220:
+                return True, "overexposed"
+            return False, ""
+
+        def is_duplicate_face(face1: np.ndarray, face2: np.ndarray, threshold: float = 5.0) -> bool:
+            g1 = cv2.resize(cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY), (64, 64))
+            g2 = cv2.resize(cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY), (64, 64))
+            mse = np.mean((g1.astype(float) - g2.astype(float)) ** 2)
+            return mse < threshold
+
+        # Detect and validate faces frame-by-frame
         faces = []
         for frame in frames:
-            detected_faces, _ = face_detector.detect_faces(frame)
+            detected_faces, boxes = face_detector.detect_faces(frame)
             if len(detected_faces) > 1:
                 return jsonify({
-                    'error': 'Multiple faces detected in frame',
+                    'error': 'Multiple faces detected in frame. Please ensure only one person is visible.',
                     'code': 'MULTIPLE_FACES_DETECTED'
                 }), 400
-            if detected_faces:
-                faces.append(detected_faces[0])
-        
+            
+            if not detected_faces:
+                return jsonify({
+                    'error': 'No face detected in one of the captured frames. Please align your face inside the boundary.',
+                    'code': 'NO_FACE_DETECTED'
+                }), 400
+            
+            face_img = detected_faces[0]
+            box = boxes[0]
+            
+            # 1. Partial Face Check
+            if is_partial_face(box, frame.shape):
+                return jsonify({
+                    'error': 'Partial face detected. Please ensure your entire face is visible inside the frame.',
+                    'code': 'PARTIAL_FACE'
+                }), 400
+            
+            # 2. Blurry Frame Check
+            if is_blurry_face(face_img):
+                return jsonify({
+                    'error': 'Blurry frame detected. Please hold still and ensure good lighting.',
+                    'code': 'BLURRY_FRAME'
+                }), 400
+            
+            # 3. Overexposure / Underexposure Check
+            bad_exp, exp_type = is_bad_exposure(face_img)
+            if bad_exp:
+                return jsonify({
+                    'error': f'Face is {exp_type}. Please adjust your lighting.',
+                    'code': exp_type.upper() + '_FRAME'
+                }), 400
+            
+            # 4. Closed Eyes Check
+            lm = challenge_verifier._get_landmarks(frame)
+            if lm is not None:
+                ear = challenge_verifier._ear(lm)
+                if ear < 0.20:
+                    return jsonify({
+                        'error': 'Closed eyes detected. Please keep your eyes open.',
+                        'code': 'CLOSED_EYES'
+                    }), 400
+            
+            faces.append(face_img)
+
         if not faces:
             return jsonify({
                 'error': 'No face detected in provided frames',
                 'code': 'NO_FACE_DETECTED'
             }), 400
-        
+
+        # 5. Duplicate Frames Check (only relevant for multi-frame captures)
+        if len(faces) > 1:
+            for i in range(len(faces)):
+                for j in range(i + 1, len(faces)):
+                    if is_duplicate_face(faces[i], faces[j]):
+                        return jsonify({
+                            'error': 'Duplicate frames detected. Please perform natural head movements.',
+                            'code': 'DUPLICATE_FRAMES'
+                        }), 400
+
         # Generate embedding from best (clearest) face
-        clearest_face = pipeline._select_clearest_face(faces)
+        variances = [np.var(cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)) for face in faces]
+        clearest_idx = int(np.argmax(variances))
+        clearest_face = faces[clearest_idx]
         embedding = embedding_generator.generate_embedding(clearest_face)
+
+        # Validate embedding
+        if embedding is None or not isinstance(embedding, np.ndarray):
+            return jsonify({
+                'error': 'Embedding generation failed.',
+                'code': 'EMBEDDING_GENERATION_FAILED'
+            }), 500
+
+        if embedding.shape[0] != 512:
+            return jsonify({
+                'error': f'Invalid embedding dimension: {embedding.shape[0]}. Expected 512.',
+                'code': 'INVALID_EMBEDDING_DIMENSION'
+            }), 500
+
+        # Check embedding quality (NaN, Inf, or zero norm)
+        if np.any(np.isnan(embedding)) or np.any(np.isinf(embedding)):
+            return jsonify({
+                'error': 'Generated embedding contains NaN or Inf values.',
+                'code': 'CORRUPTED_EMBEDDING'
+            }), 500
+
+        norm = np.linalg.norm(embedding)
+        if norm < 0.95 or norm > 1.05:
+            return jsonify({
+                'error': f'Embedding normalization check failed (norm: {norm:.4f}).',
+                'code': 'INVALID_EMBEDDING_NORM'
+            }), 500
 
         # Calculate quality score as variance of the greyscale sharpness
         gray = cv2.cvtColor(clearest_face, cv2.COLOR_BGR2GRAY)
@@ -1107,6 +1235,7 @@ def register_face():
             'confidence': quality_score,
             'quality_score': quality_score,
             'model_version': '2.0-facenet-vggface2',
+            'clearest_frame_index': clearest_idx,
             'timestamp': datetime.now().isoformat()
         }), 200
         

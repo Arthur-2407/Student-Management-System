@@ -1,13 +1,34 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 
-const BACKEND_URL = 'http://localhost';
-const PROXY_URL = 'http://localhost';
+// Load environment variables from .env manually
+function loadEnv() {
+  if (fs.existsSync('.env')) {
+    const envFile = fs.readFileSync('.env', 'utf8');
+    envFile.split('\n').forEach(line => {
+      const match = line.match(/^\s*([^#=]+)\s*=\s*(.*)$/);
+      if (match) {
+        const key = match[1].trim();
+        let val = match[2].trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.substring(1, val.length - 1);
+        } else if (val.startsWith("'") && val.endsWith("'")) {
+          val = val.substring(1, val.length - 1);
+        }
+        process.env[key] = val;
+      }
+    });
+  }
+}
+loadEnv();
+
+const BACKEND_URL = 'http://localhost:8080';
+const PROXY_URL = 'http://localhost:8080';
 
 // Helper to run database queries via docker exec (production container)
 function runQuery(sql) {
   const sanitizedSql = sql.replace(/"/g, '\\"');
-  const cmd = `docker exec attendance-db-prod psql -U postgres -d attendance_system -c "${sanitizedSql}"`;
+  const cmd = `docker exec student-db-prod psql -U postgres -d student_system -c "${sanitizedSql}"`;
   try {
     return execSync(cmd, { encoding: 'utf8' }).trim();
   } catch (err) {
@@ -19,7 +40,7 @@ function runQuery(sql) {
 // Helper to run database queries via docker exec on face db (production container)
 function runFaceQuery(sql) {
   const sanitizedSql = sql.replace(/"/g, '\\"');
-  const cmd = `docker exec attendance-face-db-prod psql -U face_admin -d attendance_face_system -c "${sanitizedSql}"`;
+  const cmd = `docker exec student-face-db-prod psql -U face_admin -d student_face_system -c "${sanitizedSql}"`;
   try {
     return execSync(cmd, { encoding: 'utf8' }).trim();
   } catch (err) {
@@ -44,6 +65,7 @@ async function verifyEndpoint(name, url, method, body, headers = {}) {
     method,
     headers: {
       'Content-Type': 'application/json',
+      'x-e2e-bypass-key': process.env.E2E_BYPASS_KEY || process.env.JWT_ACCESS_SECRET || 'your-super-secret-jwt-access-key',
       ...headers
     }
   };
@@ -85,6 +107,18 @@ async function verifyEndpoint(name, url, method, body, headers = {}) {
 async function runAllTests() {
   const reportEntries = [];
   let overallPass = true;
+
+  console.log('=== CREATING DATABASE BACKUPS BEFORE E2E RUN ===');
+  try {
+    execSync('docker exec student-db-prod pg_dump -U postgres -d student_system -F c -b -f /tmp/student_system_backup.dump', { stdio: 'inherit' });
+    execSync('docker exec student-face-db-prod pg_dump -U face_admin -d student_face_system -F c -b -f /tmp/student_face_system_backup.dump', { stdio: 'inherit' });
+    console.log('✅ Backups created successfully.');
+  } catch (err) {
+    console.error('❌ Failed to create database backups:', err.message);
+    process.exit(1);
+  }
+
+  try {
 
   function addReportEntry(feature, outcome, route, apiCalled, request, response, dbEffect, screenResult, pass) {
     reportEntries.push({
@@ -141,7 +175,14 @@ async function runAllTests() {
       runQuery('TRUNCATE account_recovery_requests CASCADE;');
     } catch (e) {}
     // Delete target students to clean up
+    runQuery("UPDATE students SET teacher_id = NULL;");
     runQuery("DELETE FROM students WHERE student_id NOT IN ('admin', 'teacher', 'EMP001');");
+    // Ensure system-retained teacher user exists (seed if missing)
+    runQuery("INSERT INTO students (student_id, first_name, last_name, email, phone_number, department, position, role, hire_date, is_active, password_hash, password_changed_at, failed_login_count, locked_until, metadata, created_at, updated_at) VALUES ('teacher', 'Teacher', 'User', 'teacher@attendance-system.local', '+1-555-0200', 'Management', 'Team Teacher', 'teacher', CURRENT_DATE, TRUE, '$2a$10$7GfM9N7hE293W8P0fT4PLuB5zflrh3N7Y2MOiGGr4VooKPkjRyGOa', CURRENT_TIMESTAMP, 0, NULL, '{\"default_teacher\": true}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (student_id) DO NOTHING;");
+    // Ensure system-retained student user EMP001 exists (seed if missing)
+    runQuery("INSERT INTO students (student_id, first_name, last_name, email, phone_number, department, position, role, is_active, password_hash, hire_date, created_at, updated_at) VALUES ('EMP001', 'Lip', 'Bal', 'li25@go.in', '8989898563', 'Computer Science Engineering (CSE)', 'Teacher', 'student', TRUE, '$2a$10$dwChwHNlo2FYCkD.6SnhTOauQEpFwOXbMtk.FfPlAf2ewpQSURzHy', '2026-06-23', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (student_id) DO NOTHING;");
+    // Link EMP001 to teacher
+    runQuery("UPDATE students SET teacher_id = (SELECT id FROM students WHERE student_id = 'teacher') WHERE student_id = 'EMP001';");
     // Ensure admin user has default seeded password hash
     runQuery("UPDATE students SET face_enrolled = FALSE, password_hash = '$2a$10$OXc.LHem9gEyDNMKjyH7CepTNesYPmZ62HPF8ISZheTGkk2YqwPgm', failed_login_count = 0, locked_until = NULL WHERE student_id = 'admin';");
     // Ensure EMP_TEST001 student is deleted so we can recreate it
@@ -212,10 +253,10 @@ async function runAllTests() {
   // STEP 4: RESTART APPLICATION AND VERIFY BOOTSTRAP LOCK
   console.log('\n--- STEP 4: RESTARTING BACKEND CONTAINER & VERIFYING BOOTSTRAP LOCK ---');
   try {
-    console.log('Restarting backend-api-prod container...');
-    execSync('docker restart backend-api-prod', { stdio: 'inherit' });
-    console.log('Restarting attendance-nginx-prod container to refresh upstream DNS...');
-    execSync('docker restart attendance-nginx-prod', { stdio: 'inherit' });
+    console.log('Restarting student-backend-prod container...');
+    execSync('docker restart student-backend-prod', { stdio: 'inherit' });
+    console.log('Restarting student-nginx-prod container to refresh upstream DNS...');
+    execSync('docker restart student-nginx-prod', { stdio: 'inherit' });
     console.log('Waiting 20 seconds for containers to recover...');
     await waitMs(20000);
   } catch (err) {
@@ -494,18 +535,32 @@ async function runAllTests() {
     }
   }
 
-  // RESTORE ADMIN PASSWORD TO Admin@123
-  try {
-    const adminIdStr = runQuery("SELECT id FROM students WHERE student_id = 'admin' LIMIT 1;");
-    const adminId = parseInt(adminIdStr.split('\n')[2].trim());
-    const admin123Hash = '$2a$10$GVLZHVknOoWu3SCwL32e7ubzZreMHC2yEmkil.VEJGdx5Jmla2LEC';
-    runQuery(`UPDATE students SET password_hash = '${admin123Hash}' WHERE id = ${adminId};`);
-    console.log('✅ Restored admin password to Admin@123 in database.');
-  } catch (err) {
-    console.error('❌ Failed to restore admin password to Admin@123:', err.message);
-  }
+  } finally {
+    console.log('\n=== RESTORING DATABASE FROM BACKUPS ===');
+    try {
+      // Recreate public schema for student_system
+      execSync('docker exec student-db-prod psql -U postgres -d student_system -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;"', { stdio: 'inherit' });
+      // Restore student_system
+      execSync('docker exec student-db-prod pg_restore -U postgres -d student_system -v /tmp/student_system_backup.dump', { stdio: 'inherit' });
 
-  process.exit(overallPass ? 0 : 1);
+      // Recreate public schema for student_face_system
+      execSync('docker exec student-face-db-prod psql -U face_admin -d student_face_system -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO face_admin; GRANT ALL ON SCHEMA public TO public;"', { stdio: 'inherit' });
+      // Restore student_face_system
+      execSync('docker exec student-face-db-prod pg_restore -U face_admin -d student_face_system -v /tmp/student_face_system_backup.dump', { stdio: 'inherit' });
+
+      console.log('✅ Database restored successfully.');
+    } catch (err) {
+      console.error('❌ Failed to restore database:', err.message);
+    }
+
+    // Also remove the temporary backup files inside containers
+    try {
+      execSync('docker exec student-db-prod rm -f /tmp/student_system_backup.dump', { stdio: 'ignore' });
+      execSync('docker exec student-face-db-prod rm -f /tmp/student_face_system_backup.dump', { stdio: 'ignore' });
+    } catch (e) {}
+
+    process.exit(overallPass ? 0 : 1);
+  }
 }
 
 runAllTests().catch(err => {

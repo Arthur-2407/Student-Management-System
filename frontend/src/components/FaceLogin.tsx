@@ -46,6 +46,7 @@ const FaceLogin = () => {
   const [isCheckingId, setIsCheckingId] = useState<boolean>(false);
   const [autoAuthTriggered, setAutoAuthTriggered] = useState<boolean>(false);
   const [activeChallenge, setActiveChallenge] = useState<string | null>(null);
+  const [challengeStartTime, setChallengeStartTime] = useState<number | null>(null);
 
 
   // Refs for timeout/abort management
@@ -96,7 +97,7 @@ const FaceLogin = () => {
         const res = await authApi.preLoginCheck({ studentId });
         const data = res.data;
         setPreLoginData(data);
-        
+
         if (data.role === 'admin' && !data.has_face) {
           showError('Administrator face profile missing. Redirecting to setup center...');
           setTimeout(() => {
@@ -115,17 +116,21 @@ const FaceLogin = () => {
             const chalRes = await authApi.getChallenge(studentId);
             if (chalRes.data.success) {
               setActiveChallenge(chalRes.data.challenge);
+              setChallengeStartTime(Date.now());
             }
           } catch (chalErr) {
             setActiveChallenge(null);
+            setChallengeStartTime(null);
           }
         } else {
           setActiveChallenge(null);
+          setChallengeStartTime(null);
         }
       } catch {
         // On error, default to requiring password only if explicitly told via state
         setRequirePassword(locationState.state?.requirePassword || false);
         setActiveChallenge(null);
+        setChallengeStartTime(null);
       } finally {
         setIsCheckingId(false);
       }
@@ -246,6 +251,9 @@ const FaceLogin = () => {
   useEffect(() => {
     const requiredFrames = activeChallenge ? 25 : MIN_FRAMES_FOR_AUTH;
     const isChallengeLoading = preLoginData?.has_face && !activeChallenge;
+    const timeSinceChallengeStart = challengeStartTime ? Date.now() - challengeStartTime : 0;
+    const challengeDelayPassed = !activeChallenge || (timeSinceChallengeStart >= 2500);
+
     if (
       frames.length >= requiredFrames &&
       !isProcessing &&
@@ -255,6 +263,7 @@ const FaceLogin = () => {
       !isCameraStopped &&
       !isCheckingId &&           // Wait for pre-login check to complete (prevents race for admin)
       !isChallengeLoading &&     // Wait for challenge to be loaded
+      challengeDelayPassed &&    // Wait for challenge reaction window
       !(requirePassword && !locationState.state?.passwordVerified)
     ) {
       setAutoAuthTriggered(true);
@@ -263,7 +272,7 @@ const FaceLogin = () => {
         handleFaceLogin(frames);
       }, AUTO_AUTH_DELAY_MS);
     }
-  }, [frames, isProcessing, autoAuthTriggered, studentId, livenessStatus, isCameraStopped, isCheckingId, requirePassword, locationState.state?.passwordVerified, handleFaceLogin, activeChallenge, preLoginData]);
+  }, [frames, isProcessing, autoAuthTriggered, studentId, livenessStatus, isCameraStopped, isCheckingId, requirePassword, locationState.state?.passwordVerified, handleFaceLogin, activeChallenge, preLoginData, challengeStartTime]);
 
   // Reset auto-auth trigger when student ID or password changes
   useEffect(() => {
@@ -457,6 +466,15 @@ const FaceLogin = () => {
                           {activeChallenge === 'head_right' && 'Turn your head to the Right'}
                           {activeChallenge === 'head_up' && 'Tilt your head Upward'}
                           {activeChallenge === 'head_down' && 'Tilt your head Downward'}
+                          {challengeStartTime && (2500 - (Date.now() - challengeStartTime) > 0) ? (
+                            <span className="text-xs text-blue-500 block mt-1 font-normal animate-pulse">
+                              Get ready... starting in {Math.max(0, (2500 - (Date.now() - challengeStartTime)) / 1000).toFixed(1)}s
+                            </span>
+                          ) : (
+                            <span className="text-xs text-emerald-600 block mt-1 font-semibold animate-bounce">
+                              Action! Perform the movement now
+                            </span>
+                          )}
                         </h4>
                       </div>
                     </motion.div>
@@ -507,11 +525,10 @@ const FaceLogin = () => {
                     <label htmlFor="face-login-password" className="block text-sm font-medium text-gray-700 mb-1.5">
                       Password
                       {preLoginData?.role && (
-                        <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-semibold ${
-                          preLoginData.role === 'admin' ? 'bg-red-100 text-red-700' :
-                          preLoginData.role === 'teacher' ? 'bg-amber-100 text-amber-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-semibold ${preLoginData.role === 'admin' ? 'bg-red-100 text-red-700' :
+                            preLoginData.role === 'teacher' ? 'bg-amber-100 text-amber-700' :
+                              'bg-green-100 text-green-700'
+                          }`}>
                           {preLoginData.role}
                         </span>
                       )}

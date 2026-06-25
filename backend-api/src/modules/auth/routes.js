@@ -396,6 +396,20 @@ function decryptEmbedding(encryptedData) {
   }
 }
 
+function cosineSimilarity(vecA, vecB) {
+  if (!Array.isArray(vecA) || !Array.isArray(vecB) || vecA.length !== vecB.length) return 0.0;
+  let dotProduct = 0.0;
+  let normA = 0.0;
+  let normB = 0.0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  if (normA === 0 || normB === 0) return 0.0;
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 router.post('/challenge', async (req, res) => {
   const { studentId } = req.body;
 
@@ -1404,6 +1418,44 @@ router.post('/register-face', authenticateToken, async (req, res) => {
           ]
         );
 
+        // E2E Verification Check
+        const savedEmbeddingResult = await faceQuery(
+          `SELECT embedding_vector FROM face_embeddings WHERE student_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 1`,
+          [targetStudentId]
+        );
+        if (savedEmbeddingResult.rows.length === 0) {
+          throw new Error('Verification failed: Stored embedding could not be retrieved from the database.');
+        }
+        const savedEmbeddingRaw = savedEmbeddingResult.rows[0].embedding_vector;
+        const decryptedSavedEmbedding = decryptEmbedding(savedEmbeddingRaw);
+        if (!decryptedSavedEmbedding || decryptedSavedEmbedding.length !== 512) {
+          throw new Error('Verification failed: Stored embedding is corrupted or has incorrect dimensions.');
+        }
+
+        // Re-generate embedding from the clearest frame used to generate the original vector
+        const clearestFrameIndex = response.data.clearest_frame_index !== undefined ? response.data.clearest_frame_index : 0;
+        const verifyResponse = await axios.post(
+          `${faceAIServiceUrl}/api/register-face`,
+          { frames: [frames[clearestFrameIndex]], studentId: targetStudent.student_id, student_id: targetStudent.student_id },
+          {
+            timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000),
+            headers: req.headers['x-e2e-bypass-key'] ? { 'x-e2e-bypass-key': req.headers['x-e2e-bypass-key'] } : {}
+          }
+        );
+        if (!verifyResponse.data.success && !verifyResponse.data.registered) {
+          throw new Error('Verification failed: Could not re-generate embedding from captured frame.');
+        }
+        const reGeneratedVector = verifyResponse.data.embedding || verifyResponse.data.face_embedding;
+        if (!Array.isArray(reGeneratedVector) || reGeneratedVector.length !== 512) {
+          throw new Error('Verification failed: Re-generated embedding is invalid or has incorrect dimensions.');
+        }
+
+        const similarity = cosineSimilarity(decryptedSavedEmbedding, reGeneratedVector);
+        logger.info(`[Registration E2E Verification] Similarity for ${targetStudent.student_id}: ${similarity}`);
+        if (similarity < 0.99) {
+          throw new Error(`Verification failed: Database round-trip embedding similarity score (${similarity.toFixed(4)}) is below the required threshold (0.99).`);
+        }
+
         await query('COMMIT');
         mainTxBegun = false;
         await faceQuery('COMMIT');
@@ -1418,7 +1470,7 @@ router.post('/register-face', authenticateToken, async (req, res) => {
         logger.error('Face embedding DB storage failed', { error: dbErr.message, studentId });
         return res.status(500).json({
           success: false,
-          error: 'Face embedding storage failed. Contact system administrator.',
+          error: dbErr.message.includes('Verification failed') ? dbErr.message : 'Face embedding storage failed. Contact system administrator.',
         });
       }
 
@@ -1593,6 +1645,7 @@ router.post('/recovery/admin/verify-otp', async (req, res) => {
  * Complete first-time administrator face enrollment and password setup
  */
 router.post('/bootstrap/setup', async (req, res) => {
+  const faceAIServiceUrl = process.env.FACE_AI_SERVICE_URL || 'http://face-ai-service:8000';
   try {
     const {
       password, frames,
@@ -1662,10 +1715,11 @@ router.post('/bootstrap/setup', async (req, res) => {
     let modelVersion = '1.0';
     let faceAiErrorCode = null;
     let faceAiErrorMessage = null;
+    let aiResponse = null;
 
     try {
-      const faceAIServiceUrl = process.env.FACE_AI_SERVICE_URL || 'http://face-ai-service:8000';
-      const aiResponse = await axios.post(
+      // Using outer scope faceAIServiceUrl
+      aiResponse = await axios.post(
         `${faceAIServiceUrl}/api/register-face`,
         { frames, studentId: 'admin', student_id: 'admin' },
         {
@@ -1811,6 +1865,44 @@ router.post('/bootstrap/setup', async (req, res) => {
         ]
       );
 
+      // E2E Verification Check
+      const savedEmbeddingResult = await faceQuery(
+        `SELECT embedding_vector FROM face_embeddings WHERE student_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 1`,
+        [adminId]
+      );
+      if (savedEmbeddingResult.rows.length === 0) {
+        throw new Error('Verification failed: Stored embedding could not be retrieved from the database.');
+      }
+      const savedEmbeddingRaw = savedEmbeddingResult.rows[0].embedding_vector;
+      const decryptedSavedEmbedding = decryptEmbedding(savedEmbeddingRaw);
+      if (!decryptedSavedEmbedding || decryptedSavedEmbedding.length !== 512) {
+        throw new Error('Verification failed: Stored embedding is corrupted or has incorrect dimensions.');
+      }
+
+      // Re-generate embedding from the clearest frame used to generate the original vector
+      const clearestFrameIndex = aiResponse.data.clearest_frame_index !== undefined ? aiResponse.data.clearest_frame_index : 0;
+      const verifyResponse = await axios.post(
+        `${faceAIServiceUrl}/api/register-face`,
+        { frames: [frames[clearestFrameIndex]], studentId: 'admin', student_id: 'admin' },
+        {
+          timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000),
+          headers: req.headers['x-e2e-bypass-key'] ? { 'x-e2e-bypass-key': req.headers['x-e2e-bypass-key'] } : {}
+        }
+      );
+      if (!verifyResponse.data.success && !verifyResponse.data.registered) {
+        throw new Error('Verification failed: Could not re-generate embedding from captured frame.');
+      }
+      const reGeneratedVector = verifyResponse.data.embedding || verifyResponse.data.face_embedding;
+      if (!Array.isArray(reGeneratedVector) || reGeneratedVector.length !== 512) {
+        throw new Error('Verification failed: Re-generated embedding is invalid or has incorrect dimensions.');
+      }
+
+      const similarity = cosineSimilarity(decryptedSavedEmbedding, reGeneratedVector);
+      logger.info(`[Bootstrap Registration E2E Verification] Similarity: ${similarity}`);
+      if (similarity < 0.99) {
+        throw new Error(`Verification failed: Database round-trip embedding similarity score (${similarity.toFixed(4)}) is below the required threshold (0.99).`);
+      }
+
       await query('COMMIT');
       mainTxBegun = false;
       await faceQuery('COMMIT');
@@ -1882,7 +1974,7 @@ router.post('/bootstrap/setup', async (req, res) => {
     if (res.headersSent) return;
     return res.status(500).json({
       success: false,
-      error: 'Internal server error during bootstrap configuration',
+      error: error.message.includes('Verification failed') ? error.message : 'Internal server error during bootstrap configuration',
     });
   }
 });

@@ -1,37 +1,34 @@
 /**
  * Reset Admin Face Enrollment & Unlock Account
  * 
- * Run from inside backend-api-prod:
- *   docker exec backend-api-prod node /tmp/reset_admin.js
- * Or copy to container first:
- *   docker cp reset_admin_for_real_face.js backend-api-prod:/app/reset_admin_for_real_face.js
- *   docker exec backend-api-prod node reset_admin_for_real_face.js
+ * Run from inside student-backend-prod:
+ *   docker exec student-backend-prod node reset_admin_for_real_face.js
  */
 
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'postgres',
+  host: process.env.DB_HOST || 'student-db',
   port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'attendance_system',
+  database: process.env.DB_NAME || 'student_system',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD,
+  password: process.env.DB_PASSWORD || 'securepassword123',
 });
 
 const facePool = new Pool({
-  host: process.env.FACE_DB_HOST || 'postgres-face',
+  host: process.env.FACE_DB_HOST || 'student-face-db',
   port: parseInt(process.env.FACE_DB_PORT || '5432'),
-  database: process.env.FACE_DB_NAME || 'attendance_face_system',
+  database: process.env.FACE_DB_NAME || 'student_face_system',
   user: process.env.FACE_DB_USER || 'face_admin',
-  password: process.env.FACE_DB_PASSWORD || process.env.DB_PASSWORD,
+  password: process.env.FACE_DB_PASSWORD || 'securefacepassword123',
 });
 
 async function main() {
   try {
     // 1. Get admin internal ID
-    const adminRes = await pool.query("SELECT id, employee_id, face_enrolled, failed_login_count, locked_until FROM employees WHERE employee_id = 'admin'");
+    const adminRes = await pool.query("SELECT id, student_id, face_enrolled, failed_login_count, locked_until FROM students WHERE student_id = 'admin' OR role = 'admin'");
     if (adminRes.rows.length === 0) {
-      console.error('❌ Admin employee record not found.');
+      console.error('❌ Admin student record not found.');
       return;
     }
     const admin = adminRes.rows[0];
@@ -40,7 +37,7 @@ async function main() {
 
     // 2. Deactivate ALL face embeddings for admin in face DB
     const deactivateResult = await facePool.query(
-      `UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE employee_id = $1`,
+      `UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW() WHERE student_id = $1`,
       [adminId]
     );
     console.log(`✅ Deactivated ${deactivateResult.rowCount} face embeddings in face_embeddings table.`);
@@ -65,26 +62,26 @@ async function main() {
 
     // 5. Reset admin face_enrolled flag and unlock account in main DB
     const updateResult = await pool.query(
-      `UPDATE employees 
+      `UPDATE students 
        SET face_enrolled = FALSE, 
            face_enrolled_at = NULL,
            face_enrolled_by = NULL,
            failed_login_count = 0,
            locked_until = NULL,
            updated_at = NOW()
-       WHERE employee_id = 'admin'`
+       WHERE student_id = 'admin' OR role = 'admin'`
     );
     console.log(`✅ Reset face_enrolled=FALSE and unlocked account for ${updateResult.rowCount} admin row(s).`);
 
     // 6. Verify final state
     const verify = await pool.query(
-      `SELECT employee_id, face_enrolled, failed_login_count, locked_until, is_active FROM employees WHERE employee_id = 'admin'`
+      `SELECT student_id, face_enrolled, failed_login_count, locked_until, is_active FROM students WHERE student_id = 'admin' OR role = 'admin'`
     );
     console.log('\n=== Final Admin State ===');
     console.log(JSON.stringify(verify.rows[0], null, 2));
 
     const embeddingCheck = await facePool.query(
-      `SELECT COUNT(*) as count, is_active FROM face_embeddings WHERE employee_id = $1 GROUP BY is_active`,
+      `SELECT COUNT(*) as count, is_active FROM face_embeddings WHERE student_id = $1 GROUP BY is_active`,
       [adminId]
     );
     console.log('\n=== Face Embedding Counts (by is_active) ===');
@@ -92,8 +89,6 @@ async function main() {
 
     console.log('\n✅ Admin face enrollment reset complete!');
     console.log('📸 Bootstrap mode is now ACTIVE.');
-    console.log('👉 The admin must now visit: http://localhost/setup/admin-face');
-    console.log('   and register their REAL face to complete setup.');
 
   } catch (e) {
     console.error('❌ Error:', e.message);

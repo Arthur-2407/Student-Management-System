@@ -414,6 +414,9 @@ const TeacherDashboard: React.FC = () => {
         setPredAttendanceRate(metrics.attendanceRate);
         setPredCompRate(metrics.assignmentCompletionRate);
         setPredInternalMarks(metrics.internalAssessmentMarks);
+        if (metrics.mockTestMarks !== undefined) setPredMockMarks(metrics.mockTestMarks);
+        if (metrics.studyHours !== undefined) setPredStudyHours(metrics.studyHours);
+        if (metrics.previousSemesterMarks !== undefined) setPredPrevMarks(metrics.previousSemesterMarks);
       }
       
       if (historyRes.data.success) {
@@ -447,6 +450,12 @@ const TeacherDashboard: React.FC = () => {
 
       if (response.data.success) {
         setPredictionResult(response.data.data);
+        const data = response.data.data;
+        if (data.attendanceRate !== undefined) setPredAttendanceRate(data.attendanceRate);
+        if (data.assignmentCompletionRate !== undefined) setPredCompRate(data.assignmentCompletionRate);
+        if (data.internalAssessmentMarks !== undefined) setPredInternalMarks(data.internalAssessmentMarks);
+        if (data.studyHours !== undefined) setPredStudyHours(data.studyHours);
+        if (data.mockTestMarks !== undefined) setPredMockMarks(data.mockTestMarks);
         showSuccess('Prediction generated successfully!');
         
         // Refresh history
@@ -2005,48 +2014,24 @@ const TeacherDashboard: React.FC = () => {
                       <div>
                         <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
                           <span>Attendance Rate (%)</span>
-                          <span className="text-primary-600 font-bold">{predAttendanceRate}%</span>
+                          <span className="text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded border border-primary-100">{predAttendanceRate}%</span>
                         </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={predAttendanceRate}
-                          onChange={(e) => setPredAttendanceRate(parseInt(e.target.value, 10))}
-                          className="w-full accent-primary-500"
-                        />
                         <span className="text-[10px] text-gray-400">Pre-populated from class check-in records.</span>
                       </div>
 
                       <div>
                         <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
                           <span>Assignment Completion Rate (%)</span>
-                          <span className="text-primary-600 font-bold">{predCompRate}%</span>
+                          <span className="text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded border border-primary-100">{predCompRate}%</span>
                         </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={predCompRate}
-                          onChange={(e) => setPredCompRate(parseInt(e.target.value, 10))}
-                          className="w-full accent-primary-500"
-                        />
                         <span className="text-[10px] text-gray-400">Pre-populated from student submission records.</span>
                       </div>
 
                       <div>
                         <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
                           <span>Internal Assessment Marks (out of 20)</span>
-                          <span className="text-primary-600 font-bold">{predInternalMarks} / 20</span>
+                          <span className="text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded border border-primary-100">{predInternalMarks} / 20</span>
                         </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="20"
-                          value={predInternalMarks}
-                          onChange={(e) => setPredInternalMarks(parseInt(e.target.value, 10))}
-                          className="w-full accent-primary-500"
-                        />
                         <span className="text-[10px] text-gray-400">Pre-populated from reviewed assignment averages.</span>
                       </div>
 
@@ -2070,34 +2055,17 @@ const TeacherDashboard: React.FC = () => {
                       <div>
                         <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
                           <span>Study Hours per Day</span>
-                          <span className="text-primary-600 font-bold">{predStudyHours} hrs</span>
+                          <span className="text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded border border-primary-100">{predStudyHours} hrs</span>
                         </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="12"
-                          step="0.5"
-                          value={predStudyHours}
-                          onChange={(e) => setPredStudyHours(parseFloat(e.target.value))}
-                          className="w-full accent-primary-500"
-                        />
+                        <span className="text-[10px] text-gray-400">Pre-populated from study habits questionnaire metrics.</span>
                       </div>
 
                       <div>
                         <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
                           <span>Mock Test Marks (%)</span>
-                          <span className="text-primary-600 font-bold">{predMockMarks}%</span>
+                          <span className="text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded border border-primary-100">{predMockMarks}%</span>
                         </div>
-                        <input
-                          type="number"
-                          required
-                          min="0"
-                          max="100"
-                          value={predMockMarks}
-                          onChange={(e) => setPredMockMarks(Math.min(100, Math.max(0, parseInt(e.target.value, 10) || 0)))}
-                          className="w-full text-xs border border-gray-350 rounded-lg px-3 py-2 bg-white text-gray-800"
-                          placeholder="e.g. 80"
-                        />
+                        <span className="text-[10px] text-gray-400">Pre-populated from mock examination records.</span>
                       </div>
 
                       <button

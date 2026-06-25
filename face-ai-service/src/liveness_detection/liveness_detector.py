@@ -92,13 +92,14 @@ class LivenessDetector:
     # Public API
     # ──────────────────────────────────────────────────────────────────
 
-    def analyze_liveness(self, face_frames: List[np.ndarray]) -> Dict:
+    def analyze_liveness(self, face_frames: List[np.ndarray], original_frames: Optional[List[np.ndarray]] = None) -> Dict:
         """
         Analyze multiple frames for liveness detection.
 
         Args:
             face_frames: List of cropped face images (BGR).
                          Minimum 3 required; 8–15 recommended.
+            original_frames: Optional list of original uncropped frames for MediaPipe FaceMesh.
 
         Returns:
             {
@@ -140,7 +141,9 @@ class LivenessDetector:
         try:
             # ── Methods 1 & 2: MediaPipe-based (blink + head movement) ─
             if self.face_mesh is not None:
-                for frame in face_frames:
+                # Use original frames for landmarks if provided to prevent detection failures on crops
+                frames_for_landmarks = original_frames if original_frames is not None else face_frames
+                for frame in frames_for_landmarks:
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     mp_result = self.face_mesh.process(rgb_frame)
                     if mp_result.multi_face_landmarks:

@@ -1,27 +1,27 @@
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'postgres',
+  host: process.env.DB_HOST || 'student-db',
   port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'attendance_system',
+  database: process.env.DB_NAME || 'student_system',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD,
+  password: process.env.DB_PASSWORD || 'securepassword123',
 });
 
 const facePool = new Pool({
-  host: process.env.FACE_DB_HOST || 'postgres-face',
+  host: process.env.FACE_DB_HOST || 'student-face-db',
   port: parseInt(process.env.FACE_DB_PORT || '5432'),
-  database: process.env.FACE_DB_NAME || 'attendance_face_system',
+  database: process.env.FACE_DB_NAME || 'student_face_system',
   user: process.env.FACE_DB_USER || 'face_admin',
   password: process.env.FACE_DB_PASSWORD || 'securefacepassword123',
 });
 
 async function main() {
   try {
-    // Get database ID of the admin from employees table
-    const adminRes = await pool.query("SELECT id FROM employees WHERE employee_id = 'admin'");
+    // Get database ID of the admin from students table
+    const adminRes = await pool.query("SELECT id FROM students WHERE student_id = 'admin' OR role = 'admin'");
     if (adminRes.rows.length === 0) {
-      console.log('Admin employee record not found.');
+      console.log('Admin student record not found.');
       return;
     }
     const adminId = adminRes.rows[0].id;
@@ -29,7 +29,7 @@ async function main() {
     // Deactivate mock face embedding for admin so bootstrap mode is enabled again
     const deactivateResult = await facePool.query(`
       UPDATE face_embeddings SET is_active = FALSE, updated_at = NOW()
-      WHERE employee_id = $1
+      WHERE student_id = $1
     `, [adminId]);
     console.log('Deactivated face embeddings:', deactivateResult.rowCount);
 
@@ -46,29 +46,29 @@ async function main() {
 
     // Mark admin as face_enrolled = FALSE to trigger bootstrap mode
     const enrollResult = await pool.query(`
-      UPDATE employees 
+      UPDATE students 
       SET face_enrolled = FALSE, face_enrolled_at = NULL, face_enrolled_by = NULL, updated_at = NOW()
-      WHERE employee_id = 'admin'
+      WHERE student_id = 'admin' OR role = 'admin'
     `);
     console.log('Reset face_enrolled flag:', enrollResult.rowCount);
 
     // Verify final state
     const verify = await pool.query(`
-      SELECT employee_id, face_enrolled, failed_login_count, locked_until, is_active
-      FROM employees WHERE employee_id = 'admin'
+      SELECT student_id, face_enrolled, failed_login_count, locked_until, is_active
+      FROM students WHERE student_id = 'admin' OR role = 'admin'
     `);
     console.log('Admin state:', JSON.stringify(verify.rows[0]));
 
     const embeddingCheck = await facePool.query(`
       SELECT COUNT(*) as count, is_active
       FROM face_embeddings
-      WHERE employee_id = $1
+      WHERE student_id = $1
       GROUP BY is_active
     `, [adminId]);
     console.log('Embedding counts by is_active:', JSON.stringify(embeddingCheck.rows));
 
     console.log('\n✅ Admin face enrollment reset complete - Bootstrap mode is now ACTIVE');
-    console.log('The admin can now go to /setup/admin-face to complete setup with their real face');
+    console.log('The admin can now complete setup with their real face');
 
   } catch(e) {
     console.error('Error:', e.message);

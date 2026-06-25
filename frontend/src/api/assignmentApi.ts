@@ -162,6 +162,9 @@ export const assignmentApi = {
       assignmentCompletionRate: number;
       internalAssessmentMarks: number;
       averageAssignmentMarksPercent: number;
+      mockTestMarks?: number;
+      studyHours?: number;
+      previousSemesterMarks?: number;
     };
   }>> => {
     return api.get(`/assignments/prediction-metrics/${studentId}`);
@@ -183,6 +186,11 @@ export const assignmentApi = {
       passProbability: number;
       riskLevel: string;
       suggestions: string[];
+      attendanceRate?: number;
+      assignmentCompletionRate?: number;
+      internalAssessmentMarks?: number;
+      studyHours?: number;
+      mockTestMarks?: number;
     };
   }>> => {
     return api.post('/assignments/predict-marks', data);
