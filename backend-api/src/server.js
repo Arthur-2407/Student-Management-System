@@ -178,7 +178,7 @@ app.get('/api/admin/contact-info', async (req, res) => {
       result = await _dbQuery(
         `SELECT CONCAT(first_name, ' ', last_name) as name, email,
                 phone_number as phone, position as designation
-         FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1`
+         FROM students WHERE (student_id = 'admin' OR role = 'admin') AND is_active = TRUE LIMIT 1`
       );
     }
     if (!result || result.rows.length === 0) {

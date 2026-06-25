@@ -34,7 +34,10 @@ class MemoryRateLimiter {
 const memoryLimiter = new MemoryRateLimiter();
 
 function buildRedisOptions() {
-  const url = process.env.REDIS_URL || 'redis://localhost:6379';
+  let url = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (process.env.REDIS_PASSWORD && !url.includes('@')) {
+    url = url.replace('redis://', `redis://:${process.env.REDIS_PASSWORD}@`);
+  }
   const options = {
     url,
     socket: {
@@ -49,10 +52,6 @@ function buildRedisOptions() {
       },
     },
   };
-
-  if (!process.env.REDIS_URL && process.env.REDIS_PASSWORD) {
-    options.password = process.env.REDIS_PASSWORD;
-  }
 
   return options;
 }

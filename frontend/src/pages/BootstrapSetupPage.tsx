@@ -119,7 +119,7 @@ const BootstrapSetupPage = () => {
   const hasNumber = /\d/.test(password);
   const passwordsMatch = password === confirmPassword && password.length > 0;
   const isPasswordValid = hasMinLength && hasUppercase && hasLowercase && hasNumber;
-  const isFaceCaptured = uploadMode === 'camera' ? frames.length >= 3 : frames.length >= 1;
+  const isFaceCaptured = uploadMode === 'camera' ? frames.length >= 10 : frames.length >= 1;
 
   // Validation per step
   const isStep1Valid = profile.name.trim().length >= 2 &&
@@ -151,7 +151,7 @@ const BootstrapSetupPage = () => {
   const handleFrameCapture = useCallback((frame: string) => {
     const base64Data = frame.includes(',') ? frame.split(',')[1] : frame;
     setFrames(prev => {
-      if (prev.length < 3) {
+      if (prev.length < 10) {
         return [...prev, base64Data];
       }
       return prev;
@@ -239,53 +239,129 @@ const BootstrapSetupPage = () => {
     { id: 3, label: 'Password', icon: FaLock },
     { id: 4, label: 'Face', icon: FaCamera },
   ];
-
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4 font-sans select-none relative overflow-hidden">
+      {/* CSS Styles injection */}
+      <style>{`
+        @keyframes scan-laser {
+          0% { top: 0%; opacity: 0.8; }
+          50% { top: 100%; opacity: 0.8; }
+          100% { top: 0%; opacity: 0.8; }
+        }
+        @keyframes rotate-hud {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes pulse-glow {
+          0%, 100% { opacity: 0.2; transform: scale(1) translate(-50%, -50%); }
+          50% { opacity: 0.4; transform: scale(1.08) translate(-50%, -50%); }
+        }
+        @keyframes drift-bg {
+          0%, 100% { background-position: 0px 0px; }
+          50% { background-position: 20px 20px; }
+        }
+        .scanner-line {
+          height: 3px;
+          background: linear-gradient(90deg, transparent, #6366f1, #8b5cf6, #6366f1, transparent);
+          box-shadow: 0 0 15px #6366f1, 0 0 8px #8b5cf6;
+          position: absolute;
+          width: 100%;
+          animation: scan-laser 3s infinite linear;
+          pointer-events: none;
+          z-index: 10;
+        }
+        .custom-grid {
+          background-size: 30px 30px;
+          background-image: 
+            linear-gradient(to right, rgba(99, 102, 241, 0.02) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(99, 102, 241, 0.02) 1px, transparent 1px);
+          animation: drift-bg 30s infinite linear;
+        }
+        .pulse-ring {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          border-radius: inherit;
+          border: 1px solid rgba(99, 102, 241, 0.4);
+          animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+          pointer-events: none;
+        }
+        .hud-bracket {
+          width: 20px;
+          height: 20px;
+          border-color: #6366f1;
+          position: absolute;
+          pointer-events: none;
+          z-index: 5;
+        }
+      `}</style>
+
       {/* Background decorations */}
-      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-indigo-950/20 blur-3xl pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-violet-950/20 blur-3xl pointer-events-none" />
+      <div className="absolute inset-0 custom-grid pointer-events-none" />
+      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-indigo-950/20 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-violet-950/20 blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-indigo-500/5 blur-[100px] pointer-events-none" style={{ animation: 'pulse-glow 8s infinite ease-in-out' }} />
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-2xl bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl z-10"
+        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-2xl bg-slate-900/30 backdrop-blur-xl border border-white/10 rounded-3xl shadow-[0_0_50px_rgba(99,102,241,0.08)] z-10"
       >
         {/* Header */}
-        <div className="p-8 border-b border-slate-800">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="h-14 w-14 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-center text-indigo-400 text-2xl flex-shrink-0">
+        <div className="p-8 border-b border-white/5 relative">
+          <div className="flex items-center gap-5 mb-4">
+            <motion.div 
+              whileHover={{ rotate: 10 }}
+              className="h-14 w-14 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-center text-indigo-400 text-2xl flex-shrink-0 shadow-[0_0_20px_rgba(99,102,241,0.15)]"
+            >
               <FaUserShield />
-            </div>
+            </motion.div>
             <div>
-              <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
-                System First-Time Setup
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold uppercase tracking-wider mb-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                Initialize System
+              </div>
+              <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-slate-100 via-white to-indigo-200 bg-clip-text text-transparent">
+                First-Time Setup
               </h1>
-              <p className="text-slate-400 text-sm mt-0.5">
-                Configure the administrator account to get started
+              <p className="text-slate-400 text-sm mt-0.5 font-medium">
+                Configure your administrator profile and secure identity mapping
               </p>
             </div>
           </div>
 
           {/* Step progress */}
-          <div className="flex items-center gap-0 mt-6">
+          <div className="flex items-center gap-0 mt-8">
             {steps.map((s, idx) => (
               <div key={s.id} className="flex items-center flex-1">
-                <div className="flex flex-col items-center">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold transition-all ${
-                    step > s.id ? 'bg-emerald-500 text-white' :
-                    step === s.id ? 'bg-indigo-500 text-white ring-4 ring-indigo-500/20' :
-                    'bg-slate-800 text-slate-500'
-                  }`}>
+                <div className="flex flex-col items-center relative z-10">
+                  <motion.div 
+                    whileHover={{ scale: 1.05 }}
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-semibold transition-all relative ${
+                      step > s.id 
+                        ? 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
+                        : step === s.id 
+                        ? 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white ring-4 ring-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.4)]' 
+                        : 'bg-slate-950 border border-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {step === s.id && <div className="pulse-ring" />}
                     {step > s.id ? <FaCheckCircle className="text-sm" /> : <s.icon className="text-sm" />}
-                  </div>
-                  <span className={`text-xs mt-1 font-medium ${step === s.id ? 'text-indigo-400' : step > s.id ? 'text-emerald-400' : 'text-slate-600'}`}>
+                  </motion.div>
+                  <span className={`text-xs mt-2 font-semibold tracking-wide ${step === s.id ? 'text-indigo-300 font-bold' : step > s.id ? 'text-emerald-400' : 'text-slate-500'}`}>
                     {s.label}
                   </span>
                 </div>
                 {idx < steps.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-1 mb-4 rounded ${step > s.id ? 'bg-emerald-500' : 'bg-slate-800'}`} />
+                  <div className="flex-1 h-[2px] mx-2 mb-6 rounded-full bg-slate-950 relative overflow-hidden">
+                    <motion.div 
+                      initial={{ width: '0%' }}
+                      animate={{ width: step > s.id ? '100%' : '0%' }}
+                      transition={{ duration: 0.4 }}
+                      className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 to-teal-500" 
+                    />
+                  </div>
                 )}
               </div>
             ))}
@@ -296,23 +372,23 @@ const BootstrapSetupPage = () => {
         <AnimatePresence>
           {errorMessage && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mx-6 mt-4 p-4 bg-red-950/30 border border-red-500/30 rounded-xl flex items-start gap-3 text-red-400 text-sm"
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              className="mx-8 mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-start gap-3 text-red-300 text-sm backdrop-blur-md shadow-lg"
             >
-              <FaExclamationTriangle className="mt-0.5 flex-shrink-0" />
-              <span>{errorMessage}</span>
+              <FaExclamationTriangle className="mt-0.5 flex-shrink-0 text-red-400 text-base" />
+              <span className="font-medium">{errorMessage}</span>
             </motion.div>
           )}
           {successMessage && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="mx-6 mt-4 p-4 bg-green-950/30 border border-green-500/30 rounded-xl flex items-start gap-3 text-green-400 text-sm"
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              className="mx-8 mt-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-start gap-3 text-emerald-300 text-sm backdrop-blur-md shadow-lg"
             >
-              <FaCheckCircle className="mt-0.5 flex-shrink-0" />
-              <span>{successMessage} Redirecting...</span>
+              <FaCheckCircle className="mt-0.5 flex-shrink-0 text-emerald-400 text-base" />
+              <span className="font-medium">{successMessage} Redirecting to login...</span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -323,64 +399,90 @@ const BootstrapSetupPage = () => {
             {isRecovery && !isOtpVerified && (
               <motion.div
                 key="otp-step"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.4 }}
                 className="space-y-6"
               >
-                <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-6 text-sm text-slate-300 space-y-3">
-                  <div className="flex items-center gap-2 text-indigo-400 font-bold">
-                    <FaShieldAlt className="text-lg" />
-                    <span>Security Verification Required</span>
+                <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-6 text-sm text-slate-300 space-y-3 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-5">
+                    <FaShieldAlt className="text-7xl" />
                   </div>
-                  <p>
-                    To reset the system administrator's credentials, we must verify you own the recovery email address.
+                  <div className="flex items-center gap-2 text-indigo-300 font-bold text-base">
+                    <FaShieldAlt className="text-lg text-indigo-400" />
+                    <span>Identity Verification Gating</span>
+                  </div>
+                  <p className="text-slate-400 leading-relaxed font-medium">
+                    To modify system credentials, verify possession of the primary administrator recovery email address.
                   </p>
                   {otpSent && (
-                    <p className="text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 rounded p-2.5">
-                      Verification code has been sent to: <strong>{maskedEmail}</strong>
-                    </p>
+                    <motion.div 
+                      initial={{ scale: 0.98, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="text-emerald-300 bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                      Verification token dispatched to: <strong className="text-white font-mono">{maskedEmail}</strong>
+                    </motion.div>
                   )}
                 </div>
 
                 {!otpSent ? (
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.01, boxShadow: '0 0 25px rgba(99, 102, 241, 0.3)' }}
+                    whileTap={{ scale: 0.99 }}
                     onClick={handleSendOtp}
                     disabled={otpLoading}
-                    className="w-full py-3.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/10 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                    className="w-full py-4 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 text-sm disabled:opacity-50 tracking-wide"
                   >
-                    {otpLoading ? 'Sending...' : 'Send Verification OTP'} <FaArrowRight />
-                  </button>
+                    {otpLoading ? (
+                      <>
+                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Generating Token...
+                      </>
+                    ) : (
+                      <>Send Verification OTP <FaArrowRight /></>
+                    )}
+                  </motion.button>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-indigo-300/80 mb-2">
                         Verification Code (OTP)
                       </label>
                       <input
                         type="text"
                         value={otp}
                         onChange={e => setOtp(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200 placeholder-slate-600 text-center tracking-widest font-mono text-lg"
-                        placeholder="Enter 6-digit OTP"
+                        className="w-full bg-slate-950/60 border border-slate-800/80 rounded-2xl px-4 py-4 text-center tracking-widest font-mono text-xl focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-100 placeholder-slate-800"
+                        placeholder="0 0 0 0 0 0"
                         maxLength={6}
                       />
                     </div>
                     <div className="flex gap-4">
-                      <button
+                      <motion.button
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
                         onClick={handleSendOtp}
                         disabled={otpLoading}
-                        className="flex-1 py-3 bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 rounded-xl font-bold transition-all text-sm disabled:opacity-50"
+                        className="flex-1 py-3.5 bg-slate-950 border border-slate-800/80 text-slate-400 hover:text-slate-200 rounded-2xl font-bold transition-all text-sm disabled:opacity-50"
                       >
-                        Resend
-                      </button>
-                      <button
+                        Resend Token
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.01, boxShadow: '0 0 25px rgba(16, 185, 129, 0.3)' }}
+                        whileTap={{ scale: 0.99 }}
                         onClick={handleVerifyOtp}
                         disabled={otpLoading}
-                        className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/10 text-sm disabled:opacity-50"
+                        className="flex-1 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-2xl font-bold transition-all shadow-lg text-sm disabled:opacity-50"
                       >
-                        {otpLoading ? 'Verifying...' : 'Verify & Continue'}
-                      </button>
+                        {otpLoading ? (
+                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                        ) : (
+                          'Verify Identity'
+                        )}
+                      </motion.button>
                     </div>
                   </div>
                 )}
@@ -389,90 +491,95 @@ const BootstrapSetupPage = () => {
 
             {/* ── STEP 1: Admin Profile ── */}
             {(!isRecovery || isOtpVerified) && step === 1 && (
-              <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2 mb-6">
-                  <FaUser className="text-indigo-400" /> Administrator Profile
+              <motion.div 
+                key="step1" 
+                initial={{ opacity: 0, x: 15 }} 
+                animate={{ opacity: 1, x: 0 }} 
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.4 }}
+                className="space-y-6"
+              >
+                <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2.5 mb-2">
+                  <FaUser className="text-indigo-400" /> Administrative Profile
                 </h2>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Full Name <span className="text-red-400">*</span>
-                      </label>
-                      <div className="relative">
-                        <FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm" />
-                        <input
-                          type="text"
-                          value={profile.name}
-                          onChange={e => setProfile(p => ({ ...p, name: e.target.value }))}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200 placeholder-slate-600"
-                          placeholder="e.g. John Smith"
-                        />
-                      </div>
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                      Full Name <span className="text-indigo-400">*</span>
+                    </label>
+                    <div className="relative group">
+                      <FaUser className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                      <input
+                        type="text"
+                        value={profile.name}
+                        onChange={e => setProfile(p => ({ ...p, name: e.target.value }))}
+                        className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-600"
+                        placeholder="e.g. Stephen Strange"
+                      />
                     </div>
+                  </div>
 
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Email Address <span className="text-red-400">*</span>
-                      </label>
-                      <div className="relative">
-                        <FaEnvelope className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm" />
-                        <input
-                          type="email"
-                          value={profile.email}
-                          onChange={e => setProfile(p => ({ ...p, email: e.target.value }))}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200 placeholder-slate-600"
-                          placeholder="admin@company.com"
-                        />
-                      </div>
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                      Email Address <span className="text-indigo-400">*</span>
+                    </label>
+                    <div className="relative group">
+                      <FaEnvelope className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                      <input
+                        type="email"
+                        value={profile.email}
+                        onChange={e => setProfile(p => ({ ...p, email: e.target.value }))}
+                        className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-600"
+                        placeholder="admin@attendance.local"
+                      />
                     </div>
+                  </div>
 
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Phone Number
-                      </label>
-                      <div className="relative">
-                        <FaPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm" />
-                        <input
-                          type="tel"
-                          value={profile.phone}
-                          onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200 placeholder-slate-600"
-                          placeholder="+1 555 0100"
-                        />
-                      </div>
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                      Phone Number
+                    </label>
+                    <div className="relative group">
+                      <FaPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                      <input
+                        type="tel"
+                        value={profile.phone}
+                        onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))}
+                        className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-600"
+                        placeholder="+1 (555) 019-2834"
+                      />
                     </div>
+                  </div>
 
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Designation <span className="text-red-400">*</span>
-                      </label>
-                      <div className="relative">
-                        <FaBriefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm" />
-                        <input
-                          type="text"
-                          value={profile.designation}
-                          onChange={e => setProfile(p => ({ ...p, designation: e.target.value }))}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200 placeholder-slate-600"
-                          placeholder="e.g. System Administrator"
-                        />
-                      </div>
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                      Designation <span className="text-indigo-400">*</span>
+                    </label>
+                    <div className="relative group">
+                      <FaBriefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                      <input
+                        type="text"
+                        value={profile.designation}
+                        onChange={e => setProfile(p => ({ ...p, designation: e.target.value }))}
+                        className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-600"
+                        placeholder="e.g. Chief Systems Administrator"
+                      />
                     </div>
+                  </div>
 
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Address
-                      </label>
-                      <div className="relative">
-                        <FaMapMarkerAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm" />
-                        <input
-                          type="text"
-                          value={profile.address}
-                          onChange={e => setProfile(p => ({ ...p, address: e.target.value }))}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200 placeholder-slate-600"
-                          placeholder="Office address"
-                        />
-                      </div>
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                      HQ Address
+                    </label>
+                    <div className="relative group">
+                      <FaMapMarkerAlt className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                      <input
+                        type="text"
+                        value={profile.address}
+                        onChange={e => setProfile(p => ({ ...p, address: e.target.value }))}
+                        className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-600"
+                        placeholder="HQ Server Room 4B"
+                      />
                     </div>
                   </div>
                 </div>
@@ -481,105 +588,132 @@ const BootstrapSetupPage = () => {
 
             {/* ── STEP 2: Recovery ── */}
             {(!isRecovery || isOtpVerified) && step === 2 && (
-              <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2 mb-2">
-                  <FaLifeRing className="text-indigo-400" /> Recovery Information
+              <motion.div 
+                key="step2" 
+                initial={{ opacity: 0, x: 15 }} 
+                animate={{ opacity: 1, x: 0 }} 
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.4 }}
+                className="space-y-6"
+              >
+                <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2.5 mb-2">
+                  <FaLifeRing className="text-indigo-400" /> Recovery Parameters
                 </h2>
-                <p className="text-slate-500 text-sm mb-6">
-                  Used for account recovery, OTP verification, and emergency access. Keep this information secure.
+                <p className="text-slate-400 text-sm leading-relaxed font-medium">
+                  Define backup contacts for system recovery audits, password recovery hooks, and OTP challenges.
                 </p>
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                       Recovery Email <span className="text-red-400">*</span>
                     </label>
-                    <div className="relative">
-                      <FaEnvelope className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm" />
+                    <div className="relative group">
+                      <FaEnvelope className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
                       <input
                         type="email"
                         value={recovery.recoveryEmail}
                         onChange={e => setRecovery(r => ({ ...r, recoveryEmail: e.target.value }))}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200 placeholder-slate-600"
-                        placeholder="recovery@example.com (different from primary)"
+                        className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-600"
+                        placeholder="recovery@attendance.local"
                       />
                     </div>
-                    <p className="text-xs text-slate-600 mt-1">Should be different from your primary email</p>
+                    <p className="text-xs text-slate-500 mt-2 font-medium">
+                      Must be a different mailbox than your profile email address to satisfy security criteria.
+                    </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                       Recovery Phone
                     </label>
-                    <div className="relative">
-                      <FaPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm" />
+                    <div className="relative group">
+                      <FaPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
                       <input
                         type="tel"
                         value={recovery.recoveryPhone}
                         onChange={e => setRecovery(r => ({ ...r, recoveryPhone: e.target.value }))}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200 placeholder-slate-600"
-                        placeholder="+1 555 0199"
+                        className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-600"
+                        placeholder="+1 (555) 999-8888"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 bg-slate-950/50 rounded-xl p-4 border border-amber-500/20 flex items-start gap-3">
-                  <FaLightbulb className="text-amber-400 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-slate-400">
-                    This recovery information is used during <strong className="text-slate-300">Admin Reset</strong> workflows.
-                    An OTP will be sent to the recovery email to verify your identity before any admin account replacement.
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-indigo-950/20 rounded-2xl p-5 border border-indigo-500/15 flex items-start gap-4"
+                >
+                  <FaLightbulb className="text-indigo-400 mt-1 flex-shrink-0 text-lg animate-pulse" />
+                  <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                    This recovery configuration is securely integrated into the <strong className="text-slate-300">Identity Replacement</strong> API.
+                    OTP codes are dispatched here to prove ownership of the system before executing structural account resets.
                   </p>
-                </div>
+                </motion.div>
               </motion.div>
             )}
 
             {/* ── STEP 3: Password ── */}
             {(!isRecovery || isOtpVerified) && step === 3 && (
-              <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2 mb-6">
-                  <FaLock className="text-indigo-400" /> Administrator Password
+              <motion.div 
+                key="step3" 
+                initial={{ opacity: 0, x: 15 }} 
+                animate={{ opacity: 1, x: 0 }} 
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.4 }}
+                className="space-y-6"
+              >
+                <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2.5 mb-6">
+                  <FaLock className="text-indigo-400" /> Account Security Access
                 </h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                       New Password
                     </label>
                     <input
                       type="password"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200"
+                      className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-700"
                       placeholder="••••••••"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                       Confirm Password
                     </label>
                     <input
                       type="password"
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-slate-200"
+                      className="w-full bg-slate-950/40 border border-slate-800 rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-slate-200 placeholder-slate-700"
                       placeholder="••••••••"
                     />
                   </div>
                 </div>
 
-                {/* Password checklist */}
-                <div className="mt-4 bg-slate-950/50 rounded-xl p-4 border border-slate-800/50 space-y-2 text-xs text-slate-400">
+                {/* Password strength checklist */}
+                <div className="bg-slate-950/40 rounded-2xl p-5 border border-slate-800/80 space-y-3">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Password Security Requirements
+                  </span>
                   {[
-                    { ok: hasMinLength, label: 'At least 8 characters' },
-                    { ok: hasUppercase, label: 'One uppercase letter (A-Z)' },
-                    { ok: hasLowercase, label: 'One lowercase letter (a-z)' },
-                    { ok: hasNumber, label: 'One number (0-9)' },
-                    { ok: passwordsMatch, label: 'Passwords match' },
+                    { ok: hasMinLength, label: 'At least 8 characters long' },
+                    { ok: hasUppercase, label: 'One uppercase character (A-Z)' },
+                    { ok: hasLowercase, label: 'One lowercase character (a-z)' },
+                    { ok: hasNumber, label: 'One numerical digit (0-9)' },
+                    { ok: passwordsMatch, label: 'Matching confirmation values' },
                   ].map(({ ok, label }) => (
-                    <div key={label} className="flex items-center gap-2">
-                      <FaCheckCircle className={ok ? 'text-emerald-500' : 'text-slate-700'} />
-                      <span className={ok ? 'text-slate-300' : ''}>{label}</span>
-                    </div>
+                    <motion.div 
+                      key={label}
+                      layout
+                      className="flex items-center gap-3 text-xs"
+                    >
+                      <FaCheckCircle className={`text-base transition-colors ${ok ? 'text-emerald-400' : 'text-slate-800'}`} />
+                      <span className={`font-semibold transition-colors ${ok ? 'text-slate-200' : 'text-slate-500'}`}>{label}</span>
+                    </motion.div>
                   ))}
                 </div>
               </motion.div>
@@ -587,93 +721,136 @@ const BootstrapSetupPage = () => {
 
             {/* ── STEP 4: Face Enrollment ── */}
             {(!isRecovery || isOtpVerified) && step === 4 && (
-              <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2 mb-6">
-                  <FaCamera className="text-indigo-400" /> Face Profile Enrollment
+              <motion.div 
+                key="step4" 
+                initial={{ opacity: 0, x: 15 }} 
+                animate={{ opacity: 1, x: 0 }} 
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.4 }}
+                className="space-y-6"
+              >
+                <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2.5 mb-2">
+                  <FaCamera className="text-indigo-400" /> Biometric Signature Mapping
                 </h2>
 
                 {/* Mode tabs */}
-                <div className="flex border-b border-slate-800 mb-5 text-xs font-semibold">
+                <div className="flex bg-slate-950/60 p-1.5 rounded-2xl border border-slate-800/80 mb-6 text-xs font-bold">
                   {['camera', 'upload'].map(m => (
                     <button
                       key={m}
                       type="button"
                       onClick={() => { setUploadMode(m as 'camera' | 'upload'); setFrames([]); }}
-                      className={`flex-1 pb-3 text-center border-b-2 transition-colors capitalize ${
+                      className={`flex-1 py-3 text-center rounded-xl transition-all capitalize ${
                         uploadMode === m
-                          ? 'border-indigo-500 text-indigo-400'
-                          : 'border-transparent text-slate-500 hover:text-slate-300'
+                          ? 'bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-md'
+                          : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      {m === 'camera' ? '📷 Use Camera' : '📁 Upload Image'}
+                      {m === 'camera' ? '📷 Real-Time Camera' : '📁 Image File Upload'}
                     </button>
                   ))}
                 </div>
 
                 {uploadMode === 'camera' ? (
                   <div className="space-y-4">
-                    <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-950 border border-slate-800">
+                    <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-800/80 shadow-inner group">
+                      {/* High-tech HUD Brackets */}
+                      <div className="hud-bracket top-4 left-4 border-t-2 border-l-2" />
+                      <div className="hud-bracket top-4 right-4 border-t-2 border-r-2" />
+                      <div className="hud-bracket bottom-4 left-4 border-b-2 border-l-2" />
+                      <div className="hud-bracket bottom-4 right-4 border-b-2 border-r-2" />
+
+                      {/* Laser scanner element */}
+                      {frames.length < 10 && <div className="scanner-line" />}
+
+                      {/* Circular target compass */}
+                      {frames.length < 10 && (
+                        <div 
+                          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-48 w-48 border border-dashed border-indigo-500/20 rounded-full pointer-events-none z-10"
+                          style={{ animation: 'rotate-hud 25s infinite linear' }}
+                        />
+                      )}
+
                       <FaceCamera
                         onCapture={handleFrameCapture}
                         showControls={false}
-                        autoCapture={frames.length < 3}
+                        autoCapture={frames.length < 10}
                         captureInterval={300}
-                        className="w-full h-full"
+                        className="w-full h-full object-cover scale-x-[-1]"
                       />
-                      {frames.length > 0 && frames.length < 3 && (
-                        <div className="absolute inset-0 bg-slate-950/60 flex flex-col items-center justify-center">
-                          <div className="text-indigo-400 text-xl font-bold mb-1 animate-pulse">
-                            Scanning: {frames.length} / 3
+                      
+                      {frames.length > 0 && frames.length < 10 && (
+                        <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-[2px] flex flex-col items-center justify-center z-20">
+                          <div className="text-indigo-400 text-2xl font-black mb-1 animate-pulse tracking-wide font-mono">
+                            CAPTURING: {frames.length} / 10
                           </div>
-                          <p className="text-xs text-slate-400">Keep looking at the camera</p>
+                          <p className="text-xs text-slate-400 font-semibold tracking-wider uppercase">Align face inside the scanner boundary</p>
                         </div>
                       )}
+                      
                       {isFaceCaptured && (
-                        <div className="absolute inset-0 bg-emerald-900/30 border-2 border-emerald-500 flex items-center justify-center">
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="absolute inset-0 bg-emerald-950/40 backdrop-blur-sm border-2 border-emerald-500 flex items-center justify-center z-20"
+                        >
                           <div className="text-center">
-                            <FaCheckCircle className="text-emerald-400 text-3xl mx-auto mb-2" />
-                            <p className="text-emerald-300 text-sm font-semibold">Face captured!</p>
+                            <motion.div 
+                              initial={{ scale: 0.5, rotate: -45 }}
+                              animate={{ scale: 1, rotate: 0 }}
+                              transition={{ type: 'spring', damping: 10 }}
+                            >
+                              <FaCheckCircle className="text-emerald-400 text-4xl mx-auto mb-3 filter drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]" />
+                            </motion.div>
+                            <p className="text-emerald-300 text-base font-bold tracking-wide uppercase">Biometric Mapping Completed</p>
                           </div>
-                        </div>
+                        </motion.div>
                       )}
                     </div>
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>Captured: {frames.length} / 3</span>
+                    <div className="flex items-center justify-between text-xs text-slate-400 font-semibold">
+                      <span className="flex items-center gap-1.5">
+                        <span className={`h-2 w-2 rounded-full ${frames.length >= 10 ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]' : 'bg-indigo-400 animate-pulse'}`} />
+                        Mapped Frames: {frames.length} / 10
+                      </span>
                       {frames.length > 0 && (
-                        <button type="button" onClick={() => setFrames([])} className="text-red-400 hover:text-red-300">
-                          Reset
+                        <button type="button" onClick={() => setFrames([])} className="text-red-400 hover:text-red-300 transition-colors">
+                          Reset Scanner
                         </button>
                       )}
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-xl p-10 bg-slate-950 hover:bg-slate-950/80 transition-colors cursor-pointer group relative">
+                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-2xl p-12 bg-slate-950/60 hover:bg-slate-950/80 hover:border-indigo-500/40 transition-all cursor-pointer group relative shadow-inner">
                       <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                      <FaUpload className="text-slate-600 text-3xl mb-3 group-hover:text-indigo-400 transition-colors" />
-                      <p className="text-sm font-semibold text-slate-400 group-hover:text-slate-300 transition-colors">
-                        Click to upload face image
+                      <FaUpload className="text-slate-600 text-4xl mb-4 group-hover:text-indigo-400 group-hover:scale-110 transition-all duration-300" />
+                      <p className="text-sm font-bold text-slate-400 group-hover:text-slate-200 transition-colors">
+                        Drop photo or browse directory
                       </p>
-                      <p className="text-xs text-slate-600 mt-1">PNG, JPG, or WEBP</p>
+                      <p className="text-xs text-slate-600 mt-2 font-medium">PNG, JPG, or WEBP formats up to 10MB</p>
                     </label>
                     {isFaceCaptured && (
-                      <div className="flex items-center justify-between bg-slate-950 border border-emerald-500/30 p-3 rounded-xl text-xs">
-                        <div className="flex items-center gap-2 text-emerald-400 font-medium">
-                          <FaCheckCircle /> Image loaded successfully
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="flex items-center justify-between bg-slate-950 border border-emerald-500/20 p-4 rounded-2xl text-xs"
+                      >
+                        <div className="flex items-center gap-2.5 text-emerald-400 font-bold">
+                          <FaCheckCircle className="text-emerald-500 text-sm" /> Signature Image Loaded
                         </div>
-                        <button type="button" onClick={() => setFrames([])} className="text-red-400 hover:text-red-300">
-                          Reset
+                        <button type="button" onClick={() => setFrames([])} className="text-red-400 hover:text-red-300 transition-colors font-bold">
+                          Reset Upload
                         </button>
-                      </div>
+                      </motion.div>
                     )}
                   </div>
                 )}
 
-                <div className="mt-4 bg-slate-950/40 p-4 border border-slate-800/80 rounded-xl flex items-start gap-3 text-xs text-slate-500">
-                  <FaLightbulb className="text-indigo-400 mt-0.5 flex-shrink-0 text-base" />
+                <div className="bg-slate-950/40 p-4 border border-slate-800/80 rounded-2xl flex items-start gap-3.5 text-xs text-slate-500 leading-relaxed font-medium">
+                  <FaLightbulb className="text-indigo-400 mt-0.5 flex-shrink-0 text-lg animate-pulse" />
                   <div>
-                    <span className="font-bold text-slate-400">Guidelines: </span>
-                    Good lighting, face directly at camera, remove glasses/mask. Face embeddings are stored securely encrypted.
+                    <span className="font-bold text-slate-300">Biometric Guidelines: </span>
+                    Ensure balanced lighting, direct gaze, and visible features. Plain backgrounds produce optimal mathematical vectors. Plain text representations are discarded immediately after embedding extraction.
                   </div>
                 </div>
               </motion.div>
@@ -683,57 +860,63 @@ const BootstrapSetupPage = () => {
 
         {/* Navigation Footer */}
         {!(isRecovery && !isOtpVerified) && (
-          <div className="p-6 border-t border-slate-800 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <FaShieldAlt className="text-indigo-400" />
-            No biometric images stored in plaintext
-          </div>
+          <div className="p-6 border-t border-white/5 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
+              <FaShieldAlt className="text-indigo-400" />
+              Cryptographic local vector storage
+            </div>
 
-          <div className="flex items-center gap-3">
-            {step > 1 && (
-              <button
-                type="button"
-                onClick={() => { setStep((step - 1) as SetupStep); setErrorMessage(''); }}
-                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition-colors"
-              >
-                <FaArrowLeft /> Back
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {step > 1 && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => { setStep((step - 1) as SetupStep); setErrorMessage(''); }}
+                  className="flex items-center gap-2 px-5 py-3 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white rounded-2xl text-sm font-bold transition-all"
+                >
+                  <FaArrowLeft /> Back
+                </motion.button>
+              )}
 
-            {step < 4 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setErrorMessage('');
-                  if (step === 1 && !isStep1Valid) { setErrorMessage('Please fill in required fields (Name, Email, Designation).'); return; }
-                  if (step === 2 && !isStep2Valid) { setErrorMessage('Please provide a valid recovery email.'); return; }
-                  if (step === 3 && !isStep3Valid) { setErrorMessage('Please set a valid password that meets all requirements.'); return; }
-                  setStep((step + 1) as SetupStep);
-                }}
-                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-xl text-sm font-bold shadow-lg transition-all"
-              >
-                Next <FaArrowRight />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isLoading || !isFaceCaptured}
-                className="flex items-center gap-2 px-8 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg transition-all text-sm"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Configuring...
-                  </>
-                ) : (
-                  <>Complete Setup <FaCheckCircle /></>
-                )}
-              </button>
-            )}
+              {step < 4 ? (
+                <motion.button
+                  whileHover={{ scale: 1.02, boxShadow: '0 0 25px rgba(99, 102, 241, 0.3)' }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
+                    setErrorMessage('');
+                    if (step === 1 && !isStep1Valid) { setErrorMessage('Please populate all mandatory fields (Name, Email, Designation).'); return; }
+                    if (step === 2 && !isStep2Valid) { setErrorMessage('Please provide a valid format recovery email.'); return; }
+                    if (step === 3 && !isStep3Valid) { setErrorMessage('Verify that the password meets all dynamic criteria.'); return; }
+                    setStep((step + 1) as SetupStep);
+                  }}
+                  className="flex items-center gap-2 px-7 py-3 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-2xl text-sm font-black shadow-lg transition-all"
+                >
+                  Continue <FaArrowRight />
+                </motion.button>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.02, boxShadow: '0 0 25px rgba(99, 102, 241, 0.4)' }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isLoading || !isFaceCaptured}
+                  className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 disabled:opacity-50 text-white font-black rounded-2xl shadow-lg transition-all text-sm"
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Saving Configuration...
+                    </>
+                  ) : (
+                    <>Complete Enrollment <FaCheckCircle /></>
+                  )}
+                </motion.button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
       </motion.div>
     </div>
   );

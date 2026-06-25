@@ -365,10 +365,15 @@ class FaceMatcher:
 # If the import fails at runtime, the placeholder above will be used.
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+for h in list(root_logger.handlers):
+    root_logger.removeHandler(h)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+root_logger.addHandler(handler)
+
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
@@ -378,7 +383,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Configuration
 CONFIG = {
-    "multi_frame_count": int(os.getenv("FACE_AI_MULTI_FRAME_COUNT", "15")),
+    "multi_frame_count": int(os.getenv("FACE_AI_MULTI_FRAME_COUNT", "25")),
     "frame_interval_ms": int(os.getenv("FACE_AI_FRAME_INTERVAL_MS", "100")),
     "liveness_threshold": float(os.getenv("FACE_AI_LIVENESS_THRESHOLD", "0.65")),
     "spoof_threshold": float(os.getenv("FACE_AI_SPOOF_THRESHOLD", "0.55")),
@@ -387,6 +392,13 @@ CONFIG = {
     "max_face_size": int(os.getenv("FACE_AI_MAX_FACE_SIZE", "1024")),
     "min_face_size": int(os.getenv("FACE_AI_MIN_FACE_SIZE", "64")),
 }
+
+E2E_BYPASS_KEY = os.getenv('E2E_BYPASS_KEY')
+if not E2E_BYPASS_KEY:
+    import uuid
+    # Dynamically generate a secure key to prevent default fallback to JWT_ACCESS_SECRET
+    E2E_BYPASS_KEY = uuid.uuid4().hex + uuid.uuid4().hex
+
 
 # Initialize components
 face_detector = FaceDetector()
@@ -638,6 +650,9 @@ class FaceAuthenticationPipeline:
                 else:
                     result["errors"].append("No stored face embedding found — enroll face first")
                     result["security_events"].append("NO_STORED_EMBEDDING")
+                    result["timestamps"]["face_matching"] = time.time() - embedding_start
+                    result["timestamps"]["total"] = time.time() - start_time
+                    return result
                 
                 result["timestamps"]["face_matching"] = time.time() - embedding_start
             
@@ -786,7 +801,13 @@ def face_login():
             first_frame = data['frames'][0]
             if isinstance(first_frame, str):
                 if first_frame.startswith('BiX6J9') or first_frame.startswith('iVBORw') or 'iVBORw' in first_frame:
-                    is_e2e_test = True
+                    bypass_key = request.headers.get('x-e2e-bypass-key')
+                    if os.getenv('FACE_RECOGNITION_MODE') != 'real':
+                        is_e2e_test = True
+                    elif E2E_BYPASS_KEY and bypass_key == E2E_BYPASS_KEY:
+                        is_e2e_test = True
+                    else:
+                        logger.warning("Mock E2E login bypass attempt rejected: missing or invalid bypass key")
 
         if is_e2e_test:
             # Retrieve stored_embedding from payload
@@ -959,7 +980,13 @@ def register_face():
             first_frame = data['frames'][0]
             if isinstance(first_frame, str):
                 if first_frame.startswith('BiX6J9') or first_frame.startswith('iVBORw') or 'iVBORw' in first_frame:
-                    is_e2e_test = True
+                    bypass_key = request.headers.get('x-e2e-bypass-key')
+                    if os.getenv('FACE_RECOGNITION_MODE') != 'real':
+                        is_e2e_test = True
+                    elif E2E_BYPASS_KEY and bypass_key == E2E_BYPASS_KEY:
+                        is_e2e_test = True
+                    else:
+                        logger.warning("Mock E2E registration bypass attempt rejected: missing or invalid bypass key")
 
         if is_e2e_test:
             mock_embedding = np.zeros(512, dtype=np.float32)
@@ -977,9 +1004,9 @@ def register_face():
                 'timestamp': datetime.now().isoformat()
             }), 200
         
-        # Decode frames — skip invalid; limit to 3 for performance
+        # Decode frames — skip invalid; limit to 10 for performance
         frames = []
-        for frame_data in data['frames'][:3]:
+        for frame_data in data['frames'][:10]:
             try:
                 # Strip base64 metadata prefix if present (e.g. data:image/jpeg;base64,)
                 if isinstance(frame_data, str) and ',' in frame_data:

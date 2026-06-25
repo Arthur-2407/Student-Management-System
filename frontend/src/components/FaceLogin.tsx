@@ -18,7 +18,7 @@ interface CapturedFrame {
 
 // WEBSITECHK_FACE_LOGIN_UX — Silent background authentication
 // Minimum frames required before auto-triggering authentication
-const MIN_FRAMES_FOR_AUTH = 10;
+const MIN_FRAMES_FOR_AUTH = 20;
 // Processing timeout
 const PROCESSING_TIMEOUT_MS = 30_000;
 // Auto-auth trigger delay after min frames collected (ms) — gives a natural feel
@@ -45,6 +45,8 @@ const FaceLogin = () => {
   const [preLoginData, setPreLoginData] = useState<PreLoginCheckResponse | null>(null);
   const [isCheckingId, setIsCheckingId] = useState<boolean>(false);
   const [autoAuthTriggered, setAutoAuthTriggered] = useState<boolean>(false);
+  const [activeChallenge, setActiveChallenge] = useState<string | null>(null);
+
 
   // Refs for timeout/abort management
   const processingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,6 +88,7 @@ const FaceLogin = () => {
       if (!studentId || studentId.length < 2) {
         setPreLoginData(null);
         setRequirePassword(locationState.state?.requirePassword || false);
+        setActiveChallenge(null);
         return;
       }
       setIsCheckingId(true);
@@ -105,9 +108,24 @@ const FaceLogin = () => {
         // Require password only if backend says role needs face+password
         const needsPassword = data.required_method === 'face_and_password' || locationState.state?.requirePassword;
         setRequirePassword(!!needsPassword);
+
+        // Fetch challenge if student exists and has a registered face
+        if (data.exists && data.has_face) {
+          try {
+            const chalRes = await authApi.getChallenge(studentId);
+            if (chalRes.data.success) {
+              setActiveChallenge(chalRes.data.challenge);
+            }
+          } catch (chalErr) {
+            setActiveChallenge(null);
+          }
+        } else {
+          setActiveChallenge(null);
+        }
       } catch {
         // On error, default to requiring password only if explicitly told via state
         setRequirePassword(locationState.state?.requirePassword || false);
+        setActiveChallenge(null);
       } finally {
         setIsCheckingId(false);
       }
@@ -117,11 +135,11 @@ const FaceLogin = () => {
     return () => clearTimeout(debounce);
   }, [studentId, locationState.state]);
 
-  // Handle frame capture — keeps a rolling buffer of last 20 frames
+  // Handle frame capture — keeps a rolling buffer of last 30 frames
   const handleFrameCapture = useCallback((frame: string) => {
     const base64Data = frame.replace('data:image/jpeg;base64,', '');
     setFrames(prev => [
-      ...prev.slice(-19),
+      ...prev.slice(-29),
       { data: base64Data, timestamp: Date.now() },
     ]);
   }, []);
@@ -144,7 +162,8 @@ const FaceLogin = () => {
       showError('Password is required for your role');
       return;
     }
-    if (currentFrames.length < MIN_FRAMES_FOR_AUTH) {
+    const requiredFrames = activeChallenge ? 25 : MIN_FRAMES_FOR_AUTH;
+    if (currentFrames.length < requiredFrames) {
       showError('Positioning face... please wait');
       return;
     }
@@ -169,6 +188,7 @@ const FaceLogin = () => {
         studentId,
         password: requirePassword ? password : undefined,
         location: location || undefined,
+        challengeType: activeChallenge || undefined,
       };
 
       const loginPromise = authApi.faceLogin(loginData, abortController.signal);
@@ -214,18 +234,27 @@ const FaceLogin = () => {
       resetProcessingState();
       setFrames([]);
     }
-  }, [studentId, password, requirePassword, location, isProcessing, coordinator, login, navigate, showError, showSuccess, resetProcessingState]);
+  }, [studentId, password, requirePassword, location, isProcessing, coordinator, login, navigate, showError, showSuccess, resetProcessingState, activeChallenge]);
+
+  // Clear frames when active challenge changes/resolves to ensure we capture fresh post-challenge frames
+  useEffect(() => {
+    setFrames([]);
+    setAutoAuthTriggered(false);
+  }, [activeChallenge]);
 
   // Auto-trigger authentication when enough frames have been collected silently
   useEffect(() => {
+    const requiredFrames = activeChallenge ? 25 : MIN_FRAMES_FOR_AUTH;
+    const isChallengeLoading = preLoginData?.has_face && !activeChallenge;
     if (
-      frames.length >= MIN_FRAMES_FOR_AUTH &&
+      frames.length >= requiredFrames &&
       !isProcessing &&
       !autoAuthTriggered &&
       studentId &&
-      livenessStatus !== 'success' &&
+      livenessStatus === 'idle' &&
       !isCameraStopped &&
       !isCheckingId &&           // Wait for pre-login check to complete (prevents race for admin)
+      !isChallengeLoading &&     // Wait for challenge to be loaded
       !(requirePassword && !locationState.state?.passwordVerified)
     ) {
       setAutoAuthTriggered(true);
@@ -234,7 +263,7 @@ const FaceLogin = () => {
         handleFaceLogin(frames);
       }, AUTO_AUTH_DELAY_MS);
     }
-  }, [frames, isProcessing, autoAuthTriggered, studentId, livenessStatus, isCameraStopped, isCheckingId, requirePassword, locationState.state?.passwordVerified, handleFaceLogin]);
+  }, [frames, isProcessing, autoAuthTriggered, studentId, livenessStatus, isCameraStopped, isCheckingId, requirePassword, locationState.state?.passwordVerified, handleFaceLogin, activeChallenge, preLoginData]);
 
   // Reset auto-auth trigger when student ID or password changes
   useEffect(() => {
@@ -256,6 +285,9 @@ const FaceLogin = () => {
   };
 
   const currentStatus = statusConfig[livenessStatus];
+
+  const requiredFrames = activeChallenge ? 25 : MIN_FRAMES_FOR_AUTH;
+  const isChallengeLoading = preLoginData?.has_face && !activeChallenge;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 flex items-center justify-center p-4">
@@ -385,6 +417,53 @@ const FaceLogin = () => {
                 )}
               </motion.div>
 
+              {/* Active Liveness Challenge Instruction */}
+              <AnimatePresence>
+                {livenessStatus === 'idle' && (
+                  isChallengeLoading ? (
+                    <motion.div
+                      key="challenge-loading"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="mb-5 p-4 rounded-2xl bg-slate-100 border border-slate-200 flex items-center gap-4 shadow-sm"
+                    >
+                      <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-slate-400 flex items-center justify-center text-white shadow-md">
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Liveness Challenge</p>
+                        <h4 className="text-base font-bold text-slate-600 mt-0.5 animate-pulse">
+                          Generating challenge...
+                        </h4>
+                      </div>
+                    </motion.div>
+                  ) : activeChallenge ? (
+                    <motion.div
+                      key="challenge-active"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border border-blue-100 flex items-center gap-4 shadow-sm"
+                    >
+                      <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center text-white shadow-md animate-pulse">
+                        <MdFaceRetouchingNatural className="text-2xl" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Liveness Challenge</p>
+                        <h4 className="text-base font-bold text-slate-800 mt-0.5">
+                          {activeChallenge === 'blink' && 'Blink naturally twice'}
+                          {activeChallenge === 'head_left' && 'Turn your head to the Left'}
+                          {activeChallenge === 'head_right' && 'Turn your head to the Right'}
+                          {activeChallenge === 'head_up' && 'Tilt your head Upward'}
+                          {activeChallenge === 'head_down' && 'Tilt your head Downward'}
+                        </h4>
+                      </div>
+                    </motion.div>
+                  ) : null
+                )}
+              </AnimatePresence>
+
               {/* Student ID */}
               <div className="mb-5">
                 <label htmlFor="face-login-student-id" className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -466,7 +545,7 @@ const FaceLogin = () => {
                 <button
                   type="button"
                   onClick={() => handleFaceLogin(frames)}
-                  disabled={isProcessing || livenessStatus === 'success' || !studentId || !password || frames.length < MIN_FRAMES_FOR_AUTH}
+                  disabled={isProcessing || livenessStatus === 'success' || !studentId || !password || frames.length < requiredFrames || isChallengeLoading}
                   className="mb-5 w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 text-white font-semibold rounded-xl shadow-lg transition-all text-sm"
                 >
                   {isProcessing ? (
@@ -475,7 +554,7 @@ const FaceLogin = () => {
                       Signing In...
                     </>
                   ) : (
-                    frames.length < MIN_FRAMES_FOR_AUTH ? `Positioning face (${frames.length}/${MIN_FRAMES_FOR_AUTH})...` : 'Sign In'
+                    frames.length < requiredFrames ? `Positioning face (${frames.length}/${requiredFrames})...` : 'Sign In'
                   )}
                 </button>
               )}
@@ -511,6 +590,16 @@ const FaceLogin = () => {
                     setAutoAuthTriggered(false);
                     setFrames([]);
                     setSpoofDetected(false);
+                    setActiveChallenge(null);
+                    if (studentId) {
+                      authApi.getChallenge(studentId)
+                        .then(chalRes => {
+                          if (chalRes.data.success) {
+                            setActiveChallenge(chalRes.data.challenge);
+                          }
+                        })
+                        .catch(() => setActiveChallenge(null));
+                    }
                   }}
                   className="mb-5 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl transition-all text-sm"
                 >

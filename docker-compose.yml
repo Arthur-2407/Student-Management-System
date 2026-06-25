@@ -71,6 +71,8 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redispassword123}@student-redis:6379
       - MODEL_PATH=/app/models
       - TORCH_HOME=/app/models
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET:-your-super-secret-jwt-access-key-change-in-production}
+      - E2E_BYPASS_KEY=${E2E_BYPASS_KEY}
     volumes:
       - ./face-ai-service:/app
       - student_face_ai_models:/app/models
@@ -107,6 +109,7 @@ services:
       - FACE_DB_PASSWORD=${FACE_DB_PASSWORD:-securefacepassword123}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redispassword123}@student-redis:6379
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET:-your-super-secret-jwt-access-key-change-in-production}
+      - E2E_BYPASS_KEY=${E2E_BYPASS_KEY}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-your-super-secret-jwt-refresh-key-change-in-production}
       - JWT_ACCESS_EXPIRY=${JWT_ACCESS_EXPIRY:-15m}
       - JWT_REFRESH_EXPIRY=${JWT_REFRESH_EXPIRY:-7d}

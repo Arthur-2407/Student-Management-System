@@ -80,6 +80,7 @@ describe('Student Initial Password Fallback Logic', () => {
   test('Creates student with custom password if provided', async () => {
     // Mock check if student exists (0 rows returned = doesn't exist)
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     // Mock insert student returning details
     mockQuery.mockResolvedValueOnce({
@@ -111,7 +112,7 @@ describe('Student Initial Password Fallback Logic', () => {
     expect(response.body.success).toBe(true);
 
     // Verify the query parameters passed to insert
-    const insertCall = mockQuery.mock.calls[1];
+    const insertCall = mockQuery.mock.calls[2];
     const insertParams = insertCall[1];
     const passwordHash = insertParams[10];
 
@@ -122,6 +123,7 @@ describe('Student Initial Password Fallback Logic', () => {
 
   test('Creates student using studentId as password if password is left blank', async () => {
     // Mock check if student exists (0 rows returned = doesn't exist)
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     // Mock insert student returning details
@@ -154,7 +156,7 @@ describe('Student Initial Password Fallback Logic', () => {
     expect(response.body.success).toBe(true);
 
     // Verify the query parameters passed to insert
-    const insertCall = mockQuery.mock.calls[1];
+    const insertCall = mockQuery.mock.calls[2];
     const insertParams = insertCall[1];
     const passwordHash = insertParams[10];
 

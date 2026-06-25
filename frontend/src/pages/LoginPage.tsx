@@ -101,7 +101,9 @@ const LoginPage: React.FC = () => {
   useEffect(() => {
     const checkBootstrap = async () => {
       try {
-        const res = await api.get<{ success: boolean; bootstrapMode: boolean }>('/auth/bootstrap/status');
+        const res = await api.get<{ success: boolean; bootstrapMode: boolean }>(
+          `/auth/bootstrap/status?t=${Date.now()}`
+        );
         if (res.data.success && res.data.bootstrapMode) {
           navigate('/setup/admin-face', { replace: true });
         }

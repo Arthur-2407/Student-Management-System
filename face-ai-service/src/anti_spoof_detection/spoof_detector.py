@@ -531,15 +531,14 @@ class SpoofDetector:
             if mean_flow > self.temporal_static_threshold:
                 # Only apply periodicity check when there IS motion (not a photo)
                 normalized_variance = flow_variance / (mean_flow ** 2 + 1e-7)
-                # Low normalised variance + low entropy → periodic (video replay)
-                low_variance = normalized_variance < 0.5  # unnaturally smooth motion
-                low_entropy = mean_entropy < 2.0          # uniform flow field
-                if low_variance and low_entropy:
-                    variance_score = min(
-                        (1.0 - normalized_variance) * 0.6 +
-                        (1.0 - mean_entropy / 3.0) * 0.4,
-                        1.0
-                    )
+                # Upgrade to smooth scaling function to prevent screen playback bypasses
+                smoothness = max(0.0, 1.0 - (normalized_variance / 0.8))
+                regularity = max(0.0, 1.0 - (mean_entropy / 3.2))
+                
+                # If motion is relatively smooth and entropy is relatively low (digital screen characteristics)
+                if smoothness > 0.0 and regularity > 0.0:
+                    # Scale score based on combined smoothness and regularity
+                    variance_score = min(smoothness * 0.6 + regularity * 0.4, 1.0)
 
             # Final temporal score: max of static or periodic attack
             temporal_score = max(static_score, variance_score)

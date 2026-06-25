@@ -6,6 +6,8 @@ import { Toaster } from 'react-hot-toast';
 import { ErrorBoundary } from '@components/ErrorBoundary';
 import { DegradedModeBanner } from '@components/DegradedModeBanner';
 
+
+
 function AppContent() {
   const { isHydrating } = useAuth();
 

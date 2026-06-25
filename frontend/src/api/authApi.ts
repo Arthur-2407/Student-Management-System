@@ -136,7 +136,9 @@ export const authApi = {
   },
 
   checkBootstrapStatus: async (recovery?: boolean): Promise<AxiosResponse<BootstrapStatusResponse>> => {
-    const response = await api.get<BootstrapStatusResponse>(`/auth/bootstrap/status${recovery ? '?recovery=true' : ''}`);
+    const buster = `t=${Date.now()}`;
+    const query = recovery ? `recovery=true&${buster}` : buster;
+    const response = await api.get<BootstrapStatusResponse>(`/auth/bootstrap/status?${query}`);
     return response;
   },
 
@@ -163,5 +165,9 @@ export const authApi = {
   getAdminContactInfo: async (): Promise<AxiosResponse<AdminContactInfo>> => {
     const response = await api.get<AdminContactInfo>('/admin/contact-info');
     return response;
+  },
+
+  getChallenge: async (studentId: string): Promise<AxiosResponse<{ success: boolean; challenge: string }>> => {
+    return api.post('/auth/challenge', { studentId });
   },
 };

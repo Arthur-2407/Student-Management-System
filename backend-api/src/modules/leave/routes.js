@@ -79,7 +79,7 @@ router.post('/request', async (req, res) => {
     // Fallback to Admin if no teacher is assigned
     if (!teacherId) {
       const adminResult = await query(
-        "SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1"
+        "SELECT id FROM students WHERE (student_id = 'admin' OR role = 'admin') AND is_active = TRUE LIMIT 1"
       );
       if (adminResult.rows.length > 0) {
         teacherId = adminResult.rows[0].id;

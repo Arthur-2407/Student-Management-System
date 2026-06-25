@@ -153,13 +153,16 @@ function decryptEmbedding(encryptedData) {
 
 // Helper to generate embedding vector from frames via Face-AI service
 // PRODUCTION POLICY: Face-AI service must be available. No synthetic fallbacks permitted.
-async function generateEmbeddingFromFrames(frames, studentId) {
+async function generateEmbeddingFromFrames(frames, studentId, bypassKey = null) {
   const faceAIServiceUrl = process.env.FACE_AI_SERVICE_URL || 'http://face-ai-service:8000';
   try {
     const response = await axios.post(
       `${faceAIServiceUrl}/api/register-face`,
       { frames, studentId, student_id: studentId },
-      { timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000) }
+      {
+        timeout: Number(process.env.FACE_AI_TIMEOUT_MS || 15000),
+        headers: bypassKey ? { 'x-e2e-bypass-key': bypassKey } : {}
+      }
     );
 
     if (response.data.success || response.data.registered) {
@@ -256,7 +259,7 @@ router.post('/face-change-requests', async (req, res) => {
       if (!Array.isArray(frames) || frames.length === 0) {
         return res.status(400).json({ success: false, message: 'Frames are required for face registration' });
       }
-      const embGen = await generateEmbeddingFromFrames(frames, studentId);
+      const embGen = await generateEmbeddingFromFrames(frames, studentId, req.headers['x-e2e-bypass-key']);
       if (!embGen.success) {
         return res.status(400).json({ success: false, message: embGen.error });
       }
@@ -434,7 +437,7 @@ router.post('/face-change-requests', async (req, res) => {
     // Async create notifications in main db (outside transaction)
     let notifyTargetId = null;
     if (assignedRole === 'admin') {
-      const adminResult = await query("SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1");
+      const adminResult = await query("SELECT id FROM students WHERE (student_id = 'admin' OR role = 'admin') AND is_active = TRUE LIMIT 1");
       if (adminResult.rows.length > 0) {
         notifyTargetId = adminResult.rows[0].id;
       }
@@ -448,7 +451,7 @@ router.post('/face-change-requests', async (req, res) => {
       );
       notifyTargetId = teacherResult.rows[0]?.teacher_id || null;
       if (!notifyTargetId) {
-        const adminResult = await query("SELECT id FROM students WHERE student_id = 'admin' AND is_active = TRUE LIMIT 1");
+        const adminResult = await query("SELECT id FROM students WHERE (student_id = 'admin' OR role = 'admin') AND is_active = TRUE LIMIT 1");
         if (adminResult.rows.length > 0) {
           notifyTargetId = adminResult.rows[0].id;
         }
@@ -944,7 +947,7 @@ router.post('/face-management/admin-register', requireRole('admin'), async (req,
     const activeEmb = await getActiveEmbedding(target.id);
     const prevEmbeddingId = activeEmb ? activeEmb.id : null;
 
-    const embGen = await generateEmbeddingFromFrames(frames, studentId);
+    const embGen = await generateEmbeddingFromFrames(frames, studentId, req.headers['x-e2e-bypass-key']);
     if (!embGen.success) {
       return res.status(400).json({ success: false, message: embGen.error });
     }

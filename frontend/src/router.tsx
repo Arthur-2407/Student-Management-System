@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react';
 import type { ReactElement, ComponentType } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import MainLayout from '@components/layout/MainLayout';
 import { ProtectedRoute } from '@components/ProtectedRoute';
+import BootstrapGuard from '@components/BootstrapGuard';
 
 // STABILIZATION: Safe lazy loading wrapper that catches ChunkLoadError / TypeErrors
 // caused by browser trying to fetch deleted old hash files from the server after redeployments.
@@ -47,90 +48,103 @@ function withSuspense(element: ReactElement) {
   return <Suspense fallback={routeFallback}>{element}</Suspense>;
 }
 
+function RootLayout() {
+  return (
+    <BootstrapGuard>
+      <Outlet />
+    </BootstrapGuard>
+  );
+}
+
 export const router = createBrowserRouter([
   {
-    path: '/login',
-    element: withSuspense(<LoginPage />),
-  },
-  {
-    path: '/face-login',
-    element: withSuspense(<FaceLogin />),
-  },
-  {
-    path: '/setup/admin-face',
-    element: withSuspense(<BootstrapSetupPage />),
-  },
-  {
-    path: '/bootstrap',
-    element: withSuspense(<BootstrapSetupPage />),
-  },
-  {
-    path: '/admin-setup',
-    element: withSuspense(<BootstrapSetupPage />),
-  },
-  {
-    path: '/system-bootstrap',
-    element: withSuspense(<BootstrapSetupPage />),
-  },
-  {
-    path: '/recover-admin',
-    element: withSuspense(<BootstrapSetupPage />),
-  },
-  {
-    // Public — users with missing credentials can't authenticate to reach a protected route
-    path: '/recovery-request',
-    element: withSuspense(<RecoveryRequestPage />),
-  },
-  {
-    path: '/',
-    element: <ProtectedRoute element={<MainLayout />} />,
+    element: <RootLayout />,
     children: [
       {
-        index: true,
-        element: <Navigate to="/dashboard" replace />,
+        path: '/login',
+        element: withSuspense(<LoginPage />),
       },
       {
-        path: 'dashboard',
-        element: withSuspense(<DashboardPage />),
+        path: '/face-login',
+        element: withSuspense(<FaceLogin />),
       },
       {
-        path: 'attendance',
-        element: withSuspense(<AttendancePage />),
+        path: '/setup/admin-face',
+        element: withSuspense(<BootstrapSetupPage />),
       },
       {
-        path: 'leave',
-        element: withSuspense(<LeavePage />),
+        path: '/bootstrap',
+        element: withSuspense(<BootstrapSetupPage />),
       },
       {
-        path: 'reports',
-        element: withSuspense(<ReportsPage />),
+        path: '/admin-setup',
+        element: withSuspense(<BootstrapSetupPage />),
       },
       {
-        path: 'assignments',
-        element: withSuspense(<AssignmentsPage />),
-      },
-      // TEACHER-ONLY ROUTES
-      {
-        path: 'teacher',
-        element: <ProtectedRoute element={withSuspense(<TeacherDashboard />)} requiredRole="teacher" />,
-      },
-      // ADMIN-ONLY ROUTES
-      {
-        path: 'admin',
-        element: <ProtectedRoute element={withSuspense(<AdminPage />)} requiredRole="admin" />,
+        path: '/system-bootstrap',
+        element: withSuspense(<BootstrapSetupPage />),
       },
       {
-        path: 'security',
-        element: <ProtectedRoute element={withSuspense(<SecurityDashboard />)} requiredRole="admin" />,
+        path: '/recover-admin',
+        element: withSuspense(<BootstrapSetupPage />),
       },
       {
-        path: 'system-status',
-        element: <ProtectedRoute element={withSuspense(<SystemStatusDashboard />)} requiredRole="admin" />,
+        // Public — users with missing credentials can't authenticate to reach a protected route
+        path: '/recovery-request',
+        element: withSuspense(<RecoveryRequestPage />),
+      },
+      {
+        path: '/',
+        element: <ProtectedRoute element={<MainLayout />} />,
+        children: [
+          {
+            index: true,
+            element: <Navigate to="/dashboard" replace />,
+          },
+          {
+            path: 'dashboard',
+            element: withSuspense(<DashboardPage />),
+          },
+          {
+            path: 'attendance',
+            element: withSuspense(<AttendancePage />),
+          },
+          {
+            path: 'leave',
+            element: withSuspense(<LeavePage />),
+          },
+          {
+            path: 'reports',
+            element: withSuspense(<ReportsPage />),
+          },
+          {
+            path: 'assignments',
+            element: withSuspense(<AssignmentsPage />),
+          },
+          // TEACHER-ONLY ROUTES
+          {
+            path: 'teacher',
+            element: <ProtectedRoute element={withSuspense(<TeacherDashboard />)} requiredRole="teacher" />,
+          },
+          // ADMIN-ONLY ROUTES
+          {
+            path: 'admin',
+            element: <ProtectedRoute element={withSuspense(<AdminPage />)} requiredRole="admin" />,
+          },
+          {
+            path: 'security',
+            element: <ProtectedRoute element={withSuspense(<SecurityDashboard />)} requiredRole="admin" />,
+          },
+          {
+            path: 'system-status',
+            element: <ProtectedRoute element={withSuspense(<SystemStatusDashboard />)} requiredRole="admin" />,
+          },
+        ],
+      },
+      {
+        path: '*',
+        element: <Navigate to="/login" replace />,
       },
     ],
-  },
-  {
-    path: '*',
-    element: <Navigate to="/login" replace />,
   },
 ]);

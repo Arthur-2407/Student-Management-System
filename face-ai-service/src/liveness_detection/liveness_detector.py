@@ -66,13 +66,13 @@ class LivenessDetector:
         # Micro-texture: minimum inter-frame LBP histogram variance to be
         # considered "live" — replays show lower variance (too regular).
         self.MICRO_TEXTURE_VAR_THRESHOLD = float(
-            os.getenv("FACE_AI_MICRO_TEXTURE_VAR_THRESHOLD", "0.0003")
+            os.getenv("FACE_AI_MICRO_TEXTURE_VAR_THRESHOLD", "0.0001")
         )
 
         # Optical flow naturalness: minimum flow entropy to be "live".
         # Replays produce lower entropy (smoother, more uniform motion).
         self.FLOW_ENTROPY_THRESHOLD = float(
-            os.getenv("FACE_AI_FLOW_ENTROPY_THRESHOLD", "1.8")
+            os.getenv("FACE_AI_FLOW_ENTROPY_THRESHOLD", "1.5")
         )
 
         # Overall liveness confidence threshold (used by pipeline, mirrored here)
@@ -491,18 +491,22 @@ class LivenessDetector:
 
         # Check if the primary video-replay/spoof defenses are passed
         primary_defenses_passed = micro_texture["is_live"] or flow_naturalness["is_live"]
+        both_primary_passed = micro_texture["is_live"] and flow_naturalness["is_live"]
 
-        # Blink: fallback to 0.75 if primary defenses are passed, otherwise 0.0
-        blink_conf = min(blink_analysis["blink_count"] / 2.0, 1.0) \
-            if blink_analysis["blink_detected"] else (0.75 if primary_defenses_passed else 0.0)
+        # Behavioral fallbacks for genuine live skin/motion (prevents false rejects)
+        fallback_val = 0.60 if both_primary_passed else (0.45 if primary_defenses_passed else 0.0)
 
-        # Head movement: fallback to 0.75 if primary defenses are passed, otherwise 0.0
-        head_conf = min(head_movement["movement_magnitude"] / 0.05, 1.0) \
-            if head_movement["movement_detected"] else (0.75 if primary_defenses_passed else 0.0)
+        # Blink: fallback to fallback_val if primary defenses are passed, otherwise 0.0
+        blink_conf = max(min(blink_analysis["blink_count"] / 2.0, 1.0), fallback_val) \
+            if blink_analysis["blink_detected"] else (fallback_val if primary_defenses_passed else 0.0)
 
-        # Depth variation: fallback to 0.75 if primary defenses are passed, otherwise 0.0
-        depth_conf = min(depth_variation["variation_score"] / 0.15, 1.0) \
-            if depth_variation["variation_detected"] else (0.75 if primary_defenses_passed else 0.0)
+        # Head movement: fallback to fallback_val if primary defenses are passed, otherwise 0.0
+        head_conf = max(min(head_movement["movement_magnitude"] / 0.05, 1.0), fallback_val) \
+            if head_movement["movement_detected"] else (fallback_val if primary_defenses_passed else 0.0)
+
+        # Depth variation: fallback to fallback_val if primary defenses are passed, otherwise 0.0
+        depth_conf = max(min(depth_variation["variation_score"] / 0.15, 1.0), fallback_val) \
+            if depth_variation["variation_detected"] else (fallback_val if primary_defenses_passed else 0.0)
 
 
         # Micro-texture: binary live/not — but scale by variance level

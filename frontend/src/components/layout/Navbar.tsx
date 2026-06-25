@@ -28,7 +28,7 @@ const Navbar = () => {
     { name: 'Attendance', href: '/attendance', icon: <FaUserClock /> },
     { name: 'Leave', href: '/leave', icon: <FaCalendar /> },
     { name: 'Reports', href: '/reports', icon: <FaChartBar /> },
-    ...(user?.role === 'student'
+    ...(user?.role === 'student' || user?.role === 'teacher'
       ? [
           { name: 'Assignments', href: '/assignments', icon: <FaClipboardList /> },
         ]

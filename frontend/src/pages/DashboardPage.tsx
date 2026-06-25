@@ -686,6 +686,22 @@ const DashboardPage: React.FC = () => {
     };
   }, []);
 
+  // Map picker message listener
+  useEffect(() => {
+    const handleMapMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'MAP_LOCATION_SELECTED') {
+        const { name, latitude, longitude } = event.data;
+        if (name) setReqLocName(name);
+        if (latitude) setReqLat(String(latitude));
+        if (longitude) setReqLng(String(longitude));
+      }
+    };
+    window.addEventListener('message', handleMapMessage);
+    return () => {
+      window.removeEventListener('message', handleMapMessage);
+    };
+  }, []);
+
   // Handle check-in
   const handleCheckIn = async () => {
     try {
@@ -819,7 +835,7 @@ const DashboardPage: React.FC = () => {
                       <FaMapMarkerAlt /> {myTiming.location_name || 'Assigned Location'}
                     </a>
                   ) : (
-                    <span className="text-gray-500 italic">Global Office (Default)</span>
+                    <span className="text-gray-500 italic">Global Class (Default)</span>
                   )}
                 </span>
 
@@ -1722,7 +1738,30 @@ const DashboardPage: React.FC = () => {
                 {/* Location Section */}
                 {(requestType === 'location' || requestType === 'both') && (
                   <div className="space-y-3 p-4 bg-green-50/50 rounded-xl border border-green-100">
-                    <h4 className="text-sm font-bold text-green-800">Requested Class Location Details</h4>
+                    <div className="flex justify-between items-center mb-1">
+                      <h4 className="text-sm font-bold text-green-800">Requested Class Location Details</h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const lat = reqLat || '20.136994';
+                          const lng = reqLng || '85.635407';
+                          const name = encodeURIComponent(reqLocName || '');
+                          const width = 950;
+                          const height = 650;
+                          const left = (window.screen.width - width) / 2;
+                          const top = (window.screen.height - height) / 2;
+                          window.open(
+                            `/map-picker.html?lat=${lat}&lng=${lng}&name=${name}`,
+                            'MapPicker',
+                            `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes`
+                          );
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-semibold transition-colors py-1 px-2 bg-white hover:bg-blue-50 rounded-lg border border-blue-100 shadow-sm"
+                      >
+                        <FaMapMarkerAlt className="text-xs text-green-600 animate-bounce" style={{ animationDuration: '2s' }} />
+                        Select on Google Maps
+                      </button>
+                    </div>
                     
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Location Name</label>
